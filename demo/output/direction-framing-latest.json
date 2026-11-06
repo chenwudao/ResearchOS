@@ -1,0 +1,43 @@
+{
+  "ok": true,
+  "skill": "direction-framing",
+  "mode": "sample",
+  "interest": "flexible practical research assistant for students",
+  "cards": [
+    {
+      "id": "A",
+      "statement": "Human-guided research companion: direction → RQs → foundational/frontier shelves",
+      "why_now": "Course teams need auditable literature packs, not auto-papers",
+      "non_goals": [
+        "Autonomous paper writing",
+        "Unverified claim generation"
+      ],
+      "success": "One demo chain produces dual shelves + gaps for a locked RQ"
+    },
+    {
+      "id": "B",
+      "statement": "Citation-graph tooling only (Radar as discovery clone)",
+      "why_now": "Strong discovery UX already exists in ResearchRabbit/Connected Papers",
+      "non_goals": [
+        "RQ coaching",
+        "Evidence ledger"
+      ],
+      "success": "Neighborhood graph from one seed DOI"
+    },
+    {
+      "id": "C",
+      "statement": "Experiment ReproBox first (run baselines before literature depth)",
+      "why_now": "Some labs already know the RQ and need compute hygiene",
+      "non_goals": [
+        "Cold-start direction framing"
+      ],
+      "success": "One baseline re-run with logged config"
+    }
+  ],
+  "decision_prompt": "Pick A/B/C or merge; ResearchOS default recommendation is A.",
+  "defaults": {
+    "seed_paper": "optional",
+    "foundational_rule": "survey + method origin; citations secondary"
+  },
+  "demo_locked_direction": "Human-guided research companion: direction → RQs → foundational/frontier shelves"
+}

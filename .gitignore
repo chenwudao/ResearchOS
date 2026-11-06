@@ -1,0 +1,37 @@
+# secrets / local bridge
+demo/.local/
+**/.credentials.yaml
+**/*credentials*
+.env
+.env.*
+
+# python / caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# editor / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# backups and logs
+*.bak
+*.bak-*
+*.bak.*
+**/*.bak*
+demo/static/index.html.bak*
+demo/api/*.bak*
+*.log
+demo/.local/*.log
+
+# npm / node
+node_modules/
+npm-debug.log*
+
+# optional large archives if any
+*.tgz
+skills.tar

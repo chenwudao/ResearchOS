@@ -1,0 +1,39 @@
+{
+  "ok": true,
+  "skill": "rq-decomposition",
+  "mode": "sample",
+  "direction": "Human-guided research companion: direction → RQs → foundational/frontier shelves",
+  "rqs": [
+    {
+      "rq_id": "R1",
+      "text": "Does dual-shelf (foundational vs frontier) briefing raise claim-citation coverage vs chatbot-only search for one course RQ?",
+      "type": "eval",
+      "depends_on": [],
+      "evidence_needed": "both",
+      "priority": "must"
+    },
+    {
+      "rq_id": "R2",
+      "text": "Which citation-graph signals best separate method-origin papers from high-cite surveys for student RQs?",
+      "type": "method",
+      "depends_on": [
+        "R1"
+      ],
+      "evidence_needed": "paper",
+      "priority": "must"
+    },
+    {
+      "rq_id": "R3",
+      "text": "Can a 15-minute direction-framing session produce peer-restatable agendas for novice users?",
+      "type": "eval",
+      "depends_on": [],
+      "evidence_needed": "experiment",
+      "priority": "nice"
+    }
+  ],
+  "out_of_scope": [
+    "Fully autonomous manuscript generation",
+    "Domain-specific wet-lab protocols"
+  ],
+  "demo_locked_rq": "Does dual-shelf (foundational vs frontier) briefing raise claim-citation coverage vs chatbot-only search for one course RQ?"
+}

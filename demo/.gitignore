@@ -1,0 +1,4 @@
+.local/
+*.pyc
+__pycache__/
+.dsh-bridge.json

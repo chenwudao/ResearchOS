@@ -1,0 +1,91 @@
+{
+  "ok": true,
+  "skill": "evidence-ledger",
+  "question": "Does dual-shelf (foundational vs frontier) briefing raise claim-citation coverage vs chatbot-only search for one course RQ?",
+  "rows": [
+    {
+      "claim_id": "C1",
+      "claim": "Method X improves metric Y on dataset Z",
+      "claim_type": "finding",
+      "source": "Smith et al. 2024",
+      "locator": "p.12 / Table 2",
+      "support": "supports",
+      "status": "verified",
+      "notes": "demo row"
+    },
+    {
+      "claim_id": "C2",
+      "claim": "Training fits in one GPU-week",
+      "claim_type": "plan-premise",
+      "source": "none",
+      "locator": "none",
+      "support": "unknown",
+      "status": "gap",
+      "notes": "needs compute evidence"
+    },
+    {
+      "claim_id": "S3",
+      "claim": "Method origin for retrieve-and-cite evidence hygiene",
+      "claim_type": "finding",
+      "source": "arxiv:2312.07559",
+      "locator": "demo-shelf",
+      "support": "supports",
+      "status": "verified",
+      "notes": "foundational: Template for ledger-backed claims"
+    },
+    {
+      "claim_id": "S4",
+      "claim": "Survey/method origin for perspective-guided questioning",
+      "claim_type": "finding",
+      "source": "arxiv:2402.14207",
+      "locator": "demo-shelf",
+      "support": "supports",
+      "status": "verified",
+      "notes": "foundational: Pre-writing structure without publishable-final claim"
+    },
+    {
+      "claim_id": "S5",
+      "claim": "Recent RQ/idea generation from papers + graphs",
+      "claim_type": "finding",
+      "source": "aclanthology:2025.naacl-long.342",
+      "locator": "demo-shelf",
+      "support": "supports",
+      "status": "verified",
+      "notes": "frontier: Frontier seed-anchored problem finding"
+    },
+    {
+      "claim_id": "S6",
+      "claim": "Human-in-the-loop RQ co-creation",
+      "claim_type": "finding",
+      "source": "arxiv:2310.06155",
+      "locator": "demo-shelf",
+      "support": "supports",
+      "status": "verified",
+      "notes": "frontier: Supports guided, not auto-decided, direction/RQ skills"
+    },
+    {
+      "claim_id": "G7",
+      "claim": "Dual-shelf UI improves student citation coverage by X%",
+      "claim_type": "plan-premise",
+      "source": "none",
+      "locator": "none",
+      "support": "unknown",
+      "status": "gap",
+      "notes": "No local pilot data yet — needs pilot-eval-design run"
+    }
+  ],
+  "gaps": [
+    {
+      "claim_id": "C2",
+      "reason": "no primary source",
+      "depends_on_plan": true
+    },
+    {
+      "claim_id": "G7",
+      "reason": "No local pilot data yet — needs pilot-eval-design run",
+      "depends_on_plan": true
+    }
+  ],
+  "mode": "sample",
+  "upstream": "foundational-frontier-split"
+}
