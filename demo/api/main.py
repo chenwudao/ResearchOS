@@ -24,9 +24,12 @@ except ImportError:  # pragma: no cover - allow running outside demo/api cwd
         read_handoff as dsh_read_handoff,
     )
 
+import automation
+from workspace_http import serve as serve_workspace
+
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
-SKILLS = ROOT / "skills"
+SKILLS = ROOT.parent / "skills"
 OUTPUT = ROOT / "output"
 PORT = 8765
 KNOWN = [
@@ -562,6 +565,8 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
+        if path.startswith("/api/workspace/"):
+            return serve_workspace(self, "GET", path)
         if path == "/api/health":
             return self._json(
                 200,
@@ -691,6 +696,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path.startswith("/api/workspace/"):
+            return serve_workspace(self, "POST", parsed.path)
         m = re.fullmatch(r"/api/skills/run/([a-z0-9-]+)", parsed.path)
         if m:
             length = int(self.headers.get("Content-Length") or 0)
@@ -800,6 +807,11 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    httpd = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
-    print(f"ResearchOS demo on http://0.0.0.0:{PORT} (jerry+jaden)")
-    httpd.serve_forever()
+    httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    print(f"ResearchOS on http://127.0.0.1:{PORT}")
+    stop_automation = automation.start()
+    try:
+        httpd.serve_forever()
+    finally:
+        stop_automation.set()
+        httpd.server_close()

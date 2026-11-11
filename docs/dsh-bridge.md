@@ -7,7 +7,7 @@
 | ResearchOS demo (`python3 api/main.py`) | `8765` | Shell + skill API + **DSH bridge** |
 | DeepSeek Harness (`dsh web` / `npx @deepseek-ai/dsh web --no-open`) | `3080` | Real harness UI / sessions / tools |
 
-ResearchOS still keeps project chat in browser `localStorage`. DSH sessions, when created inside DSH, live under `~/.dsh/` (expected `sessions/` after real chats; `DSH_HOME` overrides the root).
+ResearchOS keeps project chat in a local SQLite database. DSH sessions, when created inside DSH, live under `~/.dsh/` (expected `sessions/` after real chats; `DSH_HOME` overrides the root).
 
 ## Auth constraint (why this bridge shape)
 

@@ -329,33 +329,6 @@
       display: flex; align-items: center; gap: 10px;
       letter-spacing: -0.01em;
     }
-    .map-wrap {
-      width: 100%; aspect-ratio: 16/10; background: var(--bg-soft);
-      border: 1px solid var(--line); border-radius: 12px;
-      overflow: hidden; position: relative;
-      touch-action: none;
-      cursor: grab;
-    }
-    .map-wrap:active { cursor: grabbing; }
-    .map-wrap svg { width: 100%; height: 100%; display: block; }
-    .map-toolbar {
-      position: absolute; right: 10px; top: 10px; z-index: 2;
-      display: flex; gap: 6px;
-    }
-    .map-toolbar button {
-      width: 34px; height: 34px; border-radius: 10px;
-      border: 1px solid var(--line); background: rgba(255,255,255,.92);
-      box-shadow: var(--shadow); font-size: 16px; font-weight: 600; color: var(--ink-2);
-    }
-    .map-toolbar button:hover { background: #fff; color: var(--ink); }
-    .map-hint {
-      position: absolute; left: 12px; bottom: 10px; z-index: 2;
-      font-size: 12.5px; color: var(--muted);
-      background: rgba(255,255,255,.85); padding: 4px 10px; border-radius: 999px;
-      border: 1px solid var(--line);
-    }
-    .map-node { cursor: pointer; }
-    .map-node:hover rect, .map-node:hover circle { filter: brightness(0.98); }
     .chain {
       font-family: var(--mono); font-size: 13px; color: var(--ink-2);
       background: var(--bg-soft); border: 1px solid var(--line);
@@ -384,6 +357,9 @@
       display: flex; justify-content: space-between; gap: 8px;
       font-size: 12.5px; color: var(--muted); margin-bottom: 6px;
     }
+    .note .n-meta { align-items: center; flex-wrap: wrap; }
+    .note-meta-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .note-delete { color: var(--danger); }
     .note .n-body { font-size: 14.5px; white-space: pre-wrap; word-break: break-word; }
     .note-form { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
     .note-form textarea {
@@ -536,13 +512,23 @@
     html[data-type="compact"] .bubble p, html[data-type="compact"] .composer-box textarea { font-size: 14.5px; }
     html[data-type="roomy"] .bubble p, html[data-type="roomy"] .composer-box textarea { font-size: 16.5px; }
     .hidden { display: none !important; }
+    #rail-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    .schedule { width: 100%; border-collapse: collapse; text-align: left; }
+    .schedule th, .schedule td { padding: 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    #thought-chain { overflow-x: auto; }
+    #project-reviews .note { margin: 8px 0; }
+    #rail-tools input { max-width: 100%; padding: 6px; color: var(--ink); }
+    #rail-tools label { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+    #rail-status:empty, .note-form[hidden] { display: none; }
+    .note a { color: inherit; }
   </style>
+  <link rel="stylesheet" href="/project-map.css" />
 </head>
 <body>
   <div class="app">
     <aside class="rail">
       <div class="rail-head">
-        <img src="avatar.png" alt="Research Companion" />
+        <img src="avatar.png" id="sidebar-avatar" alt="Research Companion" />
         <div class="titles">
           <strong>Research Companion</strong>
           <span>Research Companion</span>
@@ -592,6 +578,7 @@
       <header class="topbar">
         <h1 id="top-title">主聊天 <span class="crumb" id="top-crumb"></span></h1>
         <div class="spacer"></div>
+        <span class="hint" id="workspace-status" role="status"></span>
         <button type="button" class="cfg-btn" id="btn-agent-cfg" title="助理配置">
           <span class="cfg-ico">✦</span>
           <span class="cfg-copy"><strong>助理配置</strong><span>人设 · 要求</span></span>
@@ -625,17 +612,14 @@
             </div>
           </div>
           <div class="workspace hidden" id="space-active">
-            <div class="grid-2">
-              <div class="card-block">
-                <h3>课题关系图</h3>
-                <div class="map-wrap" id="mind-map"></div>
-              </div>
-              <div class="card-block">
-                <h3>思维链</h3>
-                <div class="chain" id="thought-chain"></div>
-                <div class="pill-row" id="chain-pills"></div>
-              </div>
-            </div>
+            <section class="card-block map-card" aria-labelledby="project-map-title">
+              <h3 id="project-map-title">课题关系图</h3>
+              <div class="project-map" id="mind-map"></div>
+            </section>
+            <section class="card-block">
+              <h3>项目时间表</h3>
+              <div class="chain" id="thought-chain"></div>
+            </section>
             <div class="grid-2">
               <div class="card-block">
                 <h3>
@@ -660,8 +644,11 @@
         <div class="panel hidden" id="panel-rail">
           <div class="workspace">
             <div class="card-block">
-              <h3 id="rail-title">点子</h3>
+              <h3 id="rail-title" tabindex="-1">点子</h3>
               <p style="margin:0 0 14px;font-size:14px;color:var(--muted)" id="rail-sub">在这里记录本项目相关内容。</p>
+              <div id="rail-tools"></div>
+              <div id="project-reviews"></div>
+              <p class="hint" id="rail-status" role="status"></p>
               <div class="note-list" id="note-list"></div>
               <div class="note-form">
                 <textarea id="note-input" placeholder="自定义推送或笔记…"></textarea>
@@ -693,6 +680,12 @@
     <div class="settings-panel" role="dialog" aria-labelledby="appearance-title">
       <h3 id="appearance-title">外观配置</h3>
       <p class="sub">调整整体色调与文字风格，立即生效并保存在本机。</p>
+      <label for="assistant-avatar">助理头像</label>
+      <div class="composer-row">
+        <input type="file" id="assistant-avatar" accept="image/png,image/jpeg,image/webp" />
+        <button type="button" class="btn sm" id="reset-avatar">恢复默认</button>
+      </div>
+      <p id="avatar-status" class="hint" role="status"></p>
       <label>色调</label>
       <div class="tone-grid" id="tone-grid">
         <button type="button" class="choice" data-tone="warm">暖白 Soft Warm<small>米白画布 · 靛色强调</small></button>
@@ -726,6 +719,7 @@
     </div>
   </div>
 
+<script src="/project-map.js"></script>
 <script>
 (function () {
   const STORAGE_KEY = 'researchos-v2';
@@ -733,6 +727,7 @@
   const DEFAULT_SETTINGS = {
     appearance: { tone: 'warm', type: 'comfortable' },
     agent: { persona: '严谨、简洁的科研搭档', instructions: '' },
+    avatar: '',
   };
   function loadSettings() {
     try {
@@ -742,13 +737,14 @@
       return {
         appearance: Object.assign({}, DEFAULT_SETTINGS.appearance, s.appearance || {}),
         agent: Object.assign({}, DEFAULT_SETTINGS.agent, s.agent || {}),
+        avatar: s.avatar || '',
       };
     } catch (_) {
       return JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
     }
   }
   function saveSettings() {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(appSettings));
+    saveState();
   }
   function getAgentCfg() { return appSettings.agent || DEFAULT_SETTINGS.agent; }
 
@@ -847,7 +843,6 @@
     library: { title: '资源库', seed: '' },
   };
 
-  const SAMPLE_CHAIN = '';
 
   function uid(prefix) {
     return prefix + '_' + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -889,24 +884,86 @@
       return defaultState();
     }
   }
-  function saveState() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }
-
   let state = loadState();
   let appSettings = loadSettings();
   let modalMode = null;
-  applyAppearance();
-  try {
-    const flag = 'researchos-v2-empty-main-v1';
-    if (!localStorage.getItem(flag)) {
-      if (state.mainThread && Array.isArray(state.mainThread.messages) && state.mainThread.messages.length) {
-        state.mainThread.messages = [];
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      }
-      localStorage.setItem(flag, '1');
+  let revision = 0;
+  let dirty = false;
+  let saving = false;
+  let initialized = false;
+  let conflict = false;
+  let modelStatus = '';
+  const pendingChats = new Set();
+  const pendingJobs = new Set();
+  let projectJobs = {};
+  let jobsRead = 0;
+  const railMessages = new Map();
+
+  async function workspaceApi(path, payload, pdf = false) {
+    const options = payload === undefined ? {} : {
+      method: 'POST',
+      headers: { 'Content-Type': pdf ? 'application/pdf' : 'application/json' },
+      body: pdf ? payload : JSON.stringify(payload),
+    };
+    const res = await fetch('/api/workspace/' + path, options);
+    const result = await res.json();
+    if (!res.ok) {
+      const error = new Error(result.error || '请求失败');
+      error.status = res.status;
+      throw error;
     }
-  } catch (_) {}
+    return result;
+  }
+
+  function saveState() {
+    dirty = true;
+    flushWorkspace();
+  }
+
+  async function flushWorkspace() {
+    if (!initialized || saving || conflict || !dirty) return;
+    saving = true;
+    $('#workspace-status').textContent = '正在保存…';
+    let failed = false;
+    try {
+      while (dirty) {
+        dirty = false;
+        const result = await workspaceApi('state', { revision, state, settings: appSettings });
+        revision = result.revision;
+      }
+      $('#workspace-status').textContent = '已保存到本机';
+    } catch (error) {
+      failed = dirty = true;
+      conflict = error.status === 409;
+      $('#workspace-status').textContent = conflict ? error.message : '本地保存失败，稍后重试';
+    } finally {
+      saving = false;
+      if (failed && !conflict) setTimeout(flushWorkspace, 5000);
+    }
+  }
+
+  async function startWorkspace() {
+    $('#workspace-status').textContent = '正在读取本地工作区…';
+    try {
+      const stored = await workspaceApi('state');
+      revision = stored.revision;
+      if (stored.state) {
+        state = stored.state;
+        appSettings = stored.settings;
+      }
+      initialized = true;
+      if (!stored.state) saveState();
+      applyAppearance();
+      $('#stage').inert = false;
+      document.querySelector('aside').inert = false;
+      $('.topbar').querySelectorAll('button').forEach(button => { button.disabled = false; });
+      render();
+      readProjectJobs();
+    } catch (error) {
+      $('#workspace-status').textContent = '无法读取本地工作区，5 秒后重试';
+      setTimeout(startWorkspace, 5000);
+    }
+  }
 
   const $ = (sel) => document.querySelector(sel);
   const chatScroll = $('#chat-scroll');
@@ -927,7 +984,13 @@
   }
 
   async function checkHealth() {
-    try { await fetch('/api/health'); } catch (_) {}
+    try {
+      const status = await workspaceApi('status');
+      modelStatus = status.configured ? 'DeepSeek V4.1 Flash' : '未配置 DeepSeek API 密钥';
+    } catch (_) {
+      modelStatus = '本地服务未连接';
+    }
+    if (initialized) renderChatControls();
   }
 
   function escapeHtml(s) {
@@ -936,7 +999,13 @@
   }
   function escapeAttr(s) { return escapeHtml(s).replace(/'/g, '&#39;'); }
 
+  function assistantAvatar() {
+    const avatar = appSettings.avatar || '';
+    return /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(avatar) ? avatar : 'avatar.png';
+  }
+
   function renderNav() {
+    $('#sidebar-avatar').src = assistantAvatar();
     $('#proj-count').textContent = String(state.projects.length);
     const list = $('#proj-list');
     list.innerHTML = '';
@@ -945,7 +1014,7 @@
       row.className = 'proj-row' + (p.id === state.ui.activeProjectId ? ' active' : '');
       row.innerHTML =
         '<button class="proj-btn" title="' + escapeAttr(p.name) + '">' + escapeHtml(p.name) + '</button>' +
-        '<button class="icon-btn" title="删除" data-del="' + p.id + '">✕</button>';
+        '<button class="icon-btn" title="删除" data-del="' + escapeAttr(p.id) + '">✕</button>';
       row.querySelector('.proj-btn').onclick = () => {
         state.ui.activeProjectId = p.id;
         state.ui.view = 'space';
@@ -989,7 +1058,15 @@
           }
   }
 
+  function renderChatControls() {
+    const thread = state.ui.view === 'main' ? state.mainThread : activeThread();
+    const pending = !!thread && pendingChats.has(thread.id);
+    $('#btn-send').disabled = pending;
+    $('#composer-hint').textContent = pending ? '正在等待回复…' : modelStatus;
+  }
+
   function renderChat() {
+    renderChatControls();
     const msgs = currentMessages();
     chatScroll.innerHTML = '';
     if (!msgs.length) {
@@ -997,7 +1074,7 @@
       welcome.className = 'chat-welcome';
       if (state.ui.view === 'main') {
         welcome.innerHTML =
-          '<img src="avatar.png" alt="" />' +
+          '<img src="' + assistantAvatar() + '" alt="" />' +
           '<h2>你好，我是 Research Companion</h2>' +
           '<p>告诉我你正在研究什么，或想一起推进的问题。</p>';
       } else {
@@ -1013,196 +1090,45 @@
       el.className = 'msg ' + (m.role === 'user' ? 'user' : 'assistant');
       const av = m.role === 'user'
         ? '<div class="av user-av">你</div>'
-        : '<img class="av" src="avatar.png" alt="" />';
+        : '<img class="av" src="' + assistantAvatar() + '" alt="" />';
       let body = '<div class="who">' + (m.role === 'user' ? '你' : 'Research Companion') +
         ' · ' + fmtTime(m.ts) + '</div><p>' + escapeHtml(m.text) + '</p>';
-      if (m.card) {
+      if (m.card && !m.card.workspaceActions) {
         body += '<div class="card"><h4>' + escapeHtml(m.card.title || '结果') + '</h4>';
         if (m.card.pre) body += '<pre>' + escapeHtml(m.card.pre) + '</pre>';
         body += '</div>';
       }
       el.innerHTML = av + '<div class="bubble">' + body + '</div>';
+      if (m.card?.workspaceActions?.length) {
+        el.querySelector('.bubble').appendChild(actionList(
+          m.card.workspaceActions, m.card.applied, () => {
+            m.card.applied = true;
+            renderChat();
+          }));
+      }
       chatScroll.appendChild(el);
     });
     chatScroll.scrollTop = chatScroll.scrollHeight;
   }
 
-  const mapUi = { zoom: 1, panX: 0, panY: 0, expanded: { ideas: true, feed: true, goals: true, library: true } };
-
-  function truncateMapLabel(s, n) {
-    const t = String(s || '').replace(/\s+/g, ' ').trim();
-    if (t.length <= n) return t;
-    return t.slice(0, n - 1) + '…';
-  }
-
-  function renderMindMap(proj) {
-    const wrap = $('#mind-map');
-    if (!proj) { wrap.innerHTML = ''; return; }
-
-    const rails = {
-      ideas: proj.rails.ideas || [],
-      feed: proj.rails.feed || [],
-      goals: proj.rails.goals || [],
-      library: proj.rails.library || [],
-    };
-    const total = rails.ideas.length + rails.feed.length + rails.goals.length + rails.library.length;
-    const meta = {
-      ideas:   { label: '点子',   x: 180, y: 140, fill: '#eef2ff', stroke: '#4f46e5', ink: '#3730a3' },
-      feed:    { label: '动态',   x: 760, y: 140, fill: '#f5f3ff', stroke: '#7c3aed', ink: '#6d28d9' },
-      goals:   { label: '目标',   x: 180, y: 460, fill: '#ecfdf5', stroke: '#059669', ink: '#047857' },
-      library: { label: '资源库', x: 760, y: 460, fill: '#fffbeb', stroke: '#d97706', ink: '#b45309' },
-    };
-    const core = { x: 470, y: 300 };
-    const vbW = 940, vbH = 600;
-
-    // layout child nodes in an arc around each cluster when expanded
-    function childPositions(key, notes) {
-      const m = meta[key];
-      const n = notes.length;
-      if (!n) return [];
-      const out = [];
-      const spread = Math.min(Math.PI * 0.95, 0.42 * n + 0.55);
-      const start = -spread / 2;
-      const radius = 118 + Math.min(40, n * 4);
-      const outward = {
-        ideas: Math.PI * 1.15,
-        feed: Math.PI * -0.15,
-        goals: Math.PI * 0.85,
-        library: Math.PI * 0.15,
-      }[key];
-      for (let i = 0; i < n; i++) {
-        const ang = outward + start + (n === 1 ? spread / 2 : (spread * i) / (n - 1));
-        out.push({
-          x: m.x + Math.cos(ang) * radius,
-          y: m.y + Math.sin(ang) * radius,
-          note: notes[i],
-        });
-      }
-      return out;
-    }
-
-    let edges = '';
-    let nodes = '';
-    // hub-core edges always
-    Object.keys(meta).forEach(function (key) {
-      const m = meta[key];
-      edges += '<line x1="' + core.x + '" y1="' + core.y + '" x2="' + m.x + '" y2="' + m.y +
-        '" stroke="#d6d3cd" stroke-width="1.6" />';
+  function renderMindMap(project) {
+    window.renderProjectMap($('#mind-map'), project, {
+      ideas: project.rails.ideas.slice().reverse(),
+      feed: feedNotes(project).slice().reverse(),
+      goals: project.rails.goals.slice().sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999')),
+      library: project.rails.library.slice().reverse(),
+    }, {
+      status: goal => goalStatus(project, goal),
+      open(rail, noteId) {
+        state.ui.activeRail = rail;
+        state.ui.view = 'rail';
+        saveState();
+        render();
+        const note = [...$('#note-list').children].find(item => item.dataset.noteId === noteId);
+        if (note) note.focus();
+        else $('#rail-title').focus();
+      },
     });
-
-    Object.keys(meta).forEach(function (key) {
-      const m = meta[key];
-      const notes = rails[key];
-      const expanded = !!mapUi.expanded[key] && notes.length > 0;
-      const count = notes.length;
-
-      nodes += '<g class="map-node" data-cluster="' + key + '">' +
-        '<rect x="' + (m.x - 64) + '" y="' + (m.y - 28) + '" width="128" height="56" rx="14" fill="' + m.fill +
-        '" stroke="' + m.stroke + '" stroke-width="1.8"/>' +
-        '<text x="' + m.x + '" y="' + (m.y - 2) + '" text-anchor="middle" font-size="14" font-weight="650" fill="' + m.ink + '">' +
-        m.label + '</text>' +
-        '<text x="' + m.x + '" y="' + (m.y + 16) + '" text-anchor="middle" font-size="12" fill="#52525b">' +
-        count + ' 条' + (count ? (expanded ? ' · 收起' : ' · 展开') : '') + '</text></g>';
-
-      if (expanded) {
-        childPositions(key, notes).forEach(function (c, idx) {
-          edges += '<line x1="' + m.x + '" y1="' + m.y + '" x2="' + c.x + '" y2="' + c.y +
-            '" stroke="' + m.stroke + '" stroke-opacity="0.35" stroke-width="1.4" />';
-          const label = truncateMapLabel(c.note.text, 16);
-          nodes += '<g class="map-leaf" data-rail="' + key + '" data-idx="' + idx + '">' +
-            '<rect x="' + (c.x - 70) + '" y="' + (c.y - 22) + '" width="140" height="44" rx="12" fill="#fff" stroke="' +
-            m.stroke + '" stroke-width="1.2"/>' +
-            '<text x="' + c.x + '" y="' + (c.y + 5) + '" text-anchor="middle" font-size="12" fill="#3f3f46">' +
-            escapeHtml(label) + '</text></g>';
-        });
-      }
-    });
-
-    // core
-    nodes += '<g class="map-core">' +
-      '<circle cx="' + core.x + '" cy="' + core.y + '" r="46" fill="#fff" stroke="#e7e5e0" stroke-width="1.8"/>' +
-      '<text x="' + core.x + '" y="' + (core.y - 4) + '" text-anchor="middle" font-size="14" font-weight="650" fill="#171717">课题核心</text>' +
-      '<text x="' + core.x + '" y="' + (core.y + 14) + '" text-anchor="middle" font-size="12" fill="#71717a">' +
-      escapeHtml(truncateMapLabel(proj.name, 10)) + '</text></g>';
-
-    const emptyHint = total === 0
-      ? '暂无记录 · 在点子/动态/目标/资源库添加后，地图会展开节点'
-      : '拖动画布平移 · 滚轮缩放 · 点击色块展开/收起';
-
-    wrap.innerHTML =
-      '<div class="map-toolbar">' +
-      '<button type="button" data-map="zoom-in" title="放大">+</button>' +
-      '<button type="button" data-map="zoom-out" title="缩小">−</button>' +
-      '<button type="button" data-map="reset" title="复位">⌂</button>' +
-      '</div>' +
-      '<div class="map-hint">' + emptyHint + '</div>' +
-      '<svg viewBox="0 0 ' + vbW + ' ' + vbH + '" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="课题关系图">' +
-      '<rect width="' + vbW + '" height="' + vbH + '" fill="#faf9f7"/>' +
-      '<g id="map-world" transform="translate(' + mapUi.panX + ',' + mapUi.panY + ') scale(' + mapUi.zoom + ')">' +
-      '<g id="map-edges">' + edges + '</g>' +
-      '<g id="map-nodes" font-family="Inter, system-ui, sans-serif">' + nodes + '</g>' +
-      '</g></svg>';
-
-    bindMindMapInteractions(wrap, proj);
-  }
-
-  function bindMindMapInteractions(wrap, proj) {
-    const world = wrap.querySelector('#map-world');
-    if (!world) return;
-
-    function applyTransform() {
-      world.setAttribute('transform', 'translate(' + mapUi.panX + ',' + mapUi.panY + ') scale(' + mapUi.zoom + ')');
-    }
-
-    wrap.querySelectorAll('[data-map]').forEach(function (btn) {
-      btn.onclick = function (e) {
-        e.stopPropagation();
-        const act = btn.getAttribute('data-map');
-        if (act === 'zoom-in') mapUi.zoom = Math.min(2.4, mapUi.zoom * 1.18);
-        if (act === 'zoom-out') mapUi.zoom = Math.max(0.55, mapUi.zoom / 1.18);
-        if (act === 'reset') { mapUi.zoom = 1; mapUi.panX = 0; mapUi.panY = 0; }
-        applyTransform();
-      };
-    });
-
-    wrap.querySelectorAll('.map-node').forEach(function (g) {
-      g.addEventListener('click', function (e) {
-        e.stopPropagation();
-        const key = g.getAttribute('data-cluster');
-        const notes = (proj.rails[key] || []);
-        if (!notes.length) {
-          // jump to rail to add
-          state.ui.activeRail = key;
-          state.ui.view = 'rail';
-          saveState(); render();
-          return;
-        }
-        mapUi.expanded[key] = !mapUi.expanded[key];
-        renderMindMap(proj);
-      });
-    });
-
-    let dragging = false, lx = 0, ly = 0;
-    wrap.addEventListener('pointerdown', function (e) {
-      if (e.target.closest('button') || e.target.closest('.map-node') || e.target.closest('.map-leaf')) return;
-      dragging = true; lx = e.clientX; ly = e.clientY;
-      try { wrap.setPointerCapture(e.pointerId); } catch (_) {}
-    });
-    wrap.addEventListener('pointermove', function (e) {
-      if (!dragging) return;
-      mapUi.panX += (e.clientX - lx);
-      mapUi.panY += (e.clientY - ly);
-      lx = e.clientX; ly = e.clientY;
-      applyTransform();
-    });
-    wrap.addEventListener('pointerup', function () { dragging = false; });
-    wrap.addEventListener('pointercancel', function () { dragging = false; });
-    wrap.addEventListener('wheel', function (e) {
-      e.preventDefault();
-      const factor = e.deltaY > 0 ? 0.92 : 1.08;
-      mapUi.zoom = Math.min(2.4, Math.max(0.55, mapUi.zoom * factor));
-      applyTransform();
-    }, { passive: false });
   }
 
   function renderSpace() {
@@ -1215,9 +1141,7 @@
     $('#space-empty').classList.add('hidden');
     $('#space-active').classList.remove('hidden');
     $('#proj-desc').textContent = '创建于 ' + fmtTime(p.createdAt) + ' · 更新 ' + fmtTime(p.updatedAt);
-    $('#thought-chain').textContent = SAMPLE_CHAIN || '在对话中推进后，关键步骤会出现在这里。';
-    const pills = $('#chain-pills');
-    pills.innerHTML = '';
+    renderSchedule(p);
     renderMindMap(p);
     const tl = $('#thread-list');
     tl.innerHTML = '';
@@ -1235,6 +1159,374 @@
     });
   }
 
+  function actionButton(label, run) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn sm';
+    button.textContent = label;
+    button.onclick = run;
+    return button;
+  }
+
+  function railInput(type, label) {
+    const input = document.createElement('input');
+    input.type = type;
+    input.placeholder = label;
+    input.setAttribute('aria-label', label);
+    return input;
+  }
+
+  function showRailStatus(project, rail, message) {
+    railMessages.set(project.id + rail, message);
+    if (activeProject() === project && state.ui.view === 'rail' && state.ui.activeRail === rail) {
+      $('#rail-status').textContent = message;
+    }
+  }
+
+  function dependencies(project, goal) {
+    return (goal.dependsOn || []).map(id => project.rails.goals.find(item => item.id === id)).filter(Boolean);
+  }
+
+  function goalStatus(project, goal) {
+    if (goal.done) return '已完成';
+    const blocked = dependencies(project, goal).some(item => !item.done);
+    const today = new Date().toLocaleDateString('sv-SE');
+    const late = goal.due && goal.due < today;
+    return (late ? '已逾期 · ' : '') + (blocked ? '等待前置目标' : '可推进');
+  }
+
+  function renderSchedule(project) {
+    const schedule = $('#thought-chain');
+    schedule.replaceChildren();
+    const goals = project.rails.goals.slice().sort((a, b) =>
+      (a.due || '9999').localeCompare(b.due || '9999'));
+    if (!goals.length) {
+      schedule.textContent = '在「目标」中添加里程碑、截止日期和前置依赖。';
+      return;
+    }
+    const table = document.createElement('table');
+    table.className = 'schedule';
+    const head = table.createTHead().insertRow();
+    ['目标', '截止日期', '前置目标', '状态'].forEach(label => {
+      const cell = document.createElement('th');
+      cell.scope = 'col';
+      cell.textContent = label;
+      head.appendChild(cell);
+    });
+    const rows = table.createTBody();
+    goals.forEach(goal => {
+      const row = rows.insertRow();
+      [goal.text, goal.due || '待排期',
+        dependencies(project, goal).map(item => item.text).join('、') || '—',
+        goalStatus(project, goal)].forEach(value => { row.insertCell().textContent = value; });
+    });
+    schedule.appendChild(table);
+  }
+
+  function dependencySelect(project, selected = [], excluded = new Set()) {
+    const select = document.createElement('select');
+    select.multiple = true;
+    select.size = 3;
+    select.setAttribute('aria-label', '选择前置目标');
+    project.rails.goals.filter(goal => !excluded.has(goal.id)).forEach(goal => {
+      select.add(new Option(goal.text, goal.id, false, selected.includes(goal.id)));
+    });
+    return select;
+  }
+
+  function goalDependencyField(project) {
+    const field = dependencySelect(project);
+    field.id = 'goal-dependencies';
+    return field;
+  }
+
+  function goalEditor(project, goal) {
+    const editor = document.createElement('details');
+    const heading = document.createElement('summary');
+    heading.textContent = '编辑目标';
+    const name = railInput('text', '目标名称');
+    name.value = goal.text;
+    const due = railInput('date', '编辑截止日期');
+    due.value = goal.due || '';
+    const excluded = new Set([goal.id]);
+    for (let size = 0; size !== excluded.size;) {
+      size = excluded.size;
+      project.rails.goals.forEach(item => {
+        if ((item.dependsOn || []).some(id => excluded.has(id))) excluded.add(item.id);
+      });
+    }
+    const before = dependencySelect(project, goal.dependsOn, excluded);
+    const save = actionButton('保存目标', () => {
+      if (!name.value.trim()) return;
+      const ids = Array.from(before.selectedOptions, option => option.value);
+      if (goal.done && ids.some(id => !project.rails.goals.find(item => item.id === id)?.done)) {
+        showRailStatus(project, 'goals', '已完成的目标不能依赖未完成的目标。');
+        return;
+      }
+      goal.text = name.value.trim();
+      goal.due = due.value || undefined;
+      goal.dependsOn = ids;
+      project.updatedAt = nowIso();
+      $('#goal-dependencies')?.replaceWith(goalDependencyField(project));
+      railMessages.delete(project.id + 'goals');
+      saveState();
+      renderRail();
+    });
+    editor.append(heading, name, due, before, save);
+    return editor;
+  }
+
+  function actionList(actions, applied, onApply) {
+    const box = document.createElement('div');
+    const available = actions.filter(action => state.projects.some(p => p.id === action.projectId));
+    available.forEach(action => {
+      const project = state.projects.find(p => p.id === action.projectId);
+      const line = document.createElement('div');
+      const before = dependencies(project, action).map(goal => goal.text);
+      line.textContent = [project.name, RAIL_META[action.rail].title, action.text,
+        action.due, before.length ? '前置目标 ' + before.join('、') : ''].filter(Boolean).join(' · ');
+      box.appendChild(line);
+    });
+    const button = actionButton(applied ? '已写入项目' : '确认写入项目', () => {
+      available.forEach(action => {
+        const project = state.projects.find(p => p.id === action.projectId);
+        addNote(action.rail, action.text, 'DeepSeek', project, {
+          due: action.due, dependsOn: dependencies(project, action).map(goal => goal.id),
+        }, false);
+      });
+      onApply();
+      saveState();
+    });
+    button.disabled = applied || !available.length;
+    box.appendChild(button);
+    return box;
+  }
+
+  function activeJob(project, kind) {
+    const job = projectJobs[project.id]?.[kind];
+    const input = kind === 'feed' ? project.topic : (project.autoReview ? 'daily' : '');
+    return job?.input === input ? job : undefined;
+  }
+
+  function feedIdentity(note) {
+    return note.url || note.text;
+  }
+
+  function feedNotes(project) {
+    const manual = project.rails.feed.filter(note => !note.automatic);
+    const old = project.rails.feed.filter(note => note.automatic).reverse();
+    const hidden = new Set(project.dismissedFeed || []);
+    const merged = new Map();
+    [...(activeJob(project, 'feed')?.items || []), ...old].forEach(note => {
+      const key = feedIdentity(note);
+      if (!hidden.has(key) && !merged.has(key)) merged.set(key, note);
+    });
+    return [...manual, ...Array.from(merged.values()).slice(0, 60).reverse()];
+  }
+
+  async function readProjectJobs() {
+    const ticket = ++jobsRead;
+    try {
+      const latest = await workspaceApi('automation');
+      if (ticket !== jobsRead || JSON.stringify(latest) === JSON.stringify(projectJobs)) return;
+      projectJobs = latest;
+      if (state.ui.view === 'rail' && ['feed', 'ideas'].includes(state.ui.activeRail)) renderRail();
+      if (state.ui.view === 'space' && activeProject()) renderMindMap(activeProject());
+    } catch (_) {
+      // The next poll retries while preserving the visible results.
+    }
+  }
+
+  async function waitForSave() {
+    await flushWorkspace();
+    while (saving) await new Promise(resolve => setTimeout(resolve, 40));
+    if (dirty || conflict) throw new Error('请先保存工作区。');
+  }
+
+  async function runProjectJob(project, kind) {
+    const key = project.id + kind;
+    const rail = kind === 'review' ? 'ideas' : 'feed';
+    if (pendingJobs.has(key)) return;
+    pendingJobs.add(key);
+    showRailStatus(project, rail, kind === 'review' ? '正在复盘项目…' : '正在检索论文、新闻和仓库…');
+    try {
+      await waitForSave();
+      await workspaceApi('automation/run', { projectId: project.id, kind });
+      railMessages.delete(project.id + rail);
+      await readProjectJobs();
+    } catch (error) {
+      showRailStatus(project, rail, error.message);
+    } finally {
+      pendingJobs.delete(key);
+      if (activeProject() === project && state.ui.view === 'rail' && state.ui.activeRail === rail) renderRail();
+    }
+  }
+
+  function renderReviews(project) {
+    const root = $('#project-reviews');
+    root.replaceChildren();
+    const job = activeJob(project, 'review');
+    if (!job?.reviews?.length) return;
+    const entries = document.createElement('details');
+    entries.open = true;
+    const heading = document.createElement('summary');
+    heading.textContent = '复盘记录';
+    entries.appendChild(heading);
+    job.reviews.forEach(entry => {
+      const item = document.createElement('div');
+      item.className = 'note';
+      const stamp = document.createElement('div');
+      stamp.className = 'hint';
+      stamp.textContent = fmtTime(entry.ts);
+      const body = document.createElement('div');
+      body.className = 'n-body';
+      body.textContent = entry.reply;
+      item.append(stamp, body);
+      if (entry.actions.length) {
+        item.appendChild(actionList(entry.actions, (project.appliedReviews || []).includes(entry.id), () => {
+          project.appliedReviews = [...(project.appliedReviews || []), entry.id];
+          renderRail();
+        }));
+      }
+      entries.appendChild(item);
+    });
+    root.appendChild(entries);
+  }
+
+  function renderRailTools(project, rail) {
+    const tools = $('#rail-tools');
+    const scope = (project?.id || '') + rail;
+    if (tools.dataset.scope === scope) return;
+    tools.dataset.scope = scope;
+    tools.replaceChildren();
+    $('#note-input').value = '';
+    $('#note-input').placeholder = rail === 'library' ? '资源名称或实验环境说明' : '输入' + RAIL_META[rail].title;
+    $('.note-form').hidden = !project;
+    if (!project) return;
+
+    if (rail === 'feed') {
+      const topic = railInput('search', '关注主题');
+      topic.maxLength = 150;
+      topic.value = project.topic || '';
+      tools.append(topic, actionButton('保存主题并刷新', () => {
+        const next = topic.value.trim();
+        if (!next) {
+          showRailStatus(project, rail, '请输入关注主题。');
+          return;
+        }
+        if (next !== project.topic) project.rails.feed = project.rails.feed.filter(note => !note.automatic);
+        project.topic = next;
+        saveState();
+        runProjectJob(project, 'feed');
+      }), actionButton('停止跟踪', () => {
+        topic.value = '';
+        project.topic = '';
+        project.rails.feed = project.rails.feed.filter(note => !note.automatic);
+        railMessages.delete(project.id + rail);
+        saveState();
+        renderRail();
+      }));
+    }
+    if (rail === 'ideas') {
+      const toggle = railInput('checkbox', '每天自动复盘');
+      toggle.checked = Boolean(project.autoReview);
+      const run = actionButton('立即复盘', () => runProjectJob(project, 'review'));
+      run.disabled = !toggle.checked;
+      const label = document.createElement('label');
+      label.append(toggle, '每天用 DeepSeek 复盘本项目');
+      toggle.onchange = () => {
+        project.autoReview = toggle.checked;
+        run.disabled = !toggle.checked;
+        railMessages.delete(project.id + rail);
+        saveState();
+        renderRail();
+        if (toggle.checked) runProjectJob(project, 'review');
+      };
+      tools.append(label, run);
+    }
+    if (rail === 'goals') {
+      const due = railInput('date', '截止日期');
+      due.id = 'goal-due';
+      const label = document.createElement('label');
+      label.textContent = '截止日期 ';
+      label.appendChild(due);
+      const dependencyLabel = document.createElement('label');
+      dependencyLabel.id = 'goal-dependency-label';
+      dependencyLabel.append('前置目标 ', goalDependencyField(project));
+      tools.append(label, dependencyLabel);
+    }
+    if (rail === 'library') {
+      const link = railInput('url', '仓库或资料链接');
+      link.id = 'library-url';
+      const pdf = railInput('file', '上传论文 PDF');
+      pdf.accept = '.pdf,application/pdf';
+      const pdfLabel = document.createElement('label');
+      pdfLabel.textContent = '上传论文 PDF ';
+      pdfLabel.appendChild(pdf);
+      pdf.onchange = async () => {
+        const file = pdf.files[0];
+        if (!file) return;
+        pdf.disabled = true;
+        try {
+          const result = await workspaceApi('pdf', file, true);
+          if (!state.projects.includes(project)) return;
+          addNote('library', file.name, '本机 PDF', project, { kind: 'pdf', url: result.url });
+          showRailStatus(project, 'library', 'PDF 已保存');
+          if (activeProject() === project && state.ui.activeRail === rail && state.ui.view === 'rail') renderRail();
+        } catch (error) {
+          showRailStatus(project, 'library', error.message);
+        } finally {
+          pdf.value = '';
+          pdf.disabled = false;
+        }
+      };
+      const environment = actionButton('创建 Python 实验环境', async () => {
+        environment.disabled = true;
+        showRailStatus(project, rail, '正在创建实验目录和虚拟环境…');
+        try {
+          const result = await workspaceApi('experiment', { projectId: project.id });
+          if (!state.projects.includes(project)) return;
+          const prior = project.rails.library.find(note => note.kind === 'experiment');
+          const body = result.path + '\nPython ' + result.python;
+          if (prior) { prior.text = body; saveState(); }
+          else addNote('library', body, 'Python 实验环境', project, { kind: 'experiment' });
+          showRailStatus(project, 'library', '实验目录和虚拟环境已就绪');
+          if (activeProject() === project && state.ui.activeRail === rail && state.ui.view === 'rail') renderRail();
+        } catch (error) {
+          showRailStatus(project, 'library', error.message);
+        } finally {
+          environment.disabled = false;
+        }
+      });
+      tools.append(link, pdfLabel, environment);
+    }
+  }
+
+  function deleteNote(project, rail, note) {
+    const dependents = rail === 'goals'
+      ? project.rails.goals.filter(goal => (goal.dependsOn || []).includes(note.id))
+      : [];
+    const prompt = '删除「' + note.text.slice(0, 60) + (note.text.length > 60 ? '…' : '') + '」？';
+    const impact = dependents.length ? '\n将解除 ' + dependents.length + ' 个后续目标对此目标的依赖。' : '';
+    if (!confirm(prompt + impact)) return false;
+
+    if (rail === 'feed' && note.automatic) {
+      project.dismissedFeed = [...new Set([...(project.dismissedFeed || []), feedIdentity(note)])];
+    }
+    project.rails[rail] = project.rails[rail].filter(item => item.id !== note.id);
+    dependents.forEach(goal => { goal.dependsOn = goal.dependsOn.filter(id => id !== note.id); });
+    project.updatedAt = nowIso();
+    if (rail === 'goals') {
+      const field = $('#goal-dependencies');
+      field?.querySelectorAll('option').forEach(option => {
+        if (option.value === note.id) option.remove();
+      });
+    }
+    saveState();
+    renderRail();
+    return true;
+  }
+
   function renderRail() {
     const p = activeProject();
     const key = state.ui.activeRail;
@@ -1243,16 +1535,77 @@
     $('#rail-sub').textContent = '记录与本项目相关的' + meta.title + '。';
     const list = $('#note-list');
     list.innerHTML = '';
-    const notes = (p && p.rails[key]) || [];
+    renderRailTools(p, key);
+    $('#project-reviews').replaceChildren();
+    if (p && key === 'ideas') renderReviews(p);
+    const notes = p ? (key === 'feed' ? feedNotes(p) : p.rails[key]) : [];
+    const job = p && (key === 'ideas' ? activeJob(p, 'review') : key === 'feed' ? activeJob(p, 'feed') : null);
+    const unavailable = job?.unavailable?.length ? ' · 暂不可用 ' + job.unavailable.join('、') : '';
+    $('#rail-status').textContent = (p && railMessages.get(p.id + key)) || job?.error ||
+      (job?.updated ? '上次更新 ' + fmtTime(job.updated) + unavailable : '');
     if (!notes.length) {
       list.innerHTML = '<div class="note"><div class="n-body" style="color:var(--muted)">暂无条目，在下方添加一条。</div></div>';
       return;
     }
-    notes.slice().reverse().forEach(n => {
+    const ordered = notes.slice().reverse();
+    if (key === 'goals') ordered.sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999'));
+    ordered.forEach(n => {
       const el = document.createElement('div');
       el.className = 'note';
-      el.innerHTML = '<div class="n-meta"><span>' + escapeHtml(n.source || 'manual') + '</span><span>' +
-        fmtTime(n.ts) + '</span></div><div class="n-body">' + escapeHtml(n.text) + '</div>';
+      el.dataset.noteId = n.id;
+      el.tabIndex = -1;
+      el.innerHTML = '<div class="n-meta"><span>' + escapeHtml(n.source || 'manual') + '</span>' +
+        '<div class="note-meta-actions"><span>' + fmtTime(n.ts) + '</span></div></div>' +
+        '<div class="n-body">' + escapeHtml(n.text) + '</div>';
+      const remove = actionButton('删除', () => {
+        const next = el.nextElementSibling || el.previousElementSibling;
+        if (!deleteNote(p, key, n)) return;
+        const replacement = [...list.children].find(item => next && item.dataset.noteId === next.dataset.noteId);
+        (replacement?.querySelector('.note-delete') || $('#note-input')).focus();
+      });
+      remove.classList.add('note-delete');
+      remove.setAttribute('aria-label', '删除条目 ' + n.text.slice(0, 60));
+      el.querySelector('.note-meta-actions').appendChild(remove);
+      if (n.url) {
+        const link = document.createElement('a');
+        link.href = n.url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        if (n.url.startsWith('/api/workspace/pdf/') || /^https?:\/\//i.test(n.url)) {
+          link.textContent = n.kind === 'pdf' ? '下载 PDF' : '打开来源';
+          el.appendChild(link);
+        }
+      }
+      if (n.published || n.due) {
+        const detail = document.createElement('div');
+        detail.className = 'hint';
+        detail.textContent = n.published || '截止 ' + n.due;
+        el.appendChild(detail);
+      }
+      if (key === 'goals') {
+        const done = document.createElement('input');
+        done.type = 'checkbox';
+        done.checked = Boolean(n.done);
+        done.setAttribute('aria-label', '标记目标完成');
+        done.disabled = n.done
+          ? p.rails.goals.some(item => item.done && (item.dependsOn || []).includes(n.id))
+          : dependencies(p, n).some(item => !item.done);
+        done.onchange = () => { n.done = done.checked; saveState(); renderRail(); };
+        const progress = document.createElement('div');
+        progress.className = 'hint';
+        const before = dependencies(p, n).map(goal => goal.text);
+        progress.append(done, ' ' + goalStatus(p, n) + (before.length ? ' · 前置 ' + before.join('、') : ''));
+        el.append(progress, goalEditor(p, n));
+      }
+      if (key === 'feed' && n.url && /^https?:/i.test(n.url)) {
+        const add = actionButton('收藏到资源库', () => {
+          addNote('library', n.text, n.source, p, { url: n.url, kind: n.kind });
+          renderRail();
+        });
+        add.disabled = p.rails.library.some(note => note.url === n.url);
+        if (add.disabled) add.textContent = '已收藏';
+        el.appendChild(add);
+      }
       list.appendChild(el);
     });
   }
@@ -1269,10 +1622,14 @@
     if (view === 'rail') renderRail();
   }
 
-  function pushMessage(role, text, card) {
+  function pushMessage(role, text, card, project, thread) {
     const msg = { id: uid('m'), role: role, text: text, ts: nowIso() };
     if (card) msg.card = card;
-    if (state.ui.view === 'main') {
+    if (thread) {
+      thread.messages.push(msg);
+      thread.updatedAt = nowIso();
+      if (project) project.updatedAt = thread.updatedAt;
+    } else if (state.ui.view === 'main') {
       state.mainThread.messages.push(msg);
     } else {
       const p = activeProject();
@@ -1285,14 +1642,13 @@
     saveState();
   }
 
-  function addNote(rail, text, source) {
-    const p = activeProject();
+  function addNote(rail, text, source, p = activeProject(), details = {}, persist = true) {
     if (!p) return false;
     if (!RAIL_META[rail]) return false;
     if (!p.rails[rail]) p.rails[rail] = [];
-    p.rails[rail].push({ id: uid('n'), text: text.trim(), source: source || 'manual', ts: nowIso() });
+    p.rails[rail].push({ id: uid('n'), text: text.trim(), source: source || 'manual', ts: nowIso(), ...details });
     p.updatedAt = nowIso();
-    saveState();
+    if (persist) saveState();
     return true;
   }
 
@@ -1334,7 +1690,11 @@
 
   async function runP0Chain(interest) {
     const q = (interest || '').trim() || 'human-guided research companion dual-shelf literature';
-    pushMessage('assistant', '正在梳理研究链路…');
+    const project = state.ui.view === 'main' ? null : activeProject();
+    const thread = project ? activeThread(project) : state.mainThread;
+    if (!thread || pendingChats.has(thread.id)) return null;
+    pendingChats.add(thread.id);
+    pushMessage('assistant', '正在梳理研究链路…', null, project, thread);
     render();
     try {
       const r = await fetch('/api/skills/run/p0-chain', {
@@ -1343,25 +1703,27 @@
         body: JSON.stringify({ interest: q, question: q }),
       });
       const j = await r.json();
+      if (!r.ok) throw new Error(j.error || '请求失败');
+      if (project && !state.projects.includes(project)) return null;
       const summary = summarizeP0(j);
-      pushMessage('assistant', summary.text, summary.card);
-      if (activeProject()) {
-        addNote('feed', '链路完成：' + summary.short, 'chain');
-        addNote('library', '结果已记入本项目资源', 'chain');
-      }
-      saveState();
-      render();
+      pushMessage('assistant', summary.text, summary.card, project, thread);
+      if (project) addNote('feed', '示例链路完成：' + summary.short, 'P0', project);
       return j;
     } catch (e) {
-      pushMessage('assistant', '链路调用失败：' + (e && e.message ? e.message : String(e)));
-      render();
+      if (!project || state.projects.includes(project)) {
+        pushMessage('assistant', '链路调用失败：' + e.message, null, project, thread);
+      }
       return null;
+    } finally {
+      pendingChats.delete(thread.id);
+      render();
     }
   }
 
   async function handleUserText(raw) {
     const text = (raw || '').trim();
-    if (!text) return;
+    const thread = state.ui.view === 'main' ? state.mainThread : activeThread();
+    if (!text || !thread || pendingChats.has(thread.id)) return;
     pushMessage('user', text);
     render();
 
@@ -1391,14 +1753,38 @@
       render();
       return;
     }
-    const agent = getAgentCfg();
-    const persona = (agent.persona || '').trim();
-    const instr = (agent.instructions || '').trim();
-    let reply = '收到。我可以帮你一起梳理方向、拆问题，或整理到个人空间的项目里。';
-    if (persona) reply = '收到（' + persona + '）。我们先把问题说清楚，再决定下一步。';
-    if (instr) reply += '\n（已按你的助理要求作答。）';
-    pushMessage('assistant', reply);
-    render();
+    const project = state.ui.view === 'main' ? null : activeProject();
+    pendingChats.add(thread.id);
+    renderChatControls();
+    const projects = (project ? [project] : state.projects).map(p => ({
+      id: p.id,
+      name: p.name,
+      topic: p.topic,
+      recentFeed: feedNotes(p).filter(note => note.automatic).slice(-5).reverse(),
+      notes: Object.fromEntries(Object.entries(p.rails).map(([rail, notes]) =>
+        [rail, notes.slice(-5).map(n => ({
+          id: n.id, text: n.text.slice(0, 500), due: n.due, done: n.done, url: n.url, dependsOn: n.dependsOn,
+        }))])),
+    }));
+    try {
+      const result = await workspaceApi('chat', {
+        messages: thread.messages.slice(-16).filter(m => !m.error).map(m => ({
+          role: m.role, text: m.text.slice(0, 4000),
+        })),
+        context: { scope: project ? 'project' : 'global', today: new Date().toLocaleDateString('sv-SE'),
+          agent: getAgentCfg(), projects },
+        allowedProjects: projects.map(p => p.id),
+      });
+      if (project && !state.projects.includes(project)) return;
+      pushMessage('assistant', result.reply, { workspaceActions: result.actions }, project, thread);
+    } catch (error) {
+      if (project && !state.projects.includes(project)) return;
+      thread.messages.push({ id: uid('m'), role: 'assistant', text: error.message, error: true, ts: nowIso() });
+      saveState();
+    } finally {
+      pendingChats.delete(thread.id);
+      render();
+    }
   }
 
   function openModal(mode, preset) {
@@ -1535,20 +1921,32 @@
     };
   }
   composer.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
       $('#btn-send').click();
     }
   });
   $('#btn-add-note').onclick = function () {
-    const v = $('#note-input').value.trim();
-    if (!v) return;
-    if (addNote(state.ui.activeRail, v, 'rail-push')) {
-      $('#note-input').value = '';
-      render();
-    } else {
-      alert('请先选择项目');
+    const project = activeProject();
+    const rail = state.ui.activeRail;
+    const input = $('#note-input');
+    const due = $('#goal-due');
+    const link = $('#library-url');
+    const url = link?.value.trim();
+    if (url && !/^https?:\/\//i.test(url)) {
+      showRailStatus(project, rail, '请输入 HTTP 或 HTTPS 链接。');
+      return;
     }
+    const body = input.value.trim() || url;
+    if (!body || !project) return;
+    const predecessors = $('#goal-dependencies');
+    const dependsOn = Array.from(predecessors?.selectedOptions || [], option => option.value);
+    addNote(rail, body, '手动', project, { due: due?.value || undefined, url: url || undefined, dependsOn });
+    if (predecessors) predecessors.replaceWith(goalDependencyField(project));
+    input.value = '';
+    if (due) due.value = '';
+    if (link) link.value = '';
+    renderRail();
   };
 
 
@@ -1622,9 +2020,49 @@
     if (e.target === $('#modal-agent')) closeAgentCfg();
   });
 
+  $('#assistant-avatar').onchange = async event => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const status = $('#avatar-status');
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 512 * 1024) {
+      status.textContent = '请选择不超过 512 KB 的 PNG、JPEG 或 WebP 图片。';
+      event.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => { status.textContent = '无法读取头像文件。'; };
+    reader.onload = async () => {
+      const preview = new Image();
+      preview.src = reader.result;
+      try {
+        await preview.decode();
+        appSettings.avatar = reader.result;
+        saveSettings();
+        render();
+        status.textContent = '头像已更新';
+      } catch (_) {
+        status.textContent = '无法打开这张图片。';
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+  $('#reset-avatar').onclick = () => {
+    appSettings.avatar = '';
+    $('#assistant-avatar').value = '';
+    $('#avatar-status').textContent = '已恢复默认头像';
+    saveSettings();
+    render();
+  };
+  $('#stage').inert = true;
+  document.querySelector('aside').inert = true;
+  $('.topbar').querySelectorAll('button').forEach(button => { button.disabled = true; });
   checkHealth();
+  startWorkspace();
   setInterval(checkHealth, 15000);
-  render();
+  setInterval(() => { if (initialized) readProjectJobs(); }, 15000);
+  window.addEventListener('beforeunload', event => {
+    if (dirty || saving) event.preventDefault();
+  });
 })();
 </script>
 </body>
