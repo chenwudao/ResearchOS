@@ -24,7 +24,7 @@
     const columns = [];
     while (remaining.size) {
       const ready = [...remaining.values()].filter(goal =>
-        !(goal.dependsOn || []).some(id => remaining.has(id)));
+        ![...(goal.dependsOn || []), ...(goal.parentId ? [goal.parentId] : [])].some(id => remaining.has(id)));
       // Imported records can contain cycles. Keep them visible in the final column.
       const column = ready.length ? ready : [...remaining.values()];
       column.sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999'));
@@ -42,7 +42,7 @@
     goals.forEach(goal => {
       const targetCard = cards.get(goal.id);
       const target = targetCard.getBoundingClientRect();
-      (goal.dependsOn || []).forEach(id => {
+      [...new Set([...(goal.dependsOn || []), ...(goal.parentId ? [goal.parentId] : [])])].forEach(id => {
         const sourceCard = cards.get(id);
         if (!sourceCard || id === goal.id) return;
         const source = sourceCard.getBoundingClientRect();
@@ -55,6 +55,7 @@
         group.classList.add('map-dependency');
         if (selected) group.classList.add([id, goal.id].includes(selected) ? 'is-related' : 'is-muted');
         const path = document.createElementNS(SVG, 'path');
+        if (id === goal.parentId) path.setAttribute('stroke-dasharray', '5 4');
         const skip = Number(targetCard.dataset.column) - Number(sourceCard.dataset.column) > 1;
         const route = skip
           ? ' H ' + (x1 + 14) + ' V 11 H ' + (x2 - 14) + ' V ' + y2
@@ -137,7 +138,7 @@
           const after = goals.filter(goal => (goal.dependsOn || []).includes(note.id));
           details.appendChild(element('div', 'map-meta', options.status(note) +
             (note.due ? ' · 截止 ' + note.due : '')));
-          [['前置目标', before], ['后续目标', after]].forEach(([label, related]) => {
+          [['父目标', goals.filter(goal => goal.id === note.parentId)], ['子任务', goals.filter(goal => goal.parentId === note.id)], ['前置目标', before], ['后续目标', after]].forEach(([label, related]) => {
             if (!related.length) return;
             const row = element('div', 'map-related');
             row.appendChild(element('span', 'map-meta', label));

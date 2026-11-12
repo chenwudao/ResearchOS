@@ -25,6 +25,7 @@ except ImportError:  # pragma: no cover - allow running outside demo/api cwd
     )
 
 import automation
+import tasks
 from workspace_http import serve as serve_workspace
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -809,9 +810,11 @@ class Handler(SimpleHTTPRequestHandler):
 if __name__ == "__main__":
     httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"ResearchOS on http://127.0.0.1:{PORT}")
+    tasks.recover()
     stop_automation = automation.start()
     try:
         httpd.serve_forever()
     finally:
         stop_automation.set()
+        tasks.shutdown()
         httpd.server_close()

@@ -1,0 +1,12 @@
+{
+  "name": "researchos",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Browser integration tests; the application itself has no Node.js runtime dependency.",
+  "engines": {
+    "node": "24.x"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}

@@ -1,0 +1,18 @@
+const assert=require('node:assert/strict');
+const merge=require('../demo/static/state-merge.js');
+const base={state:{ui:{view:'main'},projects:[{id:'a',updatedAt:'2026-01-01',rails:{ideas:[{id:'first',text:'base'}]}}]},settings:{}};
+const local=structuredClone(base),remote=structuredClone(base);
+local.state.projects[0].rails.ideas.push({id:'local',text:'UI'});
+remote.state.projects[0].rails.ideas.push({id:'remote',text:'DSH'});
+local.state.projects[0].updatedAt='2026-01-03';
+remote.state.projects[0].updatedAt='2026-01-02';
+const result=merge(base,local,remote);
+assert.deepEqual(result.state.projects[0].rails.ideas.map(x=>x.id),['first','remote','local']);
+assert.equal(result.state.projects[0].updatedAt,'2026-01-03');
+local.state.projects[0].rails.ideas[0].text='one';
+remote.state.projects[0].rails.ideas[0].text='two';
+assert.throws(()=>merge(base,local,remote),/并发修改/);
+const deleted=structuredClone(base);
+deleted.state.projects[0].rails.ideas=[];
+assert.equal(merge(base,deleted,base).state.projects[0].rails.ideas.length,0);
+console.log('Concurrent additions, deletions and conflicting edits passed');

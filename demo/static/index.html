@@ -177,7 +177,7 @@
     .rail-foot.bad .dot { background: var(--danger); }
     .main {
       display: grid;
-      grid-template-rows: auto 1fr;
+      grid-template-rows: auto auto minmax(0, 1fr);
       min-width: 0; min-height: 0;
       background: var(--bg);
     }
@@ -579,15 +579,20 @@
         <h1 id="top-title">主聊天 <span class="crumb" id="top-crumb"></span></h1>
         <div class="spacer"></div>
         <span class="hint" id="workspace-status" role="status"></span>
+        <button type="button" class="btn sm" id="btn-backups">备份与恢复</button>
         <button type="button" class="cfg-btn" id="btn-agent-cfg" title="助理配置">
           <span class="cfg-ico">✦</span>
           <span class="cfg-copy"><strong>助理配置</strong><span>人设 · 要求</span></span>
         </button>
-        <button type="button" class="cfg-btn" id="btn-dsh" title="打开 DeepSeek Harness（本机 :3080）">
+        <button type="button" class="cfg-btn" id="btn-dsh" title="查看任务与执行记录">
           <span class="cfg-ico">◎</span>
           <span class="cfg-copy"><strong>DSH</strong><span id="dsh-status-label">检测中…</span></span>
         </button>
       </header>
+      <details id="task-section" style="padding:12px 24px;max-height:35vh;min-height:44px;box-sizing:border-box;overflow:auto;border-bottom:1px solid var(--line)">
+        <summary>任务与执行记录</summary>
+        <div id="task-list" class="note-list" style="margin-top:12px"></div>
+      </details>
       <div class="stage" id="stage">
         <div class="panel" id="panel-chat">
           <div class="chat-scroll" id="chat-scroll"></div>
@@ -597,6 +602,7 @@
               <div class="composer-row">
                 <div class="hint" id="composer-hint"></div>
                 <button class="btn" id="btn-dsh-handoff" title="把当前输入交给本机 DeepSeek Harness">在 DSH 继续</button>
+                <button class="btn" id="btn-task">交给 DSH 执行</button>
                 <button class="btn primary" id="btn-send">发送</button>
               </div>
             </div>
@@ -633,6 +639,8 @@
                 <p style="margin:0 0 8px;font-size:13px;color:var(--ink-2)" id="proj-desc"></p>
                 <div style="display:flex;gap:8px;flex-wrap:wrap">
                   <button class="btn sm" id="btn-rename-project">重命名</button>
+                  <button class="btn sm" id="btn-project-memory">项目记忆</button>
+                  <button class="btn sm" id="btn-project-background">研究背景</button>
                   <button class="btn sm" id="btn-open-chat">打开当前对话</button>
                   <button class="btn sm" id="btn-delete-project" style="color:var(--danger)">删除项目</button>
                 </div>
@@ -719,7 +727,14 @@
     </div>
   </div>
 
+<dialog id="resource-dialog" style="width:min(850px,90vw);border:1px solid #ddd;border-radius:12px;padding:20px">
+    <button class="btn sm" id="resource-close">关闭</button>
+    <div id="resource-content"></div>
+  </dialog>
 <script src="/project-map.js"></script>
+<script src="/state-merge.js"></script>
+<script src="/tasks.js"></script>
+<script src="/research-panels.js"></script>
 <script>
 (function () {
   const STORAGE_KEY = 'researchos-v2';
@@ -748,7 +763,7 @@
   }
   function getAgentCfg() { return appSettings.agent || DEFAULT_SETTINGS.agent; }
 
-  /** Stable hooks for future LLM / chat-driven config mutation (stub now). */
+  /** Apply explicit user requests to local assistant and appearance settings. */
   function patchSettings(partial) {
     if (!partial || typeof partial !== 'object') return appSettings;
     if (partial.appearance) {
@@ -762,8 +777,8 @@
     return appSettings;
   }
   function proposeConfigFromChat(text) {
-    // Lightweight demo stub: parse plain intents; real LLM plugs here later.
     const t = String(text || '');
+    if (!/^(?:\/settings\b|(?:请)?(?:设置|修改|调整|更改).{0,12}(?:外观|主题|色调|字体|人设|助理|要求|指令))/i.test(t)) return null;
     const patch = {};
     if (/冷(色|灰)|cool/i.test(t)) patch.appearance = Object.assign({}, patch.appearance || {}, { tone: 'cool' });
     if (/暖|warm/i.test(t)) patch.appearance = Object.assign({}, patch.appearance || {}, { tone: 'warm' });
@@ -792,12 +807,10 @@
   async function refreshDshStatus() {
     const label = document.getElementById('dsh-status-label');
     try {
-      const r = await fetch('/api/dsh/status');
+      const r = await fetch('/api/workspace/status');
       const j = await r.json();
       if (!label) return j;
-      if (!j.listening) label.textContent = '未启动';
-      else if (!j.has_launch_token) label.textContent = '缺 token';
-      else label.textContent = '本机 :3080';
+      label.textContent = j.configured ? '执行已就绪' : '未配置模型';
       return j;
     } catch (e) {
       if (label) label.textContent = '不可达';
@@ -824,7 +837,7 @@
   }
 
   const btnDsh = document.getElementById('btn-dsh');
-  if (btnDsh) btnDsh.addEventListener('click', function (e) { e.preventDefault(); openDshBridge(); });
+  if (btnDsh) btnDsh.addEventListener('click', function (e) { e.preventDefault(); const panel = document.getElementById('task-section'); panel.open = !panel.open; });
   const btnHandoff = document.getElementById('btn-dsh-handoff');
   if (btnHandoff) btnHandoff.addEventListener('click', function (e) { e.preventDefault(); openDshBridge(); });
   refreshDshStatus();
@@ -888,6 +901,7 @@
   let appSettings = loadSettings();
   let modalMode = null;
   let revision = 0;
+  let savedBaseline = null;
   let dirty = false;
   let saving = false;
   let initialized = false;
@@ -928,8 +942,26 @@
     try {
       while (dirty) {
         dirty = false;
-        const result = await workspaceApi('state', { revision, state, settings: appSettings });
-        revision = result.revision;
+        const outgoing = structuredClone({state, settings:appSettings});
+        try {
+          const result = await workspaceApi('state', { revision, ...outgoing });
+          revision = result.revision;
+          savedBaseline = outgoing;
+        } catch (error) {
+          if (error.status !== 409 || !savedBaseline) throw error;
+          const remote = await workspaceApi('state');
+          try {
+            const merged = window.mergeWorkspace(savedBaseline, {state, settings:appSettings},
+              {state:remote.state, settings:remote.settings});
+            adoptWorkspaceState(merged.state); appSettings = merged.settings;
+            savedBaseline = structuredClone({state:remote.state, settings:remote.settings});
+            revision = remote.revision; dirty = true;
+            render();
+          } catch (mergeError) {
+            localStorage.setItem('researchos-conflict-draft', JSON.stringify({state, settings:appSettings}));
+            mergeError.status = 409; throw mergeError;
+          }
+        }
       }
       $('#workspace-status').textContent = '已保存到本机';
     } catch (error) {
@@ -951,6 +983,7 @@
         state = stored.state;
         appSettings = stored.settings;
       }
+      savedBaseline = structuredClone({state, settings:appSettings});
       initialized = true;
       if (!stored.state) saveState();
       applyAppearance();
@@ -981,6 +1014,32 @@
     if (state.ui.view === 'main') return state.mainThread.messages;
     const t = activeThread();
     return t ? t.messages : [];
+  }
+
+  function adoptWorkspaceState(next) {
+    const existing = new Map(state.projects.map(project => [project.id, project]));
+    next.projects = next.projects.map(project => {
+      const current = existing.get(project.id);
+      if (!current) return project;
+      Object.keys(current).forEach(key => { if (!(key in project)) delete current[key]; });
+      Object.assign(current, project);
+      return current;
+    });
+    state = next;
+  }
+
+  async function syncServerWorkspace() {
+    if (!initialized || saving || dirty || conflict) return;
+    try {
+      const remote = await workspaceApi('state');
+      if (!saving && !dirty && remote.revision !== revision) {
+        adoptWorkspaceState(remote.state);
+        appSettings = remote.settings;
+        revision = remote.revision;
+        savedBaseline = structuredClone({state, settings:appSettings});
+        render();
+      }
+    } catch (_) {}
   }
 
   async function checkHealth() {
@@ -1060,7 +1119,7 @@
 
   function renderChatControls() {
     const thread = state.ui.view === 'main' ? state.mainThread : activeThread();
-    const pending = !!thread && pendingChats.has(thread.id);
+    const pending = !!thread && (pendingChats.has(thread.id) || window.researchTasks.isBusy(state.ui.view === 'main' ? 'global' : activeProject()?.id, thread.id));
     $('#btn-send').disabled = pending;
     $('#composer-hint').textContent = pending ? '正在等待回复…' : modelStatus;
   }
@@ -1111,12 +1170,19 @@
     chatScroll.scrollTop = chatScroll.scrollHeight;
   }
 
+  function projectResources(project) {
+    const hidden = new Set(project.dismissedResults || []);
+    const manual = project.rails.library;
+    return [...manual, ...window.researchTasks.results(project.id).filter(note =>
+      !hidden.has(note.taskId) && !manual.some(item => item.taskId === note.taskId))];
+  }
+
   function renderMindMap(project) {
     window.renderProjectMap($('#mind-map'), project, {
       ideas: project.rails.ideas.slice().reverse(),
       feed: feedNotes(project).slice().reverse(),
       goals: project.rails.goals.slice().sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999')),
-      library: project.rails.library.slice().reverse(),
+      library: projectResources(project).slice().reverse(),
     }, {
       status: goal => goalStatus(project, goal),
       open(rail, noteId) {
@@ -1140,7 +1206,7 @@
     }
     $('#space-empty').classList.add('hidden');
     $('#space-active').classList.remove('hidden');
-    $('#proj-desc').textContent = '创建于 ' + fmtTime(p.createdAt) + ' · 更新 ' + fmtTime(p.updatedAt);
+    $('#proj-desc').textContent = (p.description ? p.description + ' · ' : '') + '创建于 ' + fmtTime(p.createdAt) + ' · 更新 ' + fmtTime(p.updatedAt);
     renderSchedule(p);
     renderMindMap(p);
     const tl = $('#thread-list');
@@ -1164,7 +1230,11 @@
     button.type = 'button';
     button.className = 'btn sm';
     button.textContent = label;
-    button.onclick = run;
+    button.onclick = async () => {
+      button.disabled = true;
+      try { await run(); } catch (error) { alert(error.message); }
+      finally { button.disabled = false; }
+    };
     return button;
   }
 
@@ -1393,6 +1463,43 @@
     root.appendChild(entries);
   }
 
+  async function businessCall(route, payload) {
+    await waitForSave();
+    const result = await workspaceApi(route, payload);
+    await syncServerWorkspace();
+    return result;
+  }
+
+  async function readResource(project, note, page = 1) {
+    const dialog = $('#resource-dialog');
+    const content = $('#resource-content');
+    content.replaceChildren();
+    if (!dialog.open) dialog.showModal();
+    content.textContent = '正在读取…';
+    try {
+      const result = await workspaceApi('resource/read', {projectId:project.id, id:note.id, page});
+      content.replaceChildren();
+      const title = document.createElement('h3');
+      title.textContent = note.text;
+      const body = document.createElement('pre');
+      body.style.cssText = 'white-space:pre-wrap;overflow-wrap:anywhere;max-height:60vh;overflow:auto';
+      body.textContent = result.text || result.files?.join('\n') || '该页没有可提取文本，可能需要 OCR。';
+      content.append(title, body);
+      if (result.pages) {
+        const label = document.createElement('span');
+        label.textContent = '第 ' + page + ' / ' + result.pages + ' 页 ';
+        const previous = actionButton('上一页', () => readResource(project, note, page - 1));
+        const next = actionButton('下一页', () => readResource(project, note, page + 1));
+        previous.disabled = page <= 1;
+        next.disabled = page >= result.pages;
+        content.append(label, previous, next, actionButton('让助手深度阅读', async () => {
+          await window.researchTasks.create(project.id, '请使用 paper_read 逐页阅读论文资源 '+note.id+'，分析章节结构、研究问题、方法、实验及局限。引用页码，对无法提取的图表或扫描页明确说明。将报告写入 outputs/paper-'+note.id+'.md。');
+          dialog.close();
+        }));
+      }
+    } catch (error) { content.textContent = error.message; }
+  }
+
   function renderRailTools(project, rail) {
     const tools = $('#rail-tools');
     const scope = (project?.id || '') + rail;
@@ -1456,6 +1563,78 @@
       tools.append(label, dependencyLabel);
     }
     if (rail === 'library') {
+      const anyFile = railInput('file', '上传本地资源');
+      anyFile.onchange = async () => {
+        const file = anyFile.files[0];
+        if (!file) return;
+        if (file.size > 25 * 1024 * 1024) {
+          showRailStatus(project, rail, '文件超过 25 MiB。');
+          return;
+        }
+        anyFile.disabled = true;
+        try {
+          const data = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result.split(',')[1]);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+          await businessCall('resource/upload', {projectId:project.id, name:file.name, data});
+          showRailStatus(project, rail, '本地资源已导入。');
+        } catch (error) { showRailStatus(project, rail, error.message); }
+        finally { anyFile.disabled = false; anyFile.value = ''; }
+      };
+      tools.append(anyFile, actionButton('论文对比', async () => {
+        const resources = projectResources(project).filter(note => note.kind === 'pdf' || /\.pdf$/i.test(note.text));
+        if (resources.length < 2) { showRailStatus(project, rail, '请先导入至少两篇 PDF。'); return; }
+        try {
+          await window.researchTasks.create(project.id,
+            '使用 paper_read 逐页阅读下列项目论文，比较研究问题、方法、数据集、实验指标和局限。'
+            + '引用资源 ID 与页码，无法读取的部分明确指出。将对比报告写入 outputs/comparison.md。\n'
+            + resources.map(note => note.id + ' ' + note.text).join('\n'));
+        } catch (error) { showRailStatus(project, rail, error.message); }
+      }), actionButton('论文引用关系', async () => {
+        const doi = prompt('输入论文 DOI');
+        if (!doi) return;
+        const dialog = $('#resource-dialog');
+        const content = $('#resource-content');
+        content.textContent = '正在读取引用关系…';
+        if (!dialog.open) dialog.showModal();
+        try {
+          const result = await workspaceApi('project/tool', {projectId:project.id, tool:'paper_citations', args:{doi}});
+          content.replaceChildren();
+          const title = document.createElement('h3');
+          title.textContent = result.doi + ' → 参考文献';
+          window.researchPanels.graph(content, result);
+          content.appendChild(title);
+          if (!result.references.length) content.append('Crossref 未提供该论文的参考文献。');
+          result.references.forEach(reference => {
+            const row = document.createElement('p');
+            row.textContent = '→ ' + (reference['article-title'] || reference.unstructured || reference.DOI || reference.key);
+            if (reference.DOI) {
+              const link = document.createElement('a');
+              link.textContent = ' 打开论文';
+              link.href = 'https://doi.org/' + encodeURIComponent(reference.DOI);
+              link.target = '_blank'; link.rel = 'noopener noreferrer';
+              row.appendChild(link);
+            }
+            content.appendChild(row);
+          });
+        } catch (error) { content.textContent = error.message; }
+      }));
+      const clone = actionButton('导入 Git 仓库', async () => {
+        const url = prompt('输入要克隆的 HTTPS 仓库地址');
+        if (!url) return;
+        clone.disabled = true;
+        showRailStatus(project, rail, '正在克隆仓库…');
+        try {
+          await businessCall('resource/clone', {projectId:project.id, url});
+          showRailStatus(project, rail, '仓库已导入项目目录。');
+        } catch (error) { showRailStatus(project, rail, error.message); }
+        finally { clone.disabled = false; }
+      });
+      tools.append(clone, actionButton('实验跟踪', () => window.researchPanels.open(project, 'experiment')),
+        actionButton('任务质量评估', () => window.researchPanels.open(project, 'benchmark')));
       const link = railInput('url', '仓库或资料链接');
       link.id = 'library-url';
       const pdf = railInput('file', '上传论文 PDF');
@@ -1513,8 +1692,12 @@
     if (rail === 'feed' && note.automatic) {
       project.dismissedFeed = [...new Set([...(project.dismissedFeed || []), feedIdentity(note)])];
     }
+    if (rail === 'library' && note.taskId) {
+      project.dismissedResults = [...new Set([...(project.dismissedResults || []), note.taskId])];
+    }
     project.rails[rail] = project.rails[rail].filter(item => item.id !== note.id);
     dependents.forEach(goal => { goal.dependsOn = goal.dependsOn.filter(id => id !== note.id); });
+    if (rail === 'goals') project.rails.goals.forEach(goal => { if (goal.parentId === note.id) delete goal.parentId; });
     project.updatedAt = nowIso();
     if (rail === 'goals') {
       const field = $('#goal-dependencies');
@@ -1538,7 +1721,7 @@
     renderRailTools(p, key);
     $('#project-reviews').replaceChildren();
     if (p && key === 'ideas') renderReviews(p);
-    const notes = p ? (key === 'feed' ? feedNotes(p) : p.rails[key]) : [];
+    const notes = p ? (key === 'feed' ? feedNotes(p) : key === 'library' ? projectResources(p) : p.rails[key]) : [];
     const job = p && (key === 'ideas' ? activeJob(p, 'review') : key === 'feed' ? activeJob(p, 'feed') : null);
     const unavailable = job?.unavailable?.length ? ' · 暂不可用 ' + job.unavailable.join('、') : '';
     $('#rail-status').textContent = (p && railMessages.get(p.id + key)) || job?.error ||
@@ -1597,6 +1780,63 @@
         progress.append(done, ' ' + goalStatus(p, n) + (before.length ? ' · 前置 ' + before.join('、') : ''));
         el.append(progress, goalEditor(p, n));
       }
+      if (key === 'library' && (n.path || n.kind === 'pdf')) {
+        el.appendChild(actionButton('阅读资源', () => readResource(p, n)));
+        const download = document.createElement('a');
+        download.className = 'btn sm';
+        download.textContent = '下载文件';
+        download.href = '/api/workspace/resource/file/' + encodeURIComponent(p.id) + '/' + encodeURIComponent(n.id);
+        if (n.kind !== 'repository') el.appendChild(download);
+      }
+      if (key === 'ideas') {
+        el.appendChild(actionButton('编辑点子', () => {
+          const value = prompt('修改点子', n.text);
+          if (!value?.trim()) return;
+          n.text = value.trim();
+          n.updatedAt = nowIso();
+          p.updatedAt = n.updatedAt;
+          saveState();
+          renderRail();
+        }));
+        el.appendChild(actionButton('转为目标', () => {
+          if (!p.rails.goals.some(goal => goal.ideaId === n.id)) {
+            addNote('goals', n.text, '点子转化', p, {ideaId:n.id});
+            renderRail();
+          }
+        }));
+      }
+      if (key === 'goals') {
+        el.appendChild(actionButton('添加子任务', async () => {
+          const text = prompt('子任务内容');
+          if (!text?.trim()) return;
+          try { await businessCall('project/tool', {projectId:p.id, tool:'goal_create',
+            args:{text:text.trim(), parentId:n.id}}); }
+          catch (error) { alert(error.message); }
+        }));
+        if (n.parentId) {
+          const parent = p.rails.goals.find(goal => goal.id === n.parentId);
+          const label = document.createElement('div');
+          label.className = 'hint';
+          label.textContent = '父目标 · ' + (parent?.text || '已删除');
+          el.appendChild(label);
+        }
+        const execute = actionButton('交给 DSH 执行', async () => {
+          execute.disabled = true;
+          try { await window.researchTasks.create(p.id, n.text, {goalId:n.id}); }
+          catch (error) { alert(error.message); }
+          finally { execute.disabled = false; }
+        });
+        execute.disabled = dependencies(p, n).some(goal => !goal.done);
+        el.appendChild(execute);
+      }
+      if (key === 'feed') {
+        el.appendChild(actionButton('转为点子', () => {
+          const value = prompt('基于这条动态的研究点子', n.text);
+          if (!value?.trim()) return;
+          addNote('ideas', value.trim(), n.source, p, {url:n.url, activityId:n.id});
+          showRailStatus(p, 'feed', '已保存到点子，并关联原始来源。');
+        }));
+      }
       if (key === 'feed' && n.url && /^https?:/i.test(n.url)) {
         const add = actionButton('收藏到资源库', () => {
           addNote('library', n.text, n.source, p, { url: n.url, kind: n.kind });
@@ -1613,6 +1853,7 @@
   function render() {
     renderNav();
     renderTop();
+    window.researchTasks.render();
     const view = state.ui.view;
     $('#panel-chat').classList.toggle('hidden', !(view === 'main' || view === 'project-chat'));
     $('#panel-space').classList.toggle('hidden', view !== 'space');
@@ -1756,27 +1997,13 @@
     const project = state.ui.view === 'main' ? null : activeProject();
     pendingChats.add(thread.id);
     renderChatControls();
-    const projects = (project ? [project] : state.projects).map(p => ({
-      id: p.id,
-      name: p.name,
-      topic: p.topic,
-      recentFeed: feedNotes(p).filter(note => note.automatic).slice(-5).reverse(),
-      notes: Object.fromEntries(Object.entries(p.rails).map(([rail, notes]) =>
-        [rail, notes.slice(-5).map(n => ({
-          id: n.id, text: n.text.slice(0, 500), due: n.due, done: n.done, url: n.url, dependsOn: n.dependsOn,
-        }))])),
-    }));
     try {
-      const result = await workspaceApi('chat', {
-        messages: thread.messages.slice(-16).filter(m => !m.error).map(m => ({
-          role: m.role, text: m.text.slice(0, 4000),
-        })),
-        context: { scope: project ? 'project' : 'global', today: new Date().toLocaleDateString('sv-SE'),
-          agent: getAgentCfg(), projects },
-        allowedProjects: projects.map(p => p.id),
+      await waitForSave();
+      await workspaceApi('tasks/chat', {
+        projectId:project ? project.id : 'global',
+        threadId:thread.id, prompt:text,
       });
-      if (project && !state.projects.includes(project)) return;
-      pushMessage('assistant', result.reply, { workspaceActions: result.actions }, project, thread);
+      document.getElementById('task-section').open = true;
     } catch (error) {
       if (project && !state.projects.includes(project)) return;
       thread.messages.push({ id: uid('m'), role: 'assistant', text: error.message, error: true, ts: nowIso() });
@@ -1907,6 +2134,43 @@
     if (e.key === 'Enter') { e.preventDefault(); $('#modal-ok').click(); }
     if (e.key === 'Escape') closeModal();
   });
+  $('#btn-task').onclick = async function () {
+    try {
+      let project = activeProject();
+      if (state.ui.view === 'main') {
+        const selected = prompt('输入目标项目名称\n' + state.projects.map(p => p.name).join('\n'));
+        if (selected === null) return;
+        project = state.projects.find(p => p.name === selected);
+      }
+      if (!project) throw new Error('请先创建或选择项目。');
+      const input = composer.value.trim();
+      if (!input) throw new Error('请输入需要执行的任务。');
+      this.disabled = true;
+      await window.researchTasks.create(project.id, input);
+      composer.value = '';
+    } catch (error) { alert(error.message); }
+    finally { this.disabled = false; }
+  };
+  window.researchPanels.init({api:businessCall});
+  window.researchTasks.init({
+    api: workspaceApi,
+    project: () => state.ui.view === 'main' ? null : activeProject(),
+    save: waitForSave,
+    changed: () => {
+      syncServerWorkspace();
+      if (initialized) renderChatControls();
+      if (initialized && state.ui.view === 'rail' && state.ui.activeRail === 'library') renderRail();
+    },
+    error: message => alert(message),
+    saveResult: task => {
+      const project = state.projects.find(p => p.id === task.projectId);
+      if (!project) throw new Error('项目已删除。');
+      if (!project.rails.library.some(note => note.taskId === task.id)) {
+        addNote('library', task.prompt + '\n\n' + task.result, 'DSH 执行结果', project, {taskId:task.id});
+        render();
+      }
+    },
+  });
   $('#btn-send').onclick = function () {
     const v = composer.value;
     composer.value = '';
@@ -2020,6 +2284,93 @@
     if (e.target === $('#modal-agent')) closeAgentCfg();
   });
 
+  $('#btn-project-background').onclick = async () => {
+    const project = activeProject();
+    if (!project) return;
+    const description = prompt('研究背景与总体目标', project.description || '');
+    if (description === null) return;
+    project.description = description.trim();
+    saveState(); renderSpace();
+  };
+  $('#btn-project-memory').onclick = async () => {
+    const project = activeProject();
+    if (!project) return;
+    const dialog = $('#resource-dialog');
+    const content = $('#resource-content');
+    if (!dialog.open) dialog.showModal();
+    content.replaceChildren();
+    const heading = document.createElement('h3');
+    heading.textContent = '项目记忆与研究决策';
+    content.append(heading, actionButton('添加记忆', async () => {
+      const text = prompt('记录研究决策、实验参数或重要发现');
+      if (!text?.trim()) return;
+      try {
+        await businessCall('project/tool', {projectId:project.id, tool:'memory_write', args:{text:text.trim()}});
+        $('#btn-project-memory').click();
+      } catch (error) { alert(error.message); }
+    }));
+    try {
+      const entries = await workspaceApi('project/tool', {projectId:project.id, tool:'memory_search', args:{}});
+      entries.forEach(entry => {
+        const row = document.createElement('div'); row.className = 'note';
+        const body = document.createElement('p'); body.className = 'n-body';
+        body.textContent = entry.content;
+        row.append(body, actionButton('删除记忆', async () => {
+          if (!confirm('删除这条项目记忆？')) return;
+          await workspaceApi('project/tool', {projectId:project.id, tool:'memory_delete', args:{id:entry.id}});
+          $('#btn-project-memory').click();
+        }));
+        content.appendChild(row);
+      });
+    } catch (error) { content.append(error.message); }
+  };
+  $('#resource-close').onclick = () => $('#resource-dialog').close();
+  $('#btn-backups').onclick = async () => {
+    const dialog = $('#resource-dialog');
+    const content = $('#resource-content');
+    if (!dialog.open) dialog.showModal();
+    content.replaceChildren();
+    const title = document.createElement('h3');
+    title.textContent = '本地备份与恢复';
+    const upload = document.createElement('input');
+    upload.type = 'file';
+    upload.accept = '.zip';
+    upload.setAttribute('aria-label', '导入备份');
+    upload.onchange = async () => {
+      const file = upload.files[0];
+      if (!file) return;
+      upload.disabled = true;
+      try {
+        const response = await fetch('/api/workspace/backup/import', {method:'POST', body:file});
+        const value = await response.json();
+        if (!response.ok) throw new Error(value.error);
+        $('#btn-backups').click();
+      } catch (error) { alert(error.message); }
+      finally { upload.disabled = false; }
+    };
+    content.append(title, upload, actionButton('创建备份', async () => {
+      try { await businessCall('backup/create', {}); $('#btn-backups').click(); }
+      catch (error) { alert(error.message); }
+    }));
+    try {
+      const backups = await workspaceApi('backups');
+      backups.forEach(backup => {
+        const row = document.createElement('p');
+        row.textContent = backup.id + ' ';
+        const download = document.createElement('a');
+        download.textContent = '下载备份';
+        download.href = '/api/workspace/backup/file/' + backup.id;
+        row.append(download, actionButton('恢复此备份', async () => {
+          if (!confirm('恢复将替换当前项目数据，操作前会自动保存当前版本备份。继续？')) return;
+          try {
+            await businessCall('backup/restore', {id:backup.id});
+            location.reload();
+          } catch (error) { alert(error.message); }
+        }));
+        content.appendChild(row);
+      });
+    } catch (error) { content.append(error.message); }
+  };
   $('#assistant-avatar').onchange = async event => {
     const file = event.target.files[0];
     if (!file) return;
@@ -2059,6 +2410,7 @@
   checkHealth();
   startWorkspace();
   setInterval(checkHealth, 15000);
+  setInterval(syncServerWorkspace, 3000);
   setInterval(() => { if (initialized) readProjectJobs(); }, 15000);
   window.addEventListener('beforeunload', event => {
     if (dirty || saving) event.preventDefault();

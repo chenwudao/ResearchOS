@@ -5,14 +5,14 @@ from datetime import date, datetime, timezone
 from hashlib import sha256
 import json
 import logging
-from threading import Event, Lock, Thread
+from threading import RLock, Event, Lock, Thread
 from time import time
 
 import workspace
 
 
 INTERVALS = {"feed": 30 * 60, "review": 24 * 60 * 60}
-RUN_LOCK = Lock()
+RUN_LOCK = RLock()
 LOGGER = logging.getLogger(__name__)
 
 
@@ -59,30 +59,28 @@ def project_context(project, feed):
     notes = {}
     for rail, items in project["rails"].items():
         notes[rail] = [
-            {key: item[key] for key in ("id", "text", "due", "done", "dependsOn", "url")
+            {key: item[key] for key in ("id", "text", "due", "done", "dependsOn", "parentId", "ideaId", "paperId", "path", "kind", "url")
              if key in item} for item in items[-8:]
         ]
     hidden = set(project.get("dismissedFeed", []))
     recent = [item for item in feed.get("items", []) if (item.get("url") or item["text"]) not in hidden]
-    return {"id": project["id"], "name": project["name"], "topic": project.get("topic"),
+    return {"id": project["id"], "name": project["name"], "description": project.get("description", ""), "topic": project.get("topic"),
             "notes": notes, "recentFeed": recent[:8]}
 
 
 def review(project, stored, settings):
-    feed = stored.get((project["id"], "feed"), {})
-    if feed.get("input") != job_input(project, "feed"):
-        feed = {}
-    return workspace.chat({
-        "messages": [{"role": "user", "text": (
-            "请复盘本项目：指出延期目标和前置依赖，结合已有点子、动态和资源提出"
-            "一到三个具体的下一步，并用 actions 给出值得新增的点子或目标。"
-            "说明点子承接的旧点子，目标引用已有目标 ID 表明前置依赖。"
-            "不要重复已有条目，不要声称已执行任务。")}],
-        "context": {"scope": "project-review", "today": date.today().isoformat(),
-                    "agent": settings.get("agent", {}),
-                    "projects": [project_context(project, feed)]},
-        "allowedProjects": [project["id"]],
-    })
+    import tasks
+    active = next((task for task in tasks.all_tasks() if task["projectId"] == project["id"]
+                   and task.get("scheduledReview") and task["status"] not in tasks.TERMINAL), None)
+    if active:
+        return {"reply": "项目复盘正在进行，请查看任务记录。", "actions": [], "taskId": active["id"]}
+    task = tasks.create({"projectId": project["id"], "prompt":
+        "复盘项目：检查目标依赖、延期、近期动态和项目记忆，提出一到三个后续建议。"
+        "使用 researchos 工具保存有依据的新点子和重要研究决策，避免重复。"})
+    task["scheduledReview"] = True
+    tasks.store(task)
+    tasks.approve({"id": task["id"]})
+    return {"reply": "已发起 DSH 项目复盘，请查看任务记录。", "actions": [], "taskId": task["id"]}
 
 
 def run_job(project, kind, stored, settings, force=False):

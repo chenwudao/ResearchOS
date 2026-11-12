@@ -35,3 +35,6 @@ npm-debug.log*
 # optional large archives if any
 *.tgz
 skills.tar
+
+# portable local workspace backups
+demo/backups/
