@@ -6,6 +6,14 @@ import workspace
 import project_service
 
 TOOLS = {
+    "research_state_get": ("Read confirmed structured research state and pending proposals before planning.", {}),
+    "research_state_propose": ("Propose research state changes for human confirmation; never overwrite confirmed state.", {key: {"type": "string"} for key in ("question", "stage", "hypotheses", "blockers", "nextAction", "decisions", "reason")}),
+    "evidence_search": ("Search project hypotheses, experiments, conclusions and linked evidence, including source integrity.", {"query": {"type": "string"}}),
+    "evidence_add": ("Propose a knowledge object with insufficient evidence status. sources must include location and optionally project-relative path.", {"kind": {"type": "string"}, "text": {"type": "string"}, "sources": {"type": "array", "items": {"type": "object"}}}),
+    "evidence_link": ("Link two existing project knowledge objects; relation is supports, contradicts, tests, uses, derived_from or motivates.", {key: {"type": "string"} for key in ("source", "target", "relation", "note")}),
+    "workflow_list": ("List approved experimental workflows and checkpoints. Drafts do not execute until the user approves in the UI.", {}),
+    "workflow_get": ("Inspect a workflow, protocol, experiment runs, diagnostics and recommendations.", {"id": {"type": "string"}}),
+    "workflow_draft": ("Save an editable experiment plan only. plan requires question, hypothesis, python, inputs, methods [{name,script,args}], matrix {seeds,budgets}, protocol {metric,direction,baseline,split,minSeeds,minImprovement,maxStd}, budget {maxRuns,concurrency,timeoutSeconds,retries,wallSeconds}. args must contain {seed}, {budget}, {metrics}. Scripts output JSON or one-row CSV with primary metric and split_id. Do not run the experiment yourself; wait for human budget approval.", {"plan": {"type": "object"}, "id": {"type": "string"}, "revision": {"type": "integer"}, "parentId": {"type": "string"}}),
     "task_get": ("Read a project task result and execution events.", {"id": {"type": "string"}}),
     "experiment_list": ("List experiment parameters, metrics and logs.", {}),
     "experiment_record": ("Create or update an experiment run.", {"id": {"type": "string"}, "name": {"type": "string"}, "parameters": {"type": "object"}, "metrics": {"type": "object"}, "status": {"type": "string"}, "logs": {"type": "string"}, "taskId": {"type": "string"}}),

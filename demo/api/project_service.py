@@ -73,6 +73,14 @@ def context(project_id):
     feed = automation.public_jobs().get(project_id, {}).get("feed", {})
     result = automation.project_context(item, feed)
     result.update(memories=memory_list(project_id)[:30], directory=str(folder(project_id)))
+    import research_ledger
+    result['researchState'] = research_ledger.state(project_id)
+    import research_workflows
+    result['researchWorkflows'] = [{'id': w['id'], 'question': w['plan']['question'], 'status': w['status'],
+                                  'completed': sum(r['status'] == 'SUCCEEDED' for r in w['runs']),
+                                  'total': len(w['runs']), 'error': w.get('error'),
+                                  'nextAction': w.get('analysis', {}).get('nextAction')}
+                                 for w in research_workflows.all_workflows(project_id)[:10]]
     return result
 
 
@@ -227,6 +235,10 @@ def call(name, args, project_id):
         project_id = args.get("projectId", "global")
         if project_id == "global":
             raise workspace.WorkspaceError(400, "请先选择 projectId。")
+
+    if name.startswith(('research_state_', 'evidence_', 'workflow_')):
+        import research_api
+        return research_api.call_tool(name, args, project_id)
 
     if name.startswith(("experiment_", "benchmark_")):
         import research_records

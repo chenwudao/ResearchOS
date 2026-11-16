@@ -523,6 +523,7 @@
     .note a { color: inherit; }
   </style>
   <link rel="stylesheet" href="/project-map.css" />
+<link rel="stylesheet" href="/research-workflow.css" />
 </head>
 <body>
   <div class="app">
@@ -639,6 +640,7 @@
                 <p style="margin:0 0 8px;font-size:13px;color:var(--ink-2)" id="proj-desc"></p>
                 <div style="display:flex;gap:8px;flex-wrap:wrap">
                   <button class="btn sm" id="btn-rename-project">重命名</button>
+                  <button class="btn sm" id="btn-research-workflow">科研状态与实验闭环</button>
                   <button class="btn sm" id="btn-project-memory">项目记忆</button>
                   <button class="btn sm" id="btn-project-background">研究背景</button>
                   <button class="btn sm" id="btn-open-chat">打开当前对话</button>
@@ -735,6 +737,7 @@
 <script src="/state-merge.js"></script>
 <script src="/tasks.js"></script>
 <script src="/research-panels.js"></script>
+<script src="/research-workflow.js"></script>
 <script>
 (function () {
   const STORAGE_KEY = 'researchos-v2';
@@ -1633,7 +1636,7 @@
         } catch (error) { showRailStatus(project, rail, error.message); }
         finally { clone.disabled = false; }
       });
-      tools.append(clone, actionButton('实验跟踪', () => window.researchPanels.open(project, 'experiment')),
+      tools.append(clone, actionButton('科研状态与实验闭环', () => window.researchWorkflow.open(project)), actionButton('实验跟踪', () => window.researchPanels.open(project, 'experiment')),
         actionButton('任务质量评估', () => window.researchPanels.open(project, 'benchmark')));
       const link = railInput('url', '仓库或资料链接');
       link.id = 'library-url';
@@ -2151,6 +2154,8 @@
     } catch (error) { alert(error.message); }
     finally { this.disabled = false; }
   };
+  window.researchWorkflow.init({api:businessCall});
+  document.getElementById("btn-research-workflow").onclick = () => window.researchWorkflow.open(activeProject());
   window.researchPanels.init({api:businessCall});
   window.researchTasks.init({
     api: workspaceApi,

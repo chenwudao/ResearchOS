@@ -32,6 +32,9 @@ def available():
 
 def idle():
     import tasks
+    import research_workflows
+    if research_workflows.ACTIVE or any(w['status'] == 'RUNNING' for w in research_workflows.all_workflows()):
+        raise workspace.WorkspaceError(409, '请先暂停科研工作流并等待实验进程停止。')
     if any(task["status"] in ("RUNNING", "QUEUED") or task.get("pending")
            for task in tasks.all_tasks() if task["status"] not in tasks.TERMINAL):
         raise workspace.WorkspaceError(409, "请先完成或取消正在执行的任务。")
@@ -40,8 +43,8 @@ def idle():
 def quiescent(operation):
     @wraps(operation)
     def run(*args, **kwargs):
-        import automation, tasks
-        with automation.RUN_LOCK, tasks.LOCK:
+        import automation, tasks, research_workflows
+        with automation.RUN_LOCK, tasks.LOCK, research_workflows.LOCK:
             return operation(*args, **kwargs)
     return run
 
@@ -118,4 +121,6 @@ def restore(payload):
             raise
         import tasks
         tasks.recover()
+        import research_workflows
+        research_workflows.recover()
     return {"restored": source.name, "rollback": rollback["id"]}

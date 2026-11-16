@@ -808,13 +808,16 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    import research_workflows
     httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"ResearchOS on http://127.0.0.1:{PORT}")
     tasks.recover()
+    research_workflows.recover()
     stop_automation = automation.start()
     try:
         httpd.serve_forever()
     finally:
         stop_automation.set()
         tasks.shutdown()
+        research_workflows.shutdown()
         httpd.server_close()

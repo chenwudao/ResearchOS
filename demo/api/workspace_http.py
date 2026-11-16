@@ -12,9 +12,11 @@ import workspace
 import tasks
 import project_service
 import backup
+import research_api
 
 
 POST = {
+    **research_api.POST,
     "state": workspace.save,
     "resource/upload": project_service.upload,
     "resource/clone": project_service.clone,
@@ -59,6 +61,13 @@ def serve(handler, method, path):
         if origin and urlsplit(origin).netloc != host:
             raise workspace.WorkspaceError(403, "仅允许同源访问。")
         if method == "GET":
+            report = re.fullmatch(r'research/file/([A-Za-z0-9_-]+)/([a-f0-9]{32})/(report\.md|runs\.csv|analysis\.json|protocol\.json)', name)
+            if report:
+                flow = research_api.flows.get(report[1], report[2])
+                if not flow.get('reportPath'):
+                    raise workspace.WorkspaceError(404, '报告尚未生成。')
+                target = research_api.ledger.path(report[1], str(research_api.Path(flow['reportPath']).parent / report[3]))
+                return send_file(handler, target)
             resource = re.fullmatch(r"resource/file/([A-Za-z0-9_-]+)/([A-Za-z0-9_-]+)", name)
             if resource:
                 return send_file(handler, project_service.resource_path(resource[1], resource[2]))
