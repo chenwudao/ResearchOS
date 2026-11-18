@@ -13,8 +13,17 @@ import threading
 from uuid import uuid4
 
 import workspace
+import model_config
 import project_service
 import time
+
+
+def _redact_secrets(text, secrets):
+    result = str(text or "")
+    for secret in secrets or ():
+        if secret:
+            result = result.replace(secret, "[key]")
+    return result
 
 LOCK = threading.RLock()
 RUNNING = {}
@@ -142,25 +151,35 @@ def stop_process(process):
 def execute(task_id):
     process = None
     diagnostics = []
+    redactions = [workspace.deepseek_key()]
     try:
         task = get(task_id)
         folder, data = context(project(task["projectId"]))
         started = time.time()
+        runtime_cfg = model_config.sdk_runtime_config()
+        redactions.extend(runtime_cfg.get("secrets") or ())
         patch = workspace.DATA / "runtime-config" / (task["id"] + ".json")
         patch.parent.mkdir(parents=True, exist_ok=True)
-        patch.write_text(json.dumps([{"id": "session-log-deepseek", "config": {"enabled": False}}, {"insert": [{
-            "id": "researchos-mcp", "name": "@deepseek-ai/dsh-mcp-client",
-            "config": {"serverName": "researchos", "transport": "stdio", "command": sys.executable,
-                       "args": [str(Path(__file__).with_name("research_mcp.py").resolve()),
-                                str(workspace.DATA.resolve()), task["projectId"]],
-                       "failOnStartupError": True}
-        }]}]), encoding="utf-8")
+        patch_items = [
+            {"id": "session-log-deepseek", "config": {"enabled": False}},
+            {"insert": [{
+                "id": "researchos-mcp", "name": "@deepseek-ai/dsh-mcp-client",
+                "config": {"serverName": "researchos", "transport": "stdio", "command": sys.executable,
+                           "args": [str(Path(__file__).with_name("research_mcp.py").resolve()),
+                                    str(workspace.DATA.resolve()), task["projectId"]],
+                           "failOnStartupError": True}
+            }]},
+            *runtime_cfg["patches"],
+        ]
+        patch.write_text(json.dumps(patch_items), encoding="utf-8")
         config = dict(
             dsh_home=str((workspace.DATA / "dsh-home").resolve()),
             cwd=str(folder.resolve()), profile="sdk", patches=[str(patch.resolve())],
-            env={"DSH_TELEMETRY_DISABLED": "1"},
-            provider="deepseek-official", model=workspace.MODEL, api_key=workspace.deepseek_key(),
+            env=runtime_cfg["env"],
+            provider=runtime_cfg["provider"], model=runtime_cfg["model"],
         )
+        if runtime_cfg.get("api_key"):
+            config["api_key"] = runtime_cfg["api_key"]
         saved = workspace.snapshot()
         agent = saved.get("settings", {}).get("agent", {})
         preferences = {key: workspace.text(agent.get(key), 4000) for key in ("persona", "instructions")}
@@ -222,9 +241,9 @@ def execute(task_id):
             update(task_id, status="SUCCEEDED" if final_result["reason"] == "completed" else "FAILED",
                    result=final_result["text"], error="" if final_result["reason"] == "completed" else str(final_result["reason"]))
         if not completed:
-            update(task_id, status="FAILED", error=("".join(diagnostics)[-2000:] or "DSH 运行进程中断，可继续原会话重试。").replace(workspace.deepseek_key() or "\0", "[key]"))
+            update(task_id, status="FAILED", error=_redact_secrets("".join(diagnostics)[-2000:] or "Weave 运行进程中断，可继续原会话重试。", redactions))
     except Exception as exc:
-        update(task_id, status="FAILED", error=str(exc).replace(workspace.deepseek_key() or "\0", "[key]")[:2000])
+        update(task_id, status="FAILED", error=_redact_secrets(str(exc), redactions)[:2000])
     finally:
         if process:
             stop_process(process)

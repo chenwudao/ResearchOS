@@ -54,6 +54,9 @@ def main():
     key = request.get("config", {}).get("api_key")
     if isinstance(key, str) and key:
         REDACTIONS.add(key)
+    for env_name, env_val in (request.get("config", {}).get("env") or {}).items():
+        if isinstance(env_val, str) and env_val and any(t in str(env_name).upper() for t in ("KEY", "TOKEN", "SECRET", "AUTH")):
+            REDACTIONS.add(env_val)
 
     def question(value, cancelled):
         emit("question", requestId=value.request_id, questions=value.questions)

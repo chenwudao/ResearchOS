@@ -51,7 +51,7 @@ class McpNamingTests(unittest.TestCase):
         self.assertTrue(self.call("global", "rename_feature", {"featureId": "goals", "label": "错", "projectId": "proj_missing"})["isError"])
 
     def test_assistant_name_can_change_from_a_conversation(self):
-        self.assertEqual(self.call("global", "assistant_name_get", {}), {"name": "goat"})
+        self.assertEqual(self.call("global", "assistant_name_get", {}), {"name": "Weave"})
         self.assertEqual(self.call("proj_a", "assistant_rename", {"name": "科研伙伴"}), {"name": "科研伙伴"})
         self.assertEqual(self.call("global", "assistant_name_get", {}), {"name": "科研伙伴"})
         self.assertTrue(self.call("global", "assistant_rename", {"name": "  "})["isError"])

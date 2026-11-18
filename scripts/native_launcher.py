@@ -1,6 +1,5 @@
 """Run the pinned DSH Web and its private LabWeave business service together."""
 from contextlib import contextmanager
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -21,17 +20,16 @@ ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "plugins" / "dsh-labweave-prototype"
 sys.path.insert(0, str(ROOT / "demo" / "api"))
 import automation
+import model_config
 import native_web
+import project_sandbox
 import research_workflows
 import tasks
 import workspace
 
 
 def profile_home():
-    identifier = hashlib.sha256(os.path.normcase(str(workspace.DATA.resolve())).encode()).hexdigest()[:16]
-    base = (Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local") if os.name == "nt"
-            else Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state"))
-    return base / "LabWeave" / "web" / identifier
+    return model_config.profile_home(workspace.DATA)
 
 
 @contextmanager
@@ -47,7 +45,7 @@ def app_lock(home):
                 import fcntl
                 fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as exc:
-            raise RuntimeError("此工作区已启动，请使用已打开的 DSH 页面。") from exc
+            raise RuntimeError("此工作区已启动，请使用已打开的 Weave 页面。") from exc
         yield
 
 
@@ -70,6 +68,8 @@ def prepare_profile(home):
                 else {"name": "dsh-profile-web", "private": True, "dsh": {"profile": {
                     "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"]}}})
     bundles = manifest["dsh"]["profile"]["bundles"]
+    if "@deepseek-ai/dsh-client-ui-sidebar-browser" not in bundles:
+        bundles.append("@deepseek-ai/dsh-client-ui-sidebar-browser")
     for plugin in (PLUGIN, ROOT / "plugins/dsh-labweave-workspace"):
         name = json.loads((plugin / "package.json").read_text())["name"]
         if name not in bundles:
@@ -87,11 +87,15 @@ def prepare_profile(home):
 
 
 def native_env(home, backend, configured):
-    env = {k: v for k, v in os.environ.items() if not k.upper().startswith(("DSH_", "DEEPSEEK_", "LABWEAVE_BRIDGE"))
-           and k.upper() not in {"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY"}}
+    strip_keys = set(model_config.COMMON_KEY_ENVS) | set(model_config.COMMON_URL_ENVS)
+    env = {k: v for k, v in os.environ.items() if not k.upper().startswith(("DSH_", "DEEPSEEK_", "LABWEAVE_BRIDGE", "LABWEAVE_DSH_WEB_HOME"))
+           and k.upper() not in strip_keys}
     env.update(DSH_HOME=str(home), LABWEAVE_BRIDGE_PORT=str(backend.server_port), LABWEAVE_BRIDGE_TOKEN=backend.token)
     if configured:
-        key = workspace.deepseek_key()
+        for k, v in model_config.configured_env_vars().items():
+            if v:
+                env[k] = v
+        key = model_config.safe_deepseek_key()
         if key:
             env["DEEPSEEK_API_KEY"] = key
     return env
@@ -101,58 +105,68 @@ def native_env(home, backend, configured):
 def native_services(port=8770, *, home=None, configured=True, background=True, timeout=120):
     from deepseek_harness_runtime import resolve_bundled_launch_args
     home = home or profile_home()
-    with app_lock(home):
-        if port:
-            with socket.socket() as probe:
+    previous_web_home = os.environ.get("LABWEAVE_DSH_WEB_HOME")
+    os.environ["LABWEAVE_DSH_WEB_HOME"] = str(home)
+    try:
+        with app_lock(home):
+            if port:
+                with socket.socket() as probe:
+                    try:
+                        probe.bind(("127.0.0.1", port))
+                    except OSError as exc:
+                        raise RuntimeError(f"本机端口 {port} 已被占用。") from exc
+            prepare_profile(home)
+            with native_web.server() as backend:
+                thread = threading.Thread(target=backend.serve_forever, daemon=True)
+                thread.start()
+                process = None
+                stop_jobs = None
                 try:
-                    probe.bind(("127.0.0.1", port))
-                except OSError as exc:
-                    raise RuntimeError(f"本机端口 {port} 已被占用。") from exc
-        prepare_profile(home)
-        with native_web.server() as backend:
-            thread = threading.Thread(target=backend.serve_forever, daemon=True)
-            thread.start()
-            process = None
-            stop_jobs = None
-            try:
-                if background:
-                    tasks.recover()
-                    research_workflows.recover()
-                    stop_jobs = automation.start()
-                process = start_process([*resolve_bundled_launch_args(), "web", "--host", "127.0.0.1",
-                                         "--port", str(port), "--no-open"], cwd=ROOT,
-                                        env=native_env(home, backend, configured), stdout=subprocess.PIPE,
-                                        stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
-                ready = queue.Queue()
-                errors = []
-                def read():
-                    for line in process.stdout:
-                        match = URL.search(line)
-                        if match:
-                            ready.put(match.group(0))
-                        elif "labweave" in line.lower() and any(s in line.lower() for s in ("error", "failed", "cannot")):
-                            # Upstream logs may contain credentials, URLs and user paths.
-                            errors.append("插件加载失败")
-                    ready.put(None)
-                reader = threading.Thread(target=read, daemon=True)
-                reader.start()
-                try:
-                    url = ready.get(timeout=timeout)
-                except queue.Empty as exc:
-                    raise RuntimeError("等待本机 DSH 启动超时。") from exc
-                if not url or errors or not backend.ready.wait(timeout):
-                    raise RuntimeError("DSH 科研插件未能启动，请检查本地运行环境。")
-                yield url, process
-            finally:
-                stop_process(process)
-                if process and process.stdout:
-                    process.stdout.close()
-                if stop_jobs is not None:
-                    stop_jobs.set()
-                    tasks.shutdown()
-                    research_workflows.shutdown()
-                backend.shutdown()
-                thread.join()
+                    project_sandbox.recover()
+                    if background:
+                        tasks.recover()
+                        research_workflows.recover()
+                        stop_jobs = automation.start()
+                    process = start_process([*resolve_bundled_launch_args(), "web", "--host", "127.0.0.1",
+                                             "--port", str(port), "--no-open"], cwd=ROOT,
+                                            env=native_env(home, backend, configured), stdout=subprocess.PIPE,
+                                            stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
+                    ready = queue.Queue()
+                    errors = []
+                    def read():
+                        for line in process.stdout:
+                            match = URL.search(line)
+                            if match:
+                                ready.put(match.group(0))
+                            elif "labweave" in line.lower() and any(s in line.lower() for s in ("error", "failed", "cannot")):
+                                # Upstream logs may contain credentials, URLs and user paths.
+                                errors.append("插件加载失败")
+                        ready.put(None)
+                    reader = threading.Thread(target=read, daemon=True)
+                    reader.start()
+                    try:
+                        url = ready.get(timeout=timeout)
+                    except queue.Empty as exc:
+                        raise RuntimeError("等待本机 Weave 启动超时。") from exc
+                    if not url or errors or not backend.ready.wait(timeout):
+                        raise RuntimeError("Weave 科研插件未能启动，请检查本地运行环境。")
+                    yield url, process
+                finally:
+                    project_sandbox.shutdown()
+                    stop_process(process)
+                    if process and process.stdout:
+                        process.stdout.close()
+                    if stop_jobs is not None:
+                        stop_jobs.set()
+                        tasks.shutdown()
+                        research_workflows.shutdown()
+                    backend.shutdown()
+                    thread.join()
+    finally:
+        if previous_web_home is None:
+            os.environ.pop("LABWEAVE_DSH_WEB_HOME", None)
+        else:
+            os.environ["LABWEAVE_DSH_WEB_HOME"] = previous_web_home
 
 
 @contextmanager
@@ -214,7 +228,7 @@ def launch(port, no_open):
         raise KeyboardInterrupt
     signal.signal(signal.SIGTERM, interrupt)
     with business_owner():
-        print("正在启动本机 DSH 科研工作区…", flush=True)
+        print("正在启动本机 Weave 科研工作区…", flush=True)
         home = profile_home()
         marker = home / "instance.json"
         instance = secrets.token_hex(16)
@@ -233,7 +247,7 @@ def launch(port, no_open):
                 while process.poll() is None and not request.exists():
                     time.sleep(.3)
                 if process.returncode:
-                    raise RuntimeError(f"DSH 已退出（{process.returncode}）。")
+                    raise RuntimeError(f"Weave 已退出（{process.returncode}）。")
         except KeyboardInterrupt:
             pass
         finally:

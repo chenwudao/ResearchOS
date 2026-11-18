@@ -28,7 +28,7 @@ class NamingTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_default_and_user_rename_persist(self):
-        self.assertEqual(self.store.assistant_name(), "goat")
+        self.assertEqual(self.store.assistant_name(), "Weave")
         self.assertEqual(self.store.rename_assistant("  研究伙伴  "), "研究伙伴")
         self.assertEqual(naming.NamingStore().assistant_name(), "研究伙伴")
         for value in ("", " ", "a\nb", "x" * 81, None):

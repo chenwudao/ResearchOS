@@ -14,11 +14,14 @@ export function apply(ctx) {
     }
   }
   serve(['/labweave-orbit.svg', '/favicon.svg', '/favicon-dark.svg'], 'image/svg+xml', asset('./labweave-orbit.svg'))
+  serve(['/labweave-bot-avatars.svg'], 'image/svg+xml', asset('./bot-avatars.svg'))
+  serve(['/labweave-bot-avatars.json'], 'application/json', asset('./bot-avatars.json'))
+  serve(['/labweave-sandbox-panel.js'], 'text/javascript; charset=utf-8', asset('./sandbox-panel.js'))
   serve(['/icon-192.png', '/apple-touch-icon.png'], 'image/png', asset('./orbit-192.png'))
   serve(['/icon-512.png'], 'image/png', asset('./orbit-512.png'))
   serve(['/icon-maskable-512.png'], 'image/png', asset('./orbit-maskable-512.png'))
   serve(['/manifest.webmanifest'], 'application/manifest+json', JSON.stringify({
-    name: 'leaweave', short_name: 'leaweave', start_url: './', scope: './', display: 'standalone',
+    name: 'Weave', short_name: 'Weave', start_url: './', scope: './', display: 'standalone',
     background_color: '#ffffff', theme_color: '#ffffff',
     icons: [
       { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
@@ -28,6 +31,6 @@ export function apply(ctx) {
   }))
   ctx.effect(() => ctx.webServer.tapIndex(html => html
     .replace(/(href=["'])(?:\.?\/)?favicon(?:-dark)?\.svg(["'])/g, '$1./labweave-orbit.svg$2')
-    .replace(/(name="apple-mobile-web-app-title" content=")[^"]*(")/, '$1leaweave$2')
+    .replace(/(name="apple-mobile-web-app-title" content=")[^"]*(")/, '$1Weave$2')
   ), 'LabWeave browser branding')
 }

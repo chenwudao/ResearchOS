@@ -58,6 +58,25 @@ class ScopeIsolationTests(unittest.TestCase):
         self.assertEqual(projects[self.a]["rails"]["ideas"], [])
         self.assertEqual([idea["text"] for idea in projects[self.b]["rails"]["ideas"]], ["B explicitly"])
 
+    def test_global_and_project_memory_tool_isolation(self):
+        saved = self.call("global", "global_memory_write", {"content": "全局工作流：使用 PyTorch 与随机种子 42", "category": "preference"})
+        self.assertNotIn("isError", saved)
+        mid = saved["content"][0]["text"]
+        parsed = json.loads(mid)
+        self.assertEqual(parsed["source"], "conversation")
+        pinned = self.call("global", "global_memory_pin", {"id": parsed["id"], "pinned": True})
+        self.assertNotIn("isError", pinned)
+        hits = json.loads(self.call("global", "global_memory_search", {"query": "随机种子"})["content"][0]["text"])
+        self.assertEqual([h["id"] for h in hits], [parsed["id"]])
+        self.assertTrue(self.call("global", "global_memory_write", {"content": "x", "projectId": self.a})["isError"])
+        self.assertTrue(self.call(self.a, "global_memory_search", {"query": "PyTorch"})["isError"])
+        self.assertTrue(self.call(self.a, "global_memory_write", {"content": "leak"})["isError"])
+        self.assertTrue(self.call(self.a, "global_memory_pin", {"id": parsed["id"], "pinned": False})["isError"])
+        pmem = json.loads(self.call(self.a, "memory_write", {"text": "项目 A 专有结论", "pinned": True})["content"][0]["text"])
+        self.assertTrue(pmem["pinned"])
+        self.assertTrue(self.call(self.b, "memory_pin", {"id": pmem["id"], "pinned": False})["isError"])
+        self.assertTrue(self.call(self.b, "memory_pin", {"id": pmem["id"], "projectId": self.a, "pinned": False})["isError"])
+
 
 if __name__ == "__main__":
     unittest.main()

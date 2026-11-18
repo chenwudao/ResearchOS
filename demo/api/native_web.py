@@ -7,11 +7,15 @@ import secrets
 import sqlite3
 import threading
 
+import assistant_profile
 import automation
 from dsh_workspace_map import BindingError, WorkspaceBindings
+import features
+import memory_store
 import naming
 import project_service as projects
 import project_plugins
+import project_sandbox as sandbox
 import research_api
 import research_mcp
 import tasks
@@ -30,7 +34,12 @@ def catalog():
     root = workspace.DATA / "projects"
     root.mkdir(exist_ok=True)
     global_directory().mkdir(exist_ok=True)
-    rows = [{"scope": "global", "name": naming.NamingStore().assistant_name(), "path": str(global_directory())}]
+    rows = [{
+        "scope": "global",
+        "name": naming.NamingStore().assistant_name(),
+        "path": str(global_directory()),
+        **assistant_profile.summary_for_catalog(),
+    }]
     for item in saved.get("state", {}).get("projects", []):
         identity = item["id"]
         if not re.fullmatch(r"proj_[A-Za-z0-9_-]{1,120}", identity):
@@ -39,7 +48,17 @@ def catalog():
         if path.is_symlink() or path.is_junction():
             continue
         path.mkdir(exist_ok=True)
-        rows.append({"scope": identity, "name": item["name"], "path": str(path)})
+        feat_list = features.list_features("global", identity)
+        assigned = features.assignment_map(identity)
+        rows.append({
+            "scope": identity,
+            "name": item["name"],
+            "path": str(path),
+            "features": [{**{k:f.get(k) for k in ("id","label","builtin","shared","hint","symbol","keywords","categories","botSessionId")},
+                          "assignments":assigned.get(f["id"],[])} for f in feat_list],
+            "botSessionIds": [f["botSessionId"] for f in feat_list if f.get("botSessionId")],
+            "coreMemories": memory_store.core_memories(identity, max_items=6, max_chars=1400),
+        })
     with closing(workspace.database()) as db:
         tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         known = {}
@@ -64,16 +83,37 @@ def bindings(record):
 
 
 def project_view(scope):
-    labels = naming.NamingStore().feature_labels(scope)
     if scope == "global":
-        return {"scope": scope, "name": naming.NamingStore().assistant_name()}
+        labels = naming.NamingStore().feature_labels(scope)
+        return {"scope": scope, "name": naming.NamingStore().assistant_name(), "labels": labels,
+                "features": features.list_features("global")}
     item = projects.project(workspace.snapshot(), scope)
-    feed = automation.public_jobs().get(scope, {}).get("feed", {})
+    feature_list = features.list_features("global", scope)
+    labels = {f["id"]: f["label"] for f in feature_list}
+    jobs = automation.public_jobs().get(scope, {})
+    feed = jobs.get("feed", {})
+    review = jobs.get("review", {})
     hidden = set(item.get("dismissedFeed", []))
     rails = dict(item["rails"])
-    rails["feed"] = [*rails["feed"], *(e for e in feed.get("items", []) if (e.get("url") or e["text"]) not in hidden)]
-    return {"scope": scope, "name": item["name"], "topic": item.get("topic", ""), "labels": labels,
-            "rails": rails, "plugins": project_plugins.list_for(scope)}
+    for f in feature_list:
+        if f["id"] != "chat":
+            rails.setdefault(f["id"], [])
+    rails["feed"] = [*rails.get("feed", []), *(e for e in feed.get("items", []) if (e.get("url") or e["text"]) not in hidden)]
+    return {
+        "scope": scope,
+        "name": item["name"],
+        "description": item.get("description", ""),
+        "topic": item.get("topic", ""),
+        "autoReview": bool(item.get("autoReview")),
+        "labels": labels,
+        "features": feature_list,
+        "botSessionIds": [f["botSessionId"] for f in feature_list if f.get("botSessionId")],
+        "rails": rails,
+        "feedMeta": {"updated": feed.get("updated"), "error": feed.get("error"), "unavailable": feed.get("unavailable", [])},
+        "reviews": review.get("reviews", []),
+        "memories": projects.memory_list(scope)[:40],
+        "plugins": project_plugins.list_for(scope),
+    }
 
 
 def project_action(scope, data):
@@ -84,25 +124,125 @@ def project_action(scope, data):
         return project_view(scope)
     if scope == "global":
         raise workspace.WorkspaceError(403, "请选择明确的科研项目。")
+    if action == "sandbox/list":
+        return {**sandbox.dashboard(scope), "workflows": sandbox.workflows(scope)}
+    if action == "sandbox/environments":
+        return sandbox.environments(scope)
+    if action == "sandbox/create-env":
+        return sandbox.environments(scope, sandbox.runtime.environment_id(args.get("name")))
+    if action == "sandbox/configure":
+        return sandbox.configure(scope,args)
+    if action == "sandbox/detail":
+        return sandbox.detail(scope,args.get("id"))
+    if action == "sandbox/artifact":
+        return sandbox.artifact(scope,args.get("id"),args.get("name"))
+    if action == "sandbox/cancel":
+        return sandbox.cancel(scope,args.get("id"))
+    if action == "sandbox/approve-trial":
+        return sandbox.approve_trial(scope,args.get("id"))
+    if action == "sandbox/retry":
+        return sandbox.retry(scope,args)
+    if action == "sandbox/approve-run":
+        return sandbox.prepare_workflow(scope,args,launch=True)
+    if action == "sandbox/flow":
+        return research_api.flows.get(scope,args.get("id"))
+    if action == "sandbox/revise":
+        old=research_api.flows.get(scope,args.get("id"))
+        plan=sandbox.bind_plan(scope,{**old['plan'],'environmentId':args.get('environment')})
+        return research_api.flows.draft(scope,{'plan':plan,'parentId':old['id']})
+    if action == "research/draft":
+        return research_api.flows.draft(scope,{**args,'plan':sandbox.bind_plan(scope,args.get('plan'))})
+    if action == "research/example":
+        return research_api.example({**args,'projectId':scope,'environmentId':sandbox.bind_plan(scope,{})['environmentId']})
+    if action == "research/approve":
+        return sandbox.prepare_workflow(scope,args)
+    if action == "research/run" and not research_api.flows.get(scope,args.get("id"))["plan"].get("environmentId"):
+        raise workspace.WorkspaceError(409,"旧计划须在项目代码沙盒中绑定环境并重新审批。")
     if action == "navigation":
-        return {"labels": naming.NamingStore().feature_labels(scope), "plugins": project_plugins.list_for(scope)}
+        feat_list = features.list_features("global", scope)
+        return {
+            "labels": {f["id"]: f["label"] for f in feat_list},
+            "features": feat_list,
+            "botSessionIds": [f["botSessionId"] for f in feat_list if f.get("botSessionId")],
+            "plugins": project_plugins.list_for(scope),
+        }
+    if action == "bot_session":
+        return features.bind_bot_session(scope, args.get("featureId"), args.get("sessionId"))
+    if action in ("bot_assignments", "bot_assignment_write"):
+        return features.assignments(scope,args.get("featureId"),args if action=="bot_assignment_write" else None)
+    if action == "remove_feature_bot":
+        return features.delete_feature(scope,args.get("featureId"))
+    if action == "create_feature_bot":
+        return features.create_feature(scope,args.get("label"),args.get("hint",""),symbol=args.get("symbol","✦"),
+                                       keywords=args.get("keywords"), request_id=project_plugins.request_id(args))
+    if action in ("feature_rename", "rename_feature"):
+        return features.rename_feature(scope, args.get("featureId"), args.get("label"))
+    if action in ("feature_update", "update_feature"):
+        return features.update_feature(
+            scope,
+            args.get("featureId"),
+            label=args.get("label"),
+            hint=args.get("hint"),
+            symbol=args.get("symbol"),
+            keywords=args.get("keywords"),
+        )
+    if action == "feature_push":
+        fid = args.get("featureId")
+        if fid == "chat" or not features.is_valid_rail(scope, fid):
+            raise workspace.WorkspaceError(400, "未找到对应的项目功能。")
+        return projects.create_entry(scope, fid, args)
     if action == "rename":
         return {"name": projects.call("project_update", {"name": naming.display_name(args.get("name"))}, scope)["name"]}
-    if action in ("idea_create", "idea_update", "goal_create", "goal_update"):
-        return projects.call(action, args, scope)
+    if action == "description":
+        return {"description": projects.call("project_update", {"description": args.get("description", "")}, scope).get("description", "")}
+    if action in ("idea_create", "idea_update", "goal_create", "goal_update",
+                  "memory_search", "memory_write", "memory_delete", "memory_pin", "memory_update",
+                  "experiment_list", "experiment_record", "experiment_delete",
+                  "benchmark_list", "benchmark_record", "benchmark_delete",
+                  "paper_citations"):
+        payload = {"source": "manual", **args} if action == "memory_write" else args
+        return projects.call(action, payload, scope)
+    if action == "entry_delete":
+        return projects.delete_entry(scope, args.get("rail"), args.get("id"))
+    if action == "dismiss_feed":
+        return projects.dismiss_feed(scope, args)
     if action == "topic":
         projects.call("project_update", {"topic": args.get("topic")}, scope)
         return {"ok": True}
+    if action == "auto_review":
+        enabled = bool(args.get("enabled"))
+        projects.mutate(scope, lambda item: item.update(autoReview=enabled))
+        return {"autoReview": enabled}
     if action == "refresh_feed":
         return automation.run_now({"projectId": scope, "kind": "feed"})
+    if action == "run_review":
+        return automation.run_now({"projectId": scope, "kind": "review"})
+    if action == "experiment_env":
+        return workspace.create_experiment({"projectId": scope})
     if action == "link":
         url = workspace.safe_link(workspace.text(args.get("url"), 2000))
         if not url:
             raise workspace.WorkspaceError(400, "请输入 HTTP 或 HTTPS 链接。")
         return projects.create_entry(scope, "library", {"text": workspace.text(args.get("text"), 200) or url,
-                                                        "kind": "link", "url": url})
-    if action in ("upload", "clone"):
-        return (projects.upload if action == "upload" else projects.clone)({**args, "projectId": scope})
+                                                        "kind": args.get("kind") or "link", "url": url})
+    if action == "upload":
+        uploaded = projects.upload({**args, "projectId": scope})
+        fid = args.get("featureId")
+        if fid and fid != "library" and fid != "chat" and features.is_valid_rail(scope, fid):
+            linked = projects.create_entry(scope, fid, {
+                "text": uploaded["text"],
+                "libraryId": uploaded["id"],
+                "path": uploaded.get("path"),
+                "url": uploaded.get("url"),
+                "kind": uploaded.get("kind", "file"),
+                "category": "file",
+                "source": "上传文件",
+                **({"imageData": uploaded["image"]} if uploaded.get("image") else {}),
+            })
+            return {**uploaded, "linkedItem": linked}
+        return uploaded
+    if action == "clone":
+        return projects.clone({**args, "projectId": scope})
     if action == "read":
         return projects.read_resource(scope, args.get("id"), args.get("page", 1))
     if action == "tasks":
@@ -113,17 +253,23 @@ def project_action(scope, data):
             raise workspace.WorkspaceError(404, "任务不存在。")
         return task_actions[action](args)
     if action in ("research/overview", "research/example", "research/draft", "research/approve", "research/run", "research/pause",
-                  "research/cancel", "research/accept", "research/log", "research/state", "research/review-evidence"):
+                  "research/cancel", "research/accept", "research/log", "research/state", "research/review-evidence",
+                  "research/plan", "research/evidence", "research/link"):
         return research_api.POST[action]({**args, "projectId": scope})
     raise workspace.WorkspaceError(404, "未知项目操作。")
 
 
 def dispatch(route, data):
+    if route == "assistant-audit":
+        from assistant_audit import records
+        return records()
     if route == "catalog":
         return catalog()
     if route == "name":
         store = naming.NamingStore()
         return {"name": store.rename_assistant(data["name"]) if "name" in data else store.assistant_name()}
+    if route == "assistant-profile":
+        return assistant_profile.update_profile(data) if data else assistant_profile.get_profile()
     if route == "create":
         item = projects.create_project(naming.display_name(data.get("name")), "proj_" + project_plugins.request_id(data))
         return {"scope": item["id"]}
@@ -131,7 +277,7 @@ def dispatch(route, data):
         return project_plugins.create(data.get("scope"), data, project_plugins.request_id(data))
     if route == "tools":
         return research_mcp.dispatch({"method": "tools/list", "id": 1}, "global")["result"]["tools"]
-    if route not in ("bind", "project", "tool"):
+    if route not in ("bind", "delete", "project", "tool", "sandbox-tool", "assignment-links", "dialog-delivery"):
         raise workspace.WorkspaceError(404, "未知接口。")
     record = data.get("workspace")
     if not isinstance(record, dict) or not all(isinstance(record.get(k), str) and record[k] for k in ("id", "path")):
@@ -144,7 +290,38 @@ def dispatch(route, data):
             registry.bind(PROFILE, data["scope"], record["id"])
         return {"ok": True}
     resolved = registry.scope_for_workspace(PROFILE, record["id"])
+    if route == "delete":
+        if resolved.get("kind") != "project":
+            raise workspace.WorkspaceError(403, "全局助手工作区不能删除。")
+        projects.delete_project(resolved["projectId"])
+        registry.unbind_project(PROFILE, resolved["projectId"])
+        return {"ok": True}
     scope = resolved.get("projectId", "global")
+    if route == "dialog-delivery":
+        return sandbox.dialog_delivery(scope, data["sessionId"], data.get("runId"), data.get("file"))
+    if route == "assignment-links" and scope != "global":
+        return features.schedule_links(scope,data["featureId"],data.get("id"),data.get("remove",False))
+    if route == "sandbox-tool":
+        if scope == "global":
+            raise workspace.WorkspaceError(403,"请选择科研项目。")
+        args=data.get("args",{})
+        if data.get("operation")=="run":
+            origin=data.get("origin",{})
+            if not all(isinstance(origin.get(k),str) and origin[k] for k in ("sessionId","callId")):
+                raise workspace.WorkspaceError(403,"需要真实的对话工具调用。")
+            return sandbox.submit(scope,args,origin)
+        if data.get("operation")=="status":
+            return sandbox.detail(scope,args["runId"],args.get("waitSeconds",0)) if args.get("runId") else sandbox.dashboard(scope)
+        if data.get("operation")=="approved-workflow":
+            flows=research_api.flows
+            with flows.LOCK:
+                item=flows.get(scope,args.get("workflowId"))
+                if not item["plan"].get("environmentId") or item["status"] not in ("APPROVED","RUNNING","REVIEW","SUCCEEDED"):
+                    raise workspace.WorkspaceError(409,"请先在项目沙盒批准实验计划与预算，或由用户恢复已暂停的实验。")
+                if item["status"]=="APPROVED":
+                    item=flows.launch(scope,{"id":item["id"]})
+                return {"id":item["id"],"status":item["status"],"environment":item["plan"]["environmentId"]}
+        raise workspace.WorkspaceError(400,"无效的沙盒操作。")
     if route == "project":
         return project_action(scope, data)
     result = research_mcp.dispatch({"method": "tools/call", "id": 1, "params": {
@@ -171,7 +348,7 @@ class NativeHandler(BaseHTTPRequestHandler):
         auth = self.headers.get("Authorization", "")
         if (self.headers.get("Origin") or self.headers.get("Host") != f"127.0.0.1:{self.server.server_port}"
                 or not auth.isascii() or not secrets.compare_digest(auth, "Bearer " + self.server.token)):
-            return self.reply(403, {"error": "需要本机 DSH 宿主授权。"})
+            return self.reply(403, {"error": "需要本机 Weave 宿主授权。"})
         try:
             size = int(self.headers.get("Content-Length", 0))
             if not 0 < size <= MAX_BODY:

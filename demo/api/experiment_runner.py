@@ -11,11 +11,12 @@ import time
 import project_service as projects
 import research_ledger as ledger
 import research_workflows as flows
+import sandbox_runtime
 from tasks import stop_process
 
 
 def metrics(path, primary):
-    if not path.is_file() or path.stat().st_size > 4 * 1024 * 1024:
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > 4 * 1024 * 1024:
         raise ValueError('未生成指标文件，或文件超过 4 MiB。')
     if path.suffix == '.csv':
         with path.open(encoding='utf-8-sig', newline='') as source:
@@ -67,14 +68,22 @@ def run_cell(project, workflow_id, run_id, event, deadline):
             directory.mkdir(parents=True, exist_ok=True)
             output = directory / ('metrics.csv' if method.get('format') == 'csv' else 'metrics.json')
             tokens = {'{seed}': str(run['seed']), '{budget}': str(run['budget']), '{metrics}': str(output), '{output}': str(directory), '{project}': str(projects.folder(project))}
+            if plan.get('environmentId'):
+                output = directory / 'output' / output.name
+                output.parent.mkdir()
+                tokens.update({'{metrics}': '/output/' + output.name, '{output}': '/output', '{project}': '/workspace'})
             args = list(method['args'])
             for key, replacement in tokens.items():
                 args = [arg.replace(key, replacement) for arg in args]
             argv = [plan['python'], str(ledger.path(project, method['script'])), *args]
+            if plan.get('environmentId'):
+                argv = ['/env/bin/python', '/workspace/' + Path(method['script']).as_posix(), *args]
             attempt = {'number': number, 'argv': argv, 'cwd': str(projects.folder(project)),
                        'seed': run['seed'], 'budget': run['budget'], 'started': projects.timestamp(),
                        'status': 'RUNNING', 'directory': relative, 'inputs': flow['approval']['inputs'],
                        'environment': flow['approval']['environment'], 'planHash': flow['approval']['planHash']}
+            if plan.get('environmentId'):
+                attempt.update(cwd='/workspace', environmentId=plan['environmentId'], sandbox='bubblewrap')
             run['attempts'].append(attempt)
             run.update(status='RUNNING', error='')
             flows.write(flow)
@@ -86,42 +95,47 @@ def run_cell(project, workflow_id, run_id, event, deadline):
         try:
             if flows.manifest(project, plan) != flow['approval']['inputs']:
                 raise ValueError('批准后代码或数据发生变化。')
-            base_python = getattr(sys, '_base_executable', '')
-            worker_python = base_python if base_python and Path(base_python).exists() else sys.executable
-            with (directory / 'stdout.log').open('wb') as stdout, (directory / 'stderr.log').open('wb') as stderr:
-                process = subprocess.Popen([worker_python, '-S', str(Path(__file__).with_name('experiment_worker.py'))],
-                    stdin=subprocess.PIPE, stdout=stdout, stderr=stderr,
-                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
-                    start_new_session=os.name != 'nt')
-                with flows.LOCK:
-                    flows.PROCESSES.setdefault(workflow_id, {})[run_id] = process
-                # On Windows process creation itself can block. Re-check the
-                # approval budget before releasing the experimental command.
-                if event.is_set():
-                    raise InterruptedError('用户暂停或取消了工作流。')
-                if time.monotonic() >= min(deadline, started + plan['budget']['timeoutSeconds']):
-                    raise TimeoutError('启动实验进程时预算已用尽。')
-                config = {'argv': argv, 'cwd': str(projects.folder(project)), 'parent': os.getpid(),
-                          'env': {'PYTHONHASHSEED': str(run['seed']), 'OMP_NUM_THREADS': '1',
-                                  'OPENBLAS_NUM_THREADS': '1', 'MKL_NUM_THREADS': '1'}}
-                process.stdin.write((json.dumps(config) + '\n').encode())
-                process.stdin.close()
-                while process.poll() is None:
+            if plan.get('environmentId'):
+                exit_code = sandbox_runtime.execute(project, plan['environmentId'], method['script'], args,
+                                                    output.parent, directory, plan['budget']['timeoutSeconds'],
+                                                    event, deadline, seed=run['seed'])
+            else:
+                base_python = getattr(sys, '_base_executable', '')
+                worker_python = base_python if base_python and Path(base_python).exists() else sys.executable
+                with (directory / 'stdout.log').open('wb') as stdout, (directory / 'stderr.log').open('wb') as stderr:
+                    process = subprocess.Popen([worker_python, '-S', str(Path(__file__).with_name('experiment_worker.py'))],
+                        stdin=subprocess.PIPE, stdout=stdout, stderr=stderr,
+                        creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
+                        start_new_session=os.name != 'nt')
+                    with flows.LOCK:
+                        flows.PROCESSES.setdefault(workflow_id, {})[run_id] = process
+                    # On Windows process creation itself can block. Re-check the
+                    # approval budget before releasing the experimental command.
                     if event.is_set():
                         raise InterruptedError('用户暂停或取消了工作流。')
-                    if time.monotonic() >= deadline or time.monotonic() - started >= plan['budget']['timeoutSeconds']:
-                        raise TimeoutError('实验超时或总运行预算已用尽。')
-                    time.sleep(.1)
-                exit_code = process.returncode
-                if exit_code:
-                    raise RuntimeError('实验进程退出码：' + str(exit_code))
+                    if time.monotonic() >= min(deadline, started + plan['budget']['timeoutSeconds']):
+                        raise TimeoutError('启动实验进程时预算已用尽。')
+                    config = {'argv': argv, 'cwd': str(projects.folder(project)), 'parent': os.getpid(),
+                              'env': {'PYTHONHASHSEED': str(run['seed']), 'OMP_NUM_THREADS': '1',
+                                      'OPENBLAS_NUM_THREADS': '1', 'MKL_NUM_THREADS': '1'}}
+                    process.stdin.write((json.dumps(config) + '\n').encode())
+                    process.stdin.close()
+                    while process.poll() is None:
+                        if event.is_set():
+                            raise InterruptedError('用户暂停或取消了工作流。')
+                        if time.monotonic() >= deadline or time.monotonic() - started >= plan['budget']['timeoutSeconds']:
+                            raise TimeoutError('实验超时或总运行预算已用尽。')
+                        time.sleep(.1)
+                    exit_code = process.returncode
+            if exit_code:
+                raise RuntimeError('实验进程退出码：' + str(exit_code))
             if event.is_set():
                 raise InterruptedError('执行已中断。')
             if flows.manifest(project, plan) != flow['approval']['inputs']:
                 raise ValueError('实验执行期间代码或数据发生变化，结果不能用于比较。')
             result = metrics(output, plan['protocol']['metric'])
         except Exception as exc:
-            error = str(exc)
+            error = str(exc) or type(exc).__name__
         finally:
             if process:
                 stop_process(process)
@@ -187,7 +201,7 @@ def drive(project, workflow_id, event):
             flow = flows.get(project, workflow_id)
             flow['elapsedSeconds'] = initial_elapsed + round(time.monotonic() - started, 3)
             if flow['status'] == 'RUNNING':
-                flow.update(status='FAILED', error=str(exc))
+                flow.update(status='FAILED', error=str(exc) or type(exc).__name__)
                 flow['steps'][2]['status'] = 'FAILED'
                 flows.write(flow)
     finally:

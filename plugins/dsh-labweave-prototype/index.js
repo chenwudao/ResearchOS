@@ -4,7 +4,7 @@ export const name = 'labweave-dsh-prototype'
 const port = process.env.LABWEAVE_BRIDGE_PORT
 const token = process.env.LABWEAVE_BRIDGE_TOKEN
 if (token) delete process.env.LABWEAVE_BRIDGE_TOKEN
-export const inject = port ? ['connection', 'workspaceRegistry', 'tools', 'sessions', 'systemPrompt', 'schedule'] : ['connection']
+export const inject = port ? ['connection', 'workspaceRegistry', 'tools', 'sessions', 'sessionPersistence', 'systemPrompt', 'schedule', 'sandboxPolicy'] : ['connection']
 
 const MAX_SNAPSHOT_BYTES = 50 * 1024 * 1024
 

@@ -35,6 +35,9 @@ def available():
 
 
 def idle():
+    import project_sandbox
+    if project_sandbox.ACTIVE:
+        raise workspace.WorkspaceError(409, "请先停止项目代码沙盒中的运行。")
     import tasks
     import research_workflows
     if research_workflows.ACTIVE or any(w['status'] == 'RUNNING' for w in research_workflows.all_workflows()):
@@ -112,7 +115,7 @@ def restore(payload, *, native_home=None):
         manifest = json.loads((stage / "backup.json").read_text())
         native = manifest.get("format") == 2
         if native and native_home is None:
-            raise workspace.WorkspaceError(409, "请关闭 DSH，使用项目启动器的 --restore 恢复原生会话。")
+            raise workspace.WorkspaceError(409, "请关闭 Weave，使用项目启动器的 --restore 恢复原生会话。")
         if native and manifest.get("dataRoot") != str(workspace.DATA.resolve()):
             raise workspace.WorkspaceError(409, "原生会话绑定了绝对目录，请在原项目数据位置恢复。")
         if not native and manifest != {"format": 1}:

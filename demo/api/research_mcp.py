@@ -6,6 +6,7 @@ import workspace
 import project_service
 import naming
 import project_plugins
+import features
 
 TOOLS = {
     "plugin_create": ("Create a reusable research instruction plugin. A global conversation must explicitly set projectId to one project or 'all'. Project conversations can only create a plugin for themselves.", {"name": {"type": "string"}, "prompt": {"type": "string"}}),
@@ -13,8 +14,32 @@ TOOLS = {
     "plugin_list": ("List instruction plugins applicable to the current or explicitly selected project.", {}),
     "assistant_name_get": ("Read the global assistant's current display name.", {}),
     "assistant_rename": ("Change the global assistant's display name when requested in the conversation.", {"name": {"type": "string"}}),
-    "feature_labels": ("Read the five stable research feature IDs and their current names for this conversation scope. A global conversation may optionally specify projectId.", {}),
-    "rename_feature": ("Rename a research feature only in response to the user's conversation. Stable featureId is one of chat, feed, ideas, goals or library. In a project conversation this changes only that project; a global conversation changes the shared default unless projectId is specified.", {"featureId": {"type": "string", "enum": ["chat", "feed", "ideas", "goals", "library"]}, "label": {"type": "string"}}),
+    "feature_labels": ("Read active research feature IDs and their current display names for this conversation scope. A global conversation may optionally specify projectId.", {}),
+    "feature_list": ("List active Feature Bots for the current project or explicitly specified projectId. Global assistant itself retains only the core chat assistant.", {}),
+    "feature_create": ("Add a custom Feature Bot with a name, description, symbol and keywords. Global chat must specify an explicit projectId or 'all'; project chat adds only to its own project.", {"label":{"type":"string"},"hint":{"type":"string"},"symbol":{"type":"string","enum":list(features.BOT_SYMBOLS)},"keywords":{"type":"array","items":{"type":"string"}}}),
+    "feature_delete": ("Remove a non-chat Feature Bot (builtin feed/ideas/goals/library or custom feature) from the specified projectId/'all' (global chat) or current project. Cannot delete 'chat'.", {"featureId": {"type": "string"}}),
+    "feature_entries": ("Read the categories and current archived entries in a project Feature Bot's right-side category archive.", {"featureId": {"type": "string"}}),
+    "feature_push": (
+        "Push a categorized message or illustrated summary card into a project Feature Bot's context stream, "
+        "or pass id to update/recategorize an existing entry. Decide based on the Bot's purpose and message intent "
+        "whether to include a figure/diagram (imagePath in project folder, inline imageSvg diagram/chart, imageData, "
+        "or imageUrl) plus title and caption, or concise text only.",
+        {
+            "featureId": {"type": "string"},
+            "id": {"type": "string"},
+            "title": {"type": "string"},
+            "text": {"type": "string"},
+            "category": {"type": "string"},
+            "caption": {"type": "string"},
+            "imagePath": {"type": "string"},
+            "imageSvg": {"type": "string"},
+            "imageData": {"type": "string"},
+            "imageUrl": {"type": "string"},
+            "url": {"type": "string"},
+            "kind": {"type": "string"},
+        },
+    ),
+    "rename_feature": ("Rename a research Feature Bot only in response to the user's conversation. Built-in IDs are chat, feed, ideas, goals, library; custom feature IDs (feat_*) are also supported. In a project conversation this changes only that project; global changes shared builtin defaults unless projectId is specified.", {"featureId": {"type": "string"}, "label": {"type": "string"}}),
     "research_state_get": ("Read confirmed structured research state and pending proposals before planning.", {}),
     "research_state_propose": ("Propose research state changes for human confirmation; never overwrite confirmed state.", {key: {"type": "string"} for key in ("question", "stage", "hypotheses", "blockers", "nextAction", "decisions", "reason")}),
     "evidence_search": ("Search project hypotheses, experiments, conclusions and linked evidence, including source integrity.", {"query": {"type": "string"}}),
@@ -27,7 +52,7 @@ TOOLS = {
     "experiment_list": ("List experiment parameters, metrics and logs.", {}),
     "experiment_record": ("Create or update an experiment run.", {"id": {"type": "string"}, "name": {"type": "string"}, "parameters": {"type": "object"}, "metrics": {"type": "object"}, "status": {"type": "string"}, "logs": {"type": "string"}, "taskId": {"type": "string"}}),
     "benchmark_list": ("List research task quality evaluations.", {}),
-    "benchmark_record": ("Record evidence-backed quality scores. Each dimension is 0 to 5; rationale is required. Set evaluator to DSH.", {"taskId": {"type": "string"}, "scores": {"type": "object", "properties": {key: {"type": "number"} for key in ("completeness", "correctness", "evidence", "reproducibility")}}, "rationale": {"type": "string"}, "evaluator": {"type": "string"}}),
+    "benchmark_record": ("Record evidence-backed quality scores. Each dimension is 0 to 5; rationale is required. Set evaluator to Weave.", {"taskId": {"type": "string"}, "scores": {"type": "object", "properties": {key: {"type": "number"} for key in ("completeness", "correctness", "evidence", "reproducibility")}}, "rationale": {"type": "string"}, "evaluator": {"type": "string"}}),
 
     "project_update": ("Update project name, background or topic.", {"name": {"type": "string"}, "description": {"type": "string"}, "topic": {"type": "string"}}),
     "paper_citations": ("Get real bibliographic references from Crossref for a DOI.", {"doi": {"type": "string"}}),
@@ -43,8 +68,18 @@ TOOLS = {
     "goal_create": ("Create goal or subtask with existing parent/dependency IDs.", {"text": {"type": "string"}, "due": {"type": "string"}, "parentId": {"type": "string"}, "dependsOn": {"type": "array", "items": {"type": "string"}}}),
     "goal_update": ("Update a goal's text, due date or completion.", {"id": {"type": "string"}, "text": {"type": "string"}, "due": {"type": "string"}, "done": {"type": "boolean"}}),
     "task_create": ("Queue a new task for user confirmation.", {"text": {"type": "string"}, "goalId": {"type": "string"}}),
-    "memory_search": ("Search persistent research decisions and results.", {"query": {"type": "string"}}),
-    "memory_write": ("Save a durable research decision or observation.", {"text": {"type": "string"}, "category": {"type": "string"}}),
+    "memory_search": ("Search persistent project research decisions and results (FTS5 + recency + pinned).", {
+        "query": {"type": "string"}, "category": {"type": "string"}, "limit": {"type": "integer"}}),
+    "memory_write": ("Save or deduplicate a durable research decision or observation in the project.", {
+        "text": {"type": "string"}, "category": {"type": "string"}, "pinned": {"type": "boolean"}}),
+    "memory_pin": ("Pin or unpin a project memory so it remains in core prompt context.", {
+        "id": {"type": "string"}, "pinned": {"type": "boolean"}}),
+    "global_memory_search": ("Search Weave global assistant's persistent cross-session memories (global chat only).", {
+        "query": {"type": "string"}, "category": {"type": "string"}, "limit": {"type": "integer"}}),
+    "global_memory_write": ("Save a durable user preference, workflow norm, or memo to global assistant memory (global chat only).", {
+        "content": {"type": "string"}, "text": {"type": "string"}, "category": {"type": "string"}, "pinned": {"type": "boolean"}}),
+    "global_memory_pin": ("Pin or unpin a global assistant memory (global chat only).", {
+        "id": {"type": "string"}, "pinned": {"type": "boolean"}}),
 }
 
 
@@ -59,7 +94,9 @@ def dispatch(request, scope, *, protocol_version="2024-11-05"):
                       "serverInfo": {"name": "researchos", "version": "2.0.0"}}
         elif method == "tools/list":
             result = {"tools": [{"name": name, "description": description,
-                                "inputSchema": {"type": "object", "properties": {**schema, "projectId": {"type": "string"}}, "additionalProperties": False}}
+                                "inputSchema": {"type": "object",
+                                                "properties": schema if name.startswith("global_memory_") else {**schema, "projectId": {"type": "string"}},
+                                                "additionalProperties": False}}
                                for name, (description, schema) in TOOLS.items()]}
         elif method == "tools/call":
             params = request.get("params", {})
@@ -87,17 +124,29 @@ def dispatch(request, scope, *, protocol_version="2024-11-05"):
                     store = naming.NamingStore()
                     value = {"name": store.assistant_name() if name == "assistant_name_get"
                              else store.rename_assistant(arguments.get("name"))}
-                elif name in ("feature_labels", "rename_feature"):
+                elif name in ("feature_labels", "feature_list", "feature_create", "feature_delete", "rename_feature"):
                     # The caller scope is bound when this MCP server is started,
                     # never accepted from tool arguments or the generic HTTP API.
                     target = arguments.get("projectId")
-                    if scope == "global" and target == "global":
+                    if name in ("feature_labels", "rename_feature", "feature_list") and scope == "global" and target == "global":
                         target = None
-                    store = naming.NamingStore()
                     if name == "feature_labels":
-                        value = store.feature_labels(scope, project_id=target)
+                        if scope == "global" and target is None:
+                            value = naming.NamingStore().feature_labels("global")
+                        else:
+                            resolved_id = target if target is not None else scope
+                            project_service.project(workspace.snapshot(), resolved_id)
+                            value = features.feature_labels_map(resolved_id)
+                    elif name == "feature_list":
+                        value = features.list_features(scope, project_id=target)
+                    elif name == "feature_create":
+                        value = features.create_feature(
+                            scope, arguments.get("label"), arguments.get("hint", ""), project_id=target,
+                            symbol=arguments.get("symbol","✦"), keywords=arguments.get("keywords"))
+                    elif name == "feature_delete":
+                        value = features.delete_feature(scope, arguments.get("featureId"), project_id=target)
                     else:
-                        value = store.rename_feature_from_conversation(
+                        value = features.rename_feature(
                             scope, arguments.get("featureId"), arguments.get("label"), project_id=target)
                 else:
                     value = project_service.call(name, arguments, scope)

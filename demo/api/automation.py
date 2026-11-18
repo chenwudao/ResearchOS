@@ -59,7 +59,7 @@ def project_context(project, feed):
     notes = {}
     for rail, items in project["rails"].items():
         notes[rail] = [
-            {key: item[key] for key in ("id", "text", "due", "done", "dependsOn", "parentId", "ideaId", "paperId", "path", "kind", "url")
+            {key: item[key] for key in ("id", "text", "category", "source", "due", "done", "dependsOn", "parentId", "ideaId", "paperId", "path", "kind", "url")
              if key in item} for item in items[-8:]
         ]
     hidden = set(project.get("dismissedFeed", []))
@@ -80,7 +80,7 @@ def review(project, stored, settings):
     task["scheduledReview"] = True
     tasks.store(task)
     tasks.approve({"id": task["id"]})
-    return {"reply": "已发起 DSH 项目复盘，请查看任务记录。", "actions": [], "taskId": task["id"]}
+    return {"reply": "已发起 Weave 项目复盘，请查看任务记录。", "actions": [], "taskId": task["id"]}
 
 
 def run_job(project, kind, stored, settings, force=False):

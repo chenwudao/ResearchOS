@@ -14,7 +14,7 @@ import re
 import workspace
 
 
-DEFAULT_ASSISTANT_NAME = "goat"
+DEFAULT_ASSISTANT_NAME = "Weave"
 DEFAULT_FEATURE_LABELS = {
     "chat": "聊天",
     "feed": "动态",
@@ -114,6 +114,9 @@ class NamingStore:
 
     def rename_feature_from_conversation(self, caller_scope, feature_id, label, project_id=None):
         """Rename through a trusted conversation dispatcher, never a generic UI endpoint."""
+        if isinstance(feature_id, str) and feature_id.startswith("feat_"):
+            import features
+            return features.rename_feature(caller_scope, feature_id, label, project_id=project_id)
         if not isinstance(feature_id, str) or feature_id not in DEFAULT_FEATURE_LABELS:
             raise workspace.WorkspaceError(400, "未知功能标识。")
         label = display_name(label)

@@ -120,6 +120,12 @@ class WorkspaceBindings:
             except sqlite3.IntegrityError as exc:
                 raise BindingError("Workspace or directory is already bound") from exc
 
+    def unbind_project(self, profile: str, project_id: str) -> None:
+        self._identity(profile, "profile")
+        self._identity(project_id, "project ID")
+        with closing(sqlite3.connect(self.db_path)) as db, db:
+            db.execute("DELETE FROM dsh_workspace_bindings_v1 WHERE profile=? AND project_id=?", (profile, project_id))
+
     def project_for_workspace(self, profile: str, workspace_id: str) -> str | None:
         """Resolve only while both trusted sources still agree with the binding."""
         self._identity(profile, "profile")

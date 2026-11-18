@@ -39,7 +39,8 @@ def example(payload):
     return flows.draft(project, {'plan': {
         'question': '在相同数据划分和训练样本预算下，候选算法是否稳定优于 Random Forest？',
         'hypothesis': 'Logistic Regression 或 Extra Trees 在该合成分类数据上能够获得稳定的验证准确率收益。',
-        'python': sys.executable, 'inputs': [relative + '/dataset.csv', relative + '/README.txt'],
+        'python': sys.executable, **({'environmentId':payload['environmentId']} if payload.get('environmentId') else {}),
+        'inputs': [relative + '/dataset.csv', relative + '/README.txt'],
         'methods': [{'name': method, 'script': relative + '/run.py', 'args': ['--method', method, '--seed', '{seed}', '--budget', '{budget}', '--metrics', '{metrics}']}
                     for method in ('random_forest', 'extra_trees', 'logistic')],
         'matrix': {'seeds': [11, 22, 33, 44, 55], 'budgets': [64, 128, 256]},
@@ -89,7 +90,8 @@ def call_tool(name, args, project):
     if name == 'workflow_get':
         return flows.get(project, args.get('id'))
     if name == 'workflow_draft':
-        return flows.draft(project, args)
+        import project_sandbox
+        return flows.draft(project, {**args,'plan':project_sandbox.bind_plan(project,args.get('plan'))})
     raise workspace.WorkspaceError(404, '未知科研工具。')
 
 

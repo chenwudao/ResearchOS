@@ -14,7 +14,6 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--install-only", action="store_true", help="Prepare dependencies without starting the server")
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--legacy", action="store_true", help="Open the existing migration fallback on port 8765")
     mode.add_argument("--backup", action="store_true", help="Back up the stopped workspace and native sessions")
     mode.add_argument("--stop", action="store_true", help="Stop the native service for this project")
     mode.add_argument("--restore", metavar="BACKUP.zip", help="Restore the stopped workspace using a named backup")
@@ -37,13 +36,6 @@ def main():
         return
     if not 0 <= args.port <= 65535:
         parser.error("Invalid Web port")
-    if args.legacy:
-        print("LabWeave 迁移回退入口 http://127.0.0.1:8765", flush=True)
-        try:
-            subprocess.run([str(python), str(ROOT / "demo/api/main.py")], cwd=ROOT, check=True)
-        except KeyboardInterrupt:
-            pass
-        return
     if Path(sys.executable) != python:
         raise SystemExit(subprocess.call([str(python), str(Path(__file__).resolve()), *sys.argv[1:]], cwd=ROOT))
     import native_launcher

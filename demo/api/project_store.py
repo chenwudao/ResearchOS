@@ -21,6 +21,8 @@ def initialize(db):
         db.execute("PRAGMA user_version=1")
     if version > 1:
         raise ValueError("Unsupported database schema")
+    import memory_store
+    memory_store.ensure_schema(db)
     db.commit()
 
 

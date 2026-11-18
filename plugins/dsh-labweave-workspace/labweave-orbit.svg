@@ -36,7 +36,6 @@
       <path d="M638 302C816 302 953 451 955 628C957 802 820 947 652 949C469 951 315 817 317 645C319 460 459 306 638 302Z"/>
     </clipPath>
   </defs>
-  <rect x="138" y="132" width="990" height="990" rx="196" fill="#01072c"/>
   <path fill="url(#rim)" fill-rule="evenodd" d="M638 302C816 302 953 451 955 628C957 802 820 947 652 949C469 951 315 817 317 645C319 460 459 306 638 302ZM641 320C473 321 331 470 328 646C326 805 474 934 651 937C810 938 944 792 946 632C948 469 811 318 641 320Z"/>
   <path fill="url(#east)" d="M663 303C805 313 918 411 948 568L941 578C899 429 788 331 663 319Z"/>
   <g fill="none" stroke-linejoin="round" stroke-linecap="round" clip-path="url(#globe)">
@@ -47,10 +46,10 @@
     <path stroke="url(#south)" stroke-width="17" d="M343 753C401 688 496 647 594 641C688 653 774 730 819 808C868 800 902 775 925 738"/>
     <path stroke="url(#lowerRim)" stroke-width="13" d="M819 808C826 847 813 879 793 903"/>
   </g>
-  <g fill="#fff">
+  <g fill="#fff" stroke="#577fbf" stroke-width="15" paint-order="stroke fill">
     <circle cx="482" cy="457" r="28"/><circle cx="819" cy="469" r="27"/>
     <circle cx="594" cy="641" r="37"/><circle cx="819" cy="808" r="28"/>
   </g>
   <path fill="url(#orbit)" d="M296 637C245 686 220 725 223 755C227 798 282 819 370 816C548 809 838 696 982 579C1036 535 1058 491 1038 461C1022 436 982 425 934 424C1003 416 1065 428 1081 467C1104 521 1020 611 889 683C704 784 454 859 301 855C219 854 178 830 181 783C183 738 231 680 296 637Z"/>
-  <path fill="#fff" d="M944 297Q950 323 958 338Q972 344 998 350Q974 356 958 364Q950 382 944 405Q938 381 931 364Q915 357 891 351Q917 344 932 338Q940 319 944 297Z"/>
+  <path fill="#fff" stroke="#577fbf" stroke-width="15" stroke-linejoin="round" paint-order="stroke fill" d="M944 297Q950 323 958 338Q972 344 998 350Q974 356 958 364Q950 382 944 405Q938 381 931 364Q915 357 891 351Q917 344 932 338Q940 319 944 297Z"/>
 </svg>

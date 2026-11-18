@@ -72,6 +72,11 @@ def save(payload):
             for project, body in db.execute('SELECT project, body FROM research_workflows'):
                 if project not in remaining and json.loads(body)['status'] == 'RUNNING':
                     raise WorkspaceError(409, '该项目仍有运行中的实验，请先暂停或取消工作流。')
+        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sandbox_runs'").fetchone():
+            remaining = {p.get('id') for p in state.get('projects', [])}
+            if any(project not in remaining for (project,) in db.execute(
+                    "SELECT DISTINCT project FROM sandbox_runs WHERE status IN ('RUNNING','WAITING_APPROVAL','QUEUED')")):
+                raise WorkspaceError(409, '请先停止或取消该项目的沙盒试跑。')
         project_store.write(db, state)
         db.execute("INSERT OR REPLACE INTO workspace VALUES (1, ?, ?)",
                    (revision + 1, encoded))

@@ -36,10 +36,10 @@ assert.ok(registrations.some((item) => item.name === 'sidebar.brand.name'), 'the
   let upstream
   const fakeBackend = async (url, options) => {
     upstream = { url, options }
-    return Response.json({ name: 'goat', secret: 'not returned' })
+    return Response.json({ name: 'Weave', secret: 'not returned' })
   }
   const response = await host.assistantNameRequest(new Request('http://localhost/api/labweave/assistant-name'), fakeBackend)
-  assert.deepEqual(await response.json(), { name: 'goat' })
+  assert.deepEqual(await response.json(), { name: 'Weave' })
   assert.equal(upstream.url, 'http://127.0.0.1:8765/api/workspace/assistant/name')
   assert.equal(upstream.options.redirect, 'error')
   assert.equal(response.headers.get('cache-control'), 'no-store')

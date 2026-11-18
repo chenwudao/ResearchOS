@@ -126,6 +126,14 @@ def validate(project, plan):
     for value in inputs:
         if not ledger.path(project, value).is_file():
             raise workspace.WorkspaceError(400, '输入文件不存在：' + str(value))
+    if 'environmentId' in plan:
+        from sandbox_runtime import environment_id
+        root = projects.folder(project)
+        for method in methods:
+            method["script"] = ledger.path(project,method["script"]).relative_to(root).as_posix()
+        plan["inputs"] = [ledger.path(project,name).relative_to(root).as_posix() for name in inputs]
+        plan.update(environmentId=environment_id(plan['environmentId']), python='/env/bin/python', budget=budget, protocol=protocol)
+        return plan
     if plan.get('python') and not isinstance(plan['python'], str):
         raise workspace.WorkspaceError(400, '解释器路径必须是字符串。')
     # On Linux the venv executable is a symlink. Its invocation path selects the installed packages.
@@ -162,14 +170,19 @@ def draft(project, args):
         return write(value, db)
 
 
-def environment(python, root):
+def environment(python, root, environment_id=None):
     flags = {'creationflags': subprocess.CREATE_NO_WINDOW} if os.name == 'nt' else {}
-    try:
-        result = subprocess.run([python, '-c', 'import json,sys,platform,importlib.metadata as m;print(json.dumps({"python":sys.version,"platform":platform.platform(),"packages":sorted((d.metadata["Name"],d.version) for d in m.distributions())}))'],
-                                capture_output=True, text=True, encoding='utf-8', timeout=100, check=True, **flags)
-    except subprocess.TimeoutExpired as exc:
-        raise workspace.WorkspaceError(503, '读取实验 Python 环境超时，请稍后重试。') from exc
-    data = json.loads(result.stdout)
+    if environment_id:
+        from sandbox_runtime import info
+        data = info(root.name, 'inspect', environment_id)
+        data['environmentId'] = environment_id
+    else:
+        try:
+            result = subprocess.run([python, '-c', 'import json,sys,platform,importlib.metadata as m;print(json.dumps({"python":sys.version,"platform":platform.platform(),"packages":sorted((d.metadata["Name"],d.version) for d in m.distributions())}))'],
+                                    capture_output=True, text=True, encoding='utf-8', timeout=100, check=True, **flags)
+        except subprocess.TimeoutExpired as exc:
+            raise workspace.WorkspaceError(503, '读取实验 Python 环境超时，请稍后重试。') from exc
+        data = json.loads(result.stdout)
     try:
         commit = subprocess.run(['git', '-C', str(root), 'rev-parse', 'HEAD'], capture_output=True, text=True, timeout=10)
         dirty = subprocess.run(['git', '-C', str(root), 'status', '--porcelain'], capture_output=True, text=True, encoding='utf-8', timeout=10)
@@ -198,7 +211,7 @@ def check_approved(value):
     try:
         if manifest(project, value['plan']) != approval['inputs']:
             raise workspace.WorkspaceError(409, '代码或数据已变化，请创建修订计划并重新审批。')
-        env = environment(value['plan']['python'], projects.folder(project))
+        env = environment(value['plan']['python'], projects.folder(project), value['plan'].get('environmentId'))
         if ledger.digest({k: env[k] for k in ('python', 'packages')}) != approval['environmentHash']:
             raise workspace.WorkspaceError(409, 'Python 环境已变化，请重新审批修订计划。')
     except (OSError, subprocess.SubprocessError) as exc:
@@ -214,7 +227,7 @@ def approve(project, args):
         if value['status'] != 'DRAFT' or value['revision'] != args.get('revision'):
             raise workspace.WorkspaceError(409, '计划已变化，请重新查看并确认。')
         plan = validate(project, value['plan'])
-        env = environment(plan['python'], projects.folder(project))
+        env = environment(plan['python'], projects.folder(project), plan.get('environmentId'))
         inputs = manifest(project, plan)
         value['approval'] = {'at': projects.timestamp(), 'planHash': ledger.digest(plan), 'inputs': inputs,
                              'environment': env, 'environmentHash': ledger.digest({k: env[k] for k in ('python', 'packages')}),

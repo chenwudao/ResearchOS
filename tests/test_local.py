@@ -108,5 +108,81 @@ class MigrationTests(unittest.TestCase):
                 workspace.DATA = previous
 
 
+class MemoryHarnessTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = TemporaryDirectory()
+        self.previous = workspace.DATA
+        workspace.DATA = Path(self.temporary.name) / "data"
+
+    def tearDown(self):
+        workspace.DATA = self.previous
+        self.temporary.cleanup()
+
+    def test_legacy_five_column_db_migrates_and_restores_with_fts5(self):
+        import memory_store
+        workspace.DATA.mkdir(parents=True, exist_ok=True)
+        with closing(sqlite3.connect(workspace.DATA / "workspace.sqlite3")) as db, db:
+            db.execute("CREATE TABLE workspace(id INTEGER PRIMARY KEY CHECK (id = 1), revision INTEGER NOT NULL, snapshot TEXT NOT NULL)")
+            db.execute("CREATE TABLE projects(id TEXT PRIMARY KEY, position INTEGER, body TEXT)")
+            db.execute("CREATE TABLE entities(project TEXT, kind TEXT, id TEXT, position INTEGER, body TEXT, PRIMARY KEY(project, kind, id))")
+            db.execute("CREATE TABLE memories(id TEXT PRIMARY KEY, project TEXT, category TEXT, content TEXT, created TEXT)")
+            db.execute("CREATE TABLE session_links(project TEXT, thread TEXT, session TEXT, PRIMARY KEY(project, thread))")
+            proj_meta = {"id": "proj_legacy_mem", "name": "Old"}
+            db.execute("INSERT INTO projects VALUES('proj_legacy_mem', 0, ?)", (json.dumps(proj_meta),))
+            db.execute("INSERT INTO workspace VALUES(1, 1, ?)", (json.dumps({"state": {"version": 2, "projects": []}, "settings": {}}),))
+            db.execute("INSERT INTO memories VALUES('m_legacy', 'proj_legacy_mem', 'decision', '使用固定随机种子 seed=42 对照', '2026-01-01T00:00:00+00:00')")
+            db.execute("PRAGMA user_version=1")
+
+        with closing(workspace.database()) as db:
+            self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 1)
+            cols = {row[1] for row in db.execute("PRAGMA table_info(memories)")}
+            self.assertTrue({"source", "pinned", "updated_at"} <= cols)
+
+        hits = memory_store.search_memories("proj_legacy_mem", "随机种子")
+        self.assertEqual([h["id"] for h in hits], ["m_legacy"])
+
+        saved = backup.create()
+        memory_store.delete_memory("proj_legacy_mem", "m_legacy")
+        self.assertEqual(memory_store.search_memories("proj_legacy_mem", "随机种子"), [])
+        backup.restore(saved)
+        restored = memory_store.search_memories("proj_legacy_mem", "seed=42")
+        self.assertEqual([h["id"] for h in restored], ["m_legacy"])
+
+    def test_fts5_cjk_pinning_dedup_and_delete_cascade(self):
+        import memory_store
+        workspace.save({"revision": 0, "state": {"version": 2, "projects": []}, "settings": {}})
+        proj_a = project_service.call("project_create", {"name": "MemA"}, "global")["id"]
+        proj_b = project_service.call("project_create", {"name": "MemB"}, "global")["id"]
+        project_service.remember("global", "全局偏好：固定PyTorch随机种子", "preference")
+
+        first = project_service.remember(proj_a, "基线模型使用 AdamW lr=1e-4，固定随机种子 42", "decision", source="conversation")
+        dup = project_service.remember(proj_a, "基线模型使用   AdamW lr=1e-4，固定随机种子 42", "decision")
+        self.assertEqual(dup["id"], first["id"])
+        self.assertTrue(dup["deduplicated"])
+
+        pinned_entry = project_service.remember(proj_a, "不可违反的核心约束：对照实验禁止数据泄漏", "decision", pinned=True)
+        extra = project_service.remember(proj_a, "对照实验记录：学习率 lr=1e-4 收敛平稳", "research")
+
+        self.assertEqual([m["id"] for m in project_service.memory_list(proj_a)][0], pinned_entry["id"])
+        core = memory_store.core_memories(proj_a, max_items=2)
+        self.assertEqual(core[0]["id"], pinned_entry["id"])
+
+        cjk_hits = memory_store.search_memories(proj_a, "对照实验")
+        self.assertEqual(cjk_hits[0]["id"], pinned_entry["id"])
+        self.assertIn(extra["id"], [h["id"] for h in cjk_hits])
+
+        symbol_hits = memory_store.search_memories(proj_a, "lr=1e-4")
+        self.assertGreaterEqual(len(symbol_hits), 2)
+        single_char_hits = memory_store.search_memories(proj_a, "漏")
+        self.assertEqual([h["id"] for h in single_char_hits], [pinned_entry["id"]])
+        self.assertEqual(memory_store.search_memories(proj_b, "对照实验"), [])
+
+        project_service.delete_project(proj_a)
+        with closing(workspace.database()) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM memories WHERE project=?", (proj_a,)).fetchone()[0], 0)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM memories_fts WHERE project=?", (proj_a,)).fetchone()[0], 0)
+        self.assertEqual(len(project_service.memory_list("global")), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

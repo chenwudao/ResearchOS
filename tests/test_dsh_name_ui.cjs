@@ -12,7 +12,7 @@ function fixture() {
   const listeners = new Map()
   const requests = []
   let index = 0
-  let currentName = 'goat'
+  let currentName = 'Weave'
   let offline = false
   let rejectSave = false
   let plugin
@@ -70,46 +70,16 @@ function find(node, predicate) {
 
 const flush = () => new Promise((resolve) => setImmediate(resolve))
 
-test('native general setting reads, validates, saves and updates name through the same-origin bridge', async () => {
+test('general settings does not inject redundant assistant-name form and brand syncs via event', async () => {
   const f = fixture()
-  assert.ok(f.setting && f.brand)
-  let view = f.render()
-  assert.ok(find(view, (node) => node.props.role === 'status'))
+  assert.equal(f.setting, undefined)
+  assert.ok(f.brand)
+  f.render(f.brand.component)
   await flush(); await flush()
-  view = f.render()
-  assert.equal(find(view, (node) => node.type === 'input').props.value, 'goat')
+  let view = f.render(f.brand.component)
+  assert.match(JSON.stringify(view), /全局助手 · Weave/)
   assert.equal(f.requests[0].url, '/api/labweave/assistant-name')
   assert.equal(f.requests[0].options.credentials, 'same-origin')
-  find(view, (node) => node.type === 'input').props.onChange({ target: { value: '科研伙伴' } })
-  view = f.render()
-  await view.props.onSubmit({ preventDefault() {} })
-  view = f.render()
-  assert.equal(find(view, (node) => node.type === 'input').props.value, '科研伙伴')
-  assert.equal(find(view, (node) => node.props.role === 'status').children[0], '已保存。')
-  assert.equal(f.requests[1].url, '/api/labweave/assistant-name')
-  assert.deepEqual(JSON.parse(f.requests[1].options.body), { name: '科研伙伴' })
-  assert.equal(f.requests[1].options.credentials, 'same-origin')
-  assert.equal(f.requests[1].options.redirect, 'error')
-})
-
-test('offline and failed saves are visible, retain input and do not claim success', async () => {
-  const f = fixture()
-  f.setOffline(true)
-  f.render(); await flush(); await flush()
-  let view = f.render()
-  assert.match(find(view, (node) => node.props.role === 'alert').children[0], /无法读取/)
-  f.setOffline(false)
-  find(view, (node) => node.type === 'button' && node.children.includes('重试')).props.onClick()
-  f.render(); await flush(); await flush()
-  view = f.render()
-  find(view, (node) => node.type === 'input').props.onChange({ target: { value: '新名字' } })
-  f.setRejectSave(true)
-  view = f.render()
-  await view.props.onSubmit({ preventDefault() {} })
-  view = f.render()
-  assert.equal(find(view, (node) => node.type === 'input').props.value, '新名字')
-  assert.match(find(view, (node) => node.props.role === 'alert').children[0], /保存失败/)
-  assert.equal(find(view, (node) => node.props.role === 'status'), null)
 })
 
 test('brand displays the persisted name or an honest loading/error state', async () => {
@@ -118,8 +88,8 @@ test('brand displays the persisted name or an honest loading/error state', async
   assert.match(JSON.stringify(view), /正在加载助手名称/)
   await flush(); await flush()
   view = f.render(f.brand.component)
-  assert.match(JSON.stringify(view), /全局助手 · goat/)
-  assert.match(JSON.stringify(view), /leaweave/)
+  assert.match(JSON.stringify(view), /全局助手 · Weave/)
+  assert.match(JSON.stringify(view), /Weave/)
 })
 
 test('brand reports unavailable rather than presenting a guessed name when offline', async () => {
@@ -129,5 +99,5 @@ test('brand reports unavailable rather than presenting a guessed name when offli
   await flush(); await flush()
   const view = f.render(f.brand.component)
   assert.match(JSON.stringify(view), /助手名称不可用/)
-  assert.doesNotMatch(JSON.stringify(view), /全局助手 · goat/)
+  assert.doesNotMatch(JSON.stringify(view), /全局助手 · Weave/)
 })

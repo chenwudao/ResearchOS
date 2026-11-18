@@ -166,15 +166,7 @@ def main() -> int:
                 raise RuntimeError("No local DeepSeek key is configured")
             env["DEEPSEEK_API_KEY"] = configured_key
         if not args.use_existing_backend:
-            print("Starting the local LabWeave backend...", flush=True)
-            backend = start_process([sys.executable, str(ROOT / "demo/api/main.py")], cwd=ROOT)
-            deadline = time.monotonic() + args.timeout
-            while not listening():
-                if backend.poll() is not None:
-                    raise RuntimeError("LabWeave backend exited during startup")
-                if time.monotonic() >= deadline:
-                    raise RuntimeError("LabWeave backend startup timed out")
-                time.sleep(0.2)
+            raise SystemExit("Legacy 8765 demo/api/main.py has been removed; pass --use-existing-backend or use scripts/start.py.")
         print("Starting the isolated DSH Web preview...", flush=True)
         web = start_web(env, args.timeout)
         print("Preview opened. Press Enter to stop services started by this launcher.", flush=True)

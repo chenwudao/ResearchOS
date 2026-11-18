@@ -42,3 +42,53 @@ test('project schedule tools restrict list, edit and creation to the true sessio
     await assert.rejects(list.execute({}, { agent: { session: { header: { id: 's-proj_a' } } } }))
   } finally { await new Promise(resolve => server.close(resolve)) }
 })
+
+test('workspace-page feature_rename forwards scoped project action and refreshes catalog', async () => {
+  const { registerNative } = await import('../plugins/dsh-labweave-prototype/native.js')
+  const rows = ['global', 'proj_a', 'proj_b'].map(scope => ({ scope, path: '/' + scope, name: scope, workspaceId: scope }))
+  const native = rows.map(row => ({ id: row.scope, path: row.path, title: row.name, sessionIds: [], async setTitle(title) { this.title = title } }))
+  const routes = new Map()
+  const calls = []
+  let catalogReads = 0
+  const server = http.createServer(async (req, res) => {
+    assert.equal(req.headers.authorization, 'Bearer test-only')
+    const chunks = []
+    for await (const chunk of req) chunks.push(chunk)
+    const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : null
+    if (req.url === '/catalog') catalogReads += 1
+    else if (req.url === '/project') calls.push(body)
+    res.setHeader('Content-Type', 'application/json')
+    res.end(JSON.stringify(req.url === '/catalog' ? rows : req.url === '/tools' ? [] : { labels: { chat: '课题讨论' } }))
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  const ctx = {
+    workspaceRegistry: { list: () => native, get: id => native.find(w => w.id === id), resolveByPath: async p => native.find(w => w.path === p) },
+    sessions: new Map(),
+    tools: { register() {} },
+    systemPrompt: { context() {} },
+    schedule: { catalog: async () => [], view: async () => ({}), create: async () => ({}) },
+    connection: { fetch: { register(route) { routes.set(route.path, route) } } },
+    on() {},
+  }
+  try {
+    await registerNative(ctx, String(server.address().port), 'test-only')
+    const baseCatalogReads = catalogReads
+    const route = routes.get('/api/labweave/workspace-page')
+    assert.ok(route)
+    const req = (payload) => route.fetch(new Request('http://localhost/api/labweave/workspace-page', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    }))
+    const okRes = await req({ workspaceId: 'proj_a', action: 'feature_rename', args: { featureId: 'chat', label: '课题讨论' } })
+    assert.equal(okRes.status, 200)
+    assert.deepEqual(calls, [{ workspace: { id: 'proj_a', path: '/proj_a' }, action: 'feature_rename', args: { featureId: 'chat', label: '课题讨论' } }])
+    assert.ok(catalogReads > baseCatalogReads)
+    const globalRes = await req({ workspaceId: 'global', action: 'feature_rename', args: { featureId: 'chat', label: 'bad' } })
+    assert.equal(globalRes.status, 403)
+    const missingRes = await req({ workspaceId: 'unknown', action: 'feature_rename', args: { featureId: 'chat', label: 'bad' } })
+    assert.equal(missingRes.status, 403)
+    native.find(w => w.id === 'proj_a').sessionIds.push('feature-session-a')
+    const bind = workspaceId => req({workspaceId, action:'bot_session', args:{featureId:'ideas',sessionId:'feature-session-a'}})
+    assert.equal((await bind('proj_b')).status, 403)
+    assert.equal((await bind('proj_a')).status, 200)
+  } finally { await new Promise(resolve => server.close(resolve)) }
+})
