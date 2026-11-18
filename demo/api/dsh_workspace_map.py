@@ -1,6 +1,6 @@
 """Explicit, opt-in bindings between LabWeave projects and DSH workspaces.
 
-This module is not wired into the running application.  Callers must supply a
+The native Web bridge supplies a
 private SQLite path and trusted lookups of both current project existence and
 the current DSH workspace path.  In particular, browser-supplied paths are not
 an authority for project scope.  This mapping is not itself authentication or

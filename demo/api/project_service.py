@@ -212,6 +212,32 @@ def collect_outputs(project_id, task_id, since):
         create_entry(project_id, "library", {"text": path.name, "path": str(relative), "kind": "output", "taskId": task_id})
 
 
+def create_project(name, identity=None):
+    name = workspace.text(name, 200)
+    if not name:
+        raise workspace.WorkspaceError(400, "项目名称为空。")
+    identity = identity or "proj_" + uuid4().hex
+    thread = "thr_" + uuid4().hex
+    for _ in range(5):
+        saved = workspace.snapshot()
+        if saved["revision"] == 0:
+            saved.update(state={"version": 2, "projects": []}, settings={})
+        existing = next((p for p in saved["state"]["projects"] if p["id"] == identity), None)
+        if existing is not None:
+            return existing
+        item = {"id": identity, "name": name, "createdAt": timestamp(), "updatedAt": timestamp(),
+                "activeThreadId": thread, "threads": [{"id": thread, "title": "项目助手", "messages": []}],
+                "rails": {rail: [] for rail in workspace.RAILS}}
+        saved["state"]["projects"].append(item)
+        try:
+            workspace.save(saved)
+            return item
+        except workspace.WorkspaceError as exc:
+            if exc.status != 409:
+                raise
+    raise workspace.WorkspaceError(409, "项目正在更新，请重试。")
+
+
 def call(name, args, project_id):
     if name == "project_list":
         return [{"id": p["id"], "name": p["name"]} for p in workspace.snapshot().get("state", {}).get("projects", [])
@@ -219,18 +245,7 @@ def call(name, args, project_id):
     if name == "project_create":
         if project_id != "global":
             raise workspace.WorkspaceError(403, "请在全局助手创建项目。")
-        name_value = workspace.text(args.get("name"), 200)
-        if not name_value:
-            raise workspace.WorkspaceError(400, "项目名称为空。")
-        saved = workspace.snapshot()
-        identity = "proj_" + uuid4().hex
-        thread = "thr_" + uuid4().hex
-        item = {"id": identity, "name": name_value, "createdAt": timestamp(), "updatedAt": timestamp(),
-                "activeThreadId": thread, "threads": [{"id": thread, "title": "项目助手", "messages": []}],
-                "rails": {rail: [] for rail in workspace.RAILS}}
-        saved["state"]["projects"].append(item)
-        workspace.save(saved)
-        return item
+        return create_project(args.get("name"))
     if project_id == "global":
         project_id = args.get("projectId", "global")
         if project_id == "global":

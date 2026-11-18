@@ -25,7 +25,7 @@ DEFAULT_FEATURE_LABELS = {
 _PROJECT_ID = re.compile(r"proj_[A-Za-z0-9_-]{1,120}")
 
 
-def _valid_name(value):
+def display_name(value):
     if not isinstance(value, str):
         raise workspace.WorkspaceError(400, "名称必须是文字。")
     if any(ord(char) < 32 or ord(char) == 127 for char in value):
@@ -88,7 +88,7 @@ class NamingStore:
             return row[0] if row else DEFAULT_ASSISTANT_NAME
 
     def rename_assistant(self, name):
-        name = _valid_name(name)
+        name = display_name(name)
         with closing(self._connect()) as db, db:
             self._schema(db)
             db.execute("INSERT OR REPLACE INTO labweave_names(name_key,value) VALUES('assistant',?)", (name,))
@@ -116,7 +116,7 @@ class NamingStore:
         """Rename through a trusted conversation dispatcher, never a generic UI endpoint."""
         if not isinstance(feature_id, str) or feature_id not in DEFAULT_FEATURE_LABELS:
             raise workspace.WorkspaceError(400, "未知功能标识。")
-        label = _valid_name(label)
+        label = display_name(label)
         with closing(self._connect()) as db, db:
             self._schema(db)
             db.execute("BEGIN IMMEDIATE")

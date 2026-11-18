@@ -5,8 +5,12 @@ import sys
 import workspace
 import project_service
 import naming
+import project_plugins
 
 TOOLS = {
+    "plugin_create": ("Create a reusable research instruction plugin. A global conversation must explicitly set projectId to one project or 'all'. Project conversations can only create a plugin for themselves.", {"name": {"type": "string"}, "prompt": {"type": "string"}}),
+    "plugin_rename": ("Rename a custom research plugin in this conversation's permitted scope.", {"id": {"type": "string"}, "name": {"type": "string"}}),
+    "plugin_list": ("List instruction plugins applicable to the current or explicitly selected project.", {}),
     "assistant_name_get": ("Read the global assistant's current display name.", {}),
     "assistant_rename": ("Change the global assistant's display name when requested in the conversation.", {"name": {"type": "string"}}),
     "feature_labels": ("Read the five stable research feature IDs and their current names for this conversation scope. A global conversation may optionally specify projectId.", {}),
@@ -69,7 +73,13 @@ def dispatch(request, scope, *, protocol_version="2024-11-05"):
                     raise workspace.WorkspaceError(403, "不能访问其他项目。")
                 if not isinstance(arguments, dict):
                     raise workspace.WorkspaceError(400, "工具参数必须是对象。")
-                if name in ("assistant_name_get", "assistant_rename"):
+                if name == "plugin_create":
+                    value = project_plugins.create(arguments.get("projectId") if scope == "global" else scope, arguments)
+                elif name == "plugin_rename":
+                    value = project_plugins.rename(scope, arguments.get("id"), arguments.get("name"))
+                elif name == "plugin_list":
+                    value = project_plugins.list_for(arguments.get("projectId", "all") if scope == "global" else scope)
+                elif name in ("assistant_name_get", "assistant_rename"):
                     # Only an existing project conversation or the explicit global
                     # conversation may change/read this shared assistant setting.
                     if scope != "global":

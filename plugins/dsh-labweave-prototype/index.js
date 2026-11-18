@@ -1,5 +1,10 @@
+import { registerNative } from './native.js'
+
 export const name = 'labweave-dsh-prototype'
-export const inject = ['connection']
+const port = process.env.LABWEAVE_BRIDGE_PORT
+const token = process.env.LABWEAVE_BRIDGE_TOKEN
+if (token) delete process.env.LABWEAVE_BRIDGE_TOKEN
+export const inject = port ? ['connection', 'workspaceRegistry', 'tools', 'sessions', 'systemPrompt', 'schedule'] : ['connection']
 
 const MAX_SNAPSHOT_BYTES = 50 * 1024 * 1024
 
@@ -86,10 +91,10 @@ export async function assistantNameRequest(request, fetchImpl = fetch) {
   }
 }
 
-export function apply(ctx) {
+export async function apply(ctx) {
+  if (port) return registerNative(ctx, port, token)
   ctx.connection.fetch.register({
     path: '/api/labweave/assistant-name', methods: ['GET', 'POST'], requestBody: 'buffered',
     fetch: assistantNameRequest,
   })
-  // Project access stays disabled until session-specific scope is verified.
 }

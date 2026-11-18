@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="138 132 990 990" role="img" aria-labelledby="title">
+  <title id="title">LabWeave</title>
+  <defs>
+    <linearGradient id="rim" gradientUnits="userSpaceOnUse" x1="485" y1="304" x2="750" y2="952">
+      <stop stop-color="#fcfdff"/><stop offset=".22" stop-color="#b5cffe"/>
+      <stop offset=".42" stop-color="#6098ff"/><stop offset=".67" stop-color="#142961"/>
+      <stop offset=".85" stop-color="#6290ea"/><stop offset="1" stop-color="#f8fbff"/>
+    </linearGradient>
+    <linearGradient id="east" gradientUnits="userSpaceOnUse" x1="680" y1="328" x2="930" y2="590">
+      <stop stop-color="#edf3ff"/><stop offset=".45" stop-color="#84a9ed"/><stop offset="1" stop-color="#061542"/>
+    </linearGradient>
+    <linearGradient id="latitude" gradientUnits="userSpaceOnUse" x1="343" y1="553" x2="940" y2="555">
+      <stop stop-color="#6599f2"/><stop offset=".34" stop-color="#c7d9ff"/><stop offset=".55" stop-color="#f4f7ff"/>
+      <stop offset=".83" stop-color="#8db6ff"/><stop offset="1" stop-color="#10255e"/>
+    </linearGradient>
+    <linearGradient id="meridian" gradientUnits="userSpaceOnUse" x1="561" y1="315" x2="902" y2="852">
+      <stop stop-color="#f7f9ff"/><stop offset=".37" stop-color="#a4c3ff"/><stop offset=".55" stop-color="#6da1ff"/>
+      <stop offset=".76" stop-color="#0b205a"/><stop offset="1" stop-color="#678de0"/>
+    </linearGradient>
+    <linearGradient id="crossing" gradientUnits="userSpaceOnUse" x1="740" y1="465" x2="493" y2="914">
+      <stop stop-color="#a6c5ff"/><stop offset=".38" stop-color="#fff"/><stop offset=".56" stop-color="#cfdeff"/>
+      <stop offset=".77" stop-color="#6088dd"/><stop offset="1" stop-color="#102757"/>
+    </linearGradient>
+    <linearGradient id="south" gradientUnits="userSpaceOnUse" x1="338" y1="748" x2="923" y2="800">
+      <stop stop-color="#31569e"/><stop offset=".22" stop-color="#80adff"/><stop offset=".44" stop-color="#f4f7ff"/>
+      <stop offset=".75" stop-color="#84b0ff"/><stop offset="1" stop-color="#253f7c"/>
+    </linearGradient>
+    <linearGradient id="lowerRim" gradientUnits="userSpaceOnUse" x1="344" y1="658" x2="792" y2="888">
+      <stop stop-color="#172d68"/><stop offset=".44" stop-color="#233f83"/><stop offset=".73" stop-color="#86afff"/><stop offset="1" stop-color="#e5edff"/>
+    </linearGradient>
+    <linearGradient id="orbit" gradientUnits="userSpaceOnUse" x1="183" y1="820" x2="1064" y2="466">
+      <stop stop-color="#a6c4ff"/><stop offset=".18" stop-color="#75a6ff"/><stop offset=".49" stop-color="#98bcff"/>
+      <stop offset=".78" stop-color="#d5e4ff"/><stop offset="1" stop-color="#fff"/>
+    </linearGradient>
+    <clipPath id="globe">
+      <path d="M638 302C816 302 953 451 955 628C957 802 820 947 652 949C469 951 315 817 317 645C319 460 459 306 638 302Z"/>
+    </clipPath>
+  </defs>
+  <rect x="138" y="132" width="990" height="990" rx="196" fill="#01072c"/>
+  <path fill="url(#rim)" fill-rule="evenodd" d="M638 302C816 302 953 451 955 628C957 802 820 947 652 949C469 951 315 817 317 645C319 460 459 306 638 302ZM641 320C473 321 331 470 328 646C326 805 474 934 651 937C810 938 944 792 946 632C948 469 811 318 641 320Z"/>
+  <path fill="url(#east)" d="M663 303C805 313 918 411 948 568L941 578C899 429 788 331 663 319Z"/>
+  <g fill="none" stroke-linejoin="round" stroke-linecap="round" clip-path="url(#globe)">
+    <path stroke="url(#lowerRim)" stroke-width="14" d="M338 565C328 680 389 833 487 896C581 956 722 904 819 808"/>
+    <path stroke="url(#latitude)" stroke-width="17" d="M336 574C367 518 425 476 482 457C595 414 709 422 819 469C877 478 923 514 945 578"/>
+    <path stroke="url(#meridian)" stroke-width="16" d="M435 398C416 424 439 447 482 457C505 395 584 334 658 312C723 342 782 401 819 469C875 578 871 706 819 808"/>
+    <path stroke="url(#crossing)" stroke-width="16" d="M482 457C497 529 543 596 594 641C642 573 733 497 819 469M594 641C546 725 520 830 542 914"/>
+    <path stroke="url(#south)" stroke-width="17" d="M343 753C401 688 496 647 594 641C688 653 774 730 819 808C868 800 902 775 925 738"/>
+    <path stroke="url(#lowerRim)" stroke-width="13" d="M819 808C826 847 813 879 793 903"/>
+  </g>
+  <g fill="#fff">
+    <circle cx="482" cy="457" r="28"/><circle cx="819" cy="469" r="27"/>
+    <circle cx="594" cy="641" r="37"/><circle cx="819" cy="808" r="28"/>
+  </g>
+  <path fill="url(#orbit)" d="M296 637C245 686 220 725 223 755C227 798 282 819 370 816C548 809 838 696 982 579C1036 535 1058 491 1038 461C1022 436 982 425 934 424C1003 416 1065 428 1081 467C1104 521 1020 611 889 683C704 784 454 859 301 855C219 854 178 830 181 783C183 738 231 680 296 637Z"/>
+  <path fill="#fff" d="M944 297Q950 323 958 338Q972 344 998 350Q974 356 958 364Q950 382 944 405Q938 381 931 364Q915 357 891 351Q917 344 932 338Q940 319 944 297Z"/>
+</svg>

@@ -95,6 +95,12 @@ def run_cell(project, workflow_id, run_id, event, deadline):
                     start_new_session=os.name != 'nt')
                 with flows.LOCK:
                     flows.PROCESSES.setdefault(workflow_id, {})[run_id] = process
+                # On Windows process creation itself can block. Re-check the
+                # approval budget before releasing the experimental command.
+                if event.is_set():
+                    raise InterruptedError('用户暂停或取消了工作流。')
+                if time.monotonic() >= min(deadline, started + plan['budget']['timeoutSeconds']):
+                    raise TimeoutError('启动实验进程时预算已用尽。')
                 config = {'argv': argv, 'cwd': str(projects.folder(project)), 'parent': os.getpid(),
                           'env': {'PYTHONHASHSEED': str(run['seed']), 'OMP_NUM_THREADS': '1',
                                   'OPENBLAS_NUM_THREADS': '1', 'MKL_NUM_THREADS': '1'}}
@@ -119,6 +125,8 @@ def run_cell(project, workflow_id, run_id, event, deadline):
         finally:
             if process:
                 stop_process(process)
+                if process.stdin and not process.stdin.closed:
+                    process.stdin.close()
                 process.wait()
                 exit_code = process.returncode
             with flows.LOCK:

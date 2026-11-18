@@ -1,5 +1,6 @@
 """Regression tests for approved budgets, provenance and checkpoint semantics."""
 import json
+import os
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
@@ -46,11 +47,15 @@ class WorkflowTests(unittest.TestCase):
         self.temp.cleanup()
 
     def plan(self, case='ok', **budget):
+        # These tests exercise checkpoint/retry semantics with real processes.
+        # A cold Windows venv starts a controller, redirector and interpreter.
+        attempt_seconds = 180 if os.name == 'nt' else 10
         return {'question': 'Is candidate better?', 'hypothesis': 'Candidate improves score', 'python': sys.executable,
                 'inputs': ['data.csv'], 'methods': [{'name': name, 'script': 'run.py', 'args': ['--method', name, '--seed', '{seed}', '--budget', '{budget}', '--metrics', '{metrics}', '--case', case]} for name in ('baseline', 'candidate')],
                 'matrix': {'seeds': [11, 22, 33], 'budgets': [10]},
                 'protocol': {'metric': 'score', 'direction': 'maximize', 'baseline': 'baseline', 'split': 'paired', 'minSeeds': 3, 'minImprovement': .05, 'maxStd': .02},
-                'budget': {'maxRuns': 6, 'concurrency': 2, 'timeoutSeconds': 10, 'retries': 1, 'wallSeconds': 60, **budget}}
+                'budget': {'maxRuns': 6, 'concurrency': 2, 'timeoutSeconds': attempt_seconds,
+                           'retries': 1, 'wallSeconds': 6 * attempt_seconds, **budget}}
 
     def create(self, case='ok', **budget):
         draft = flows.draft(self.project, {'plan': self.plan(case, **budget)})
@@ -58,9 +63,9 @@ class WorkflowTests(unittest.TestCase):
 
     def finish(self, flow):
         flows.launch(self.project, {'id': flow['id']})
-        until = time.monotonic() + 30
-        while flow['id'] in flows.ACTIVE and time.monotonic() < until:
-            time.sleep(.05)
+        active = flows.ACTIVE.get(flow['id'])
+        if active:
+            active['thread'].join(timeout=flow['plan']['budget']['wallSeconds'] + 15)
         self.assertNotIn(flow['id'], flows.ACTIVE)
         return flows.get(self.project, flow['id'])
 

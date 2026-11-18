@@ -128,7 +128,8 @@ def validate(project, plan):
             raise workspace.WorkspaceError(400, '输入文件不存在：' + str(value))
     if plan.get('python') and not isinstance(plan['python'], str):
         raise workspace.WorkspaceError(400, '解释器路径必须是字符串。')
-    interpreter = Path(plan.get('python') or sys.executable).resolve()
+    # On Linux the venv executable is a symlink. Its invocation path selects the installed packages.
+    interpreter = Path(plan.get('python') or sys.executable).absolute()
     if not interpreter.is_file():
         raise workspace.WorkspaceError(400, 'Python 解释器不存在。')
     plan.update(python=str(interpreter), budget=budget, protocol=protocol)
@@ -163,8 +164,11 @@ def draft(project, args):
 
 def environment(python, root):
     flags = {'creationflags': subprocess.CREATE_NO_WINDOW} if os.name == 'nt' else {}
-    result = subprocess.run([python, '-c', 'import json,sys,platform,importlib.metadata as m;print(json.dumps({"python":sys.version,"platform":platform.platform(),"packages":sorted((d.metadata["Name"],d.version) for d in m.distributions())}))'],
-                            capture_output=True, text=True, encoding='utf-8', timeout=30, check=True, **flags)
+    try:
+        result = subprocess.run([python, '-c', 'import json,sys,platform,importlib.metadata as m;print(json.dumps({"python":sys.version,"platform":platform.platform(),"packages":sorted((d.metadata["Name"],d.version) for d in m.distributions())}))'],
+                                capture_output=True, text=True, encoding='utf-8', timeout=100, check=True, **flags)
+    except subprocess.TimeoutExpired as exc:
+        raise workspace.WorkspaceError(503, '读取实验 Python 环境超时，请稍后重试。') from exc
     data = json.loads(result.stdout)
     try:
         commit = subprocess.run(['git', '-C', str(root), 'rev-parse', 'HEAD'], capture_output=True, text=True, timeout=10)

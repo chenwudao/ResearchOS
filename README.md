@@ -1,47 +1,30 @@
 # LabWeave
 
-LabWeave 是以科研项目组织聊天、动态、点子、目标和资源的本地优先科研工作区，由 ResearchOS V3.0 演进而来。产品主线直接基于 DeepSeek Harness（DSH）原生 Web 界面，通过其插件、插槽和已有接口扩展科研能力；LabWeave 管理科研业务和本地数据，DSH 负责原生界面、会话及 Agent 执行。
+LabWeave 把 DeepSeek Harness（DSH）的原生 Web 工作区改成科研项目区。项目、资料和实验记录保存在本机。DSH 提供聊天、历史会话、模型、主题、快捷键和自动化任务。
 
-## 产品主线与当前状态
+## 从项目根目录启动
 
-- 直接把 DSH 现有工作区扩展为科研项目区，复用原生聊天、会话、设置、主题和快捷键；不再规划与 DSH 并行的独立产品前端或 Agent 运行时。
-- 顶部新建会话的目标是独立全局助手（默认名 `goat`，可更名）；每个科研项目包含聊天、动态、点子、目标、资源库五项功能。自动化可为全局或指定项目，插件可应用于单个项目或全部项目。
-- 当前默认启动入口仍打开既有自建界面，作为功能迁移期间的回退；它不是未来的产品前端。DSH 原生插件与独立预览已实现初步验证，但全局助手路由、项目及会话映射、项目作用域工具和五项功能仍在接入，不能视为正式产品已完成或 Web 会话已隔离。
-- 不删除既有界面、项目数据或能力；V3 的科研状态、审批、实验闭环及证据网络将逐项接入 DSH。现有回退界面的使用方式及实现边界见 [V3 使用说明、实现边界与多轮验收](docs/V3科研闭环使用与验收.md)，迁移计划见 [DSH 前端适配路线](docs/DSH前端适配路线.md)。
+Windows 运行 `.\start.ps1`，Linux 运行 `bash start.sh`。启动器使用项目根目录的 `.venv`，首次安装需要 Python 3.12 和网络。DSH SDK 和运行程序固定为 `0.2.2rc2`。项目自带的两个插件直接安装在本机专属 Web 配置中，默认启动无需另装 Node.js 或 pnpm。
 
-## 现有回退入口：安装与启动
+浏览器自动打开已认证的 [本机科研工作区](http://127.0.0.1:8770)。需要在另一台显示器上的浏览器手工打开时，可加 `--no-open`，在本机终端使用当次登录链接。按 Ctrl+C 或从同一项目运行 `--stop` 关闭。只准备 Python 环境可加 `--install-only`。业务端口 8765 在正式模式中用于防止两份服务重复调度任务，DSH 与业务服务之间使用带认证的私有回环连接。
 
-既有后端与回退入口已验证 Python **3.12.6**、DSH SDK/runtime **0.2.2rc2**、模型 **deepseek-flash**。需要 Git；首次安装需要联网。此入口不依赖独立安装 Node.js，SDK 自带运行程序。DSH 原生插件预览的安装还需要 `pnpm`。
+启动时读取已有 DeepSeek 密钥。读取顺序为环境变量 `DEEPSEEK_API_KEY`、兼容位置 `demo/.local/deepseek.key`、用户配置文件。Windows 用户配置为 `%LOCALAPPDATA%\LabWeave\deepseek.key` 或 `%USERPROFILE%\.labweave\deepseek.key`，Linux 为 `${XDG_CONFIG_HOME:-$HOME/.config}/labweave/deepseek.key`。也可以在 DSH 的模型设置中配置。没有模型时仍可整理项目，按原生引导选择「添加 API Key」和「稍后配置」即可。密钥保存在本机。
 
-Windows，在仓库根目录执行：
+## 科研工作区
 
-~~~powershell
-$env:DEEPSEEK_API_KEY = "你的密钥"
-.\start.ps1
-~~~
+- **全局助手**。左上角 `goat` 直接进入全局助手，继续上次的全局对话。助手使用 DSH 原生消息流和输入框，空白会话提供科研提示。可以在通用设置中更改助手名称。
+- **科研项目**。用侧栏科研项目区的加号创建项目。旧版业务库里已有的项目按项目目录关联到原生工作区。项目聊天使用独立的 DSH 会话和业务工具，可以从项目菜单改名。
+- **五项功能**。从左侧展开科研项目，可以进入聊天、动态、点子、目标和资源库。聊天下面列出本项目的对话，聊天页可新建对话。其他栏目分别在 DSH 主区域打开。动态可设置订阅，目标可勾选并查看实验与审批，资源库支持导入文件、逐页阅读 PDF 和选择多篇论文进行对比。
+- **通过对话改名**。例如在项目中说「把这个项目的点子改叫灵感」。项目工具核验当前 DSH 会话所属的工作区。全局助手可以指定项目，或更改所有项目的默认功能名。
+- **自动化与插件**。原生「自动化任务」默认选择全局助手，也可以手工指定某个科研项目。项目助手能安排本项目的任务。「更多 → 创建项目插件」可保存一段科研指令，选择单个或全部项目可见。点击插件会把指令放进该项目的原生聊天草稿，由用户发送。对话工具也能创建和更名这类插件。
 
-Linux：
+本机业务库位于 `demo/.local`。Web 配置、原生历史和设置与旧 SDK 的 `dsh-home` 分开保存。Windows 使用 `%LOCALAPPDATA%\LabWeave\web`，Linux 使用 `${XDG_STATE_HOME:-$HOME/.local/state}/LabWeave/web`，子目录根据本机科研数据路径区分。
 
-~~~bash
-export DEEPSEEK_API_KEY="你的密钥"
-bash start.sh
-~~~
+## 备份与回退
 
-也可使用 Windows 的 `start.ps1` 或 Linux 的 `start.sh`。启动脚本优先使用项目根目录中现有的 `.venv`；首次启动时，Windows 优先通过 Python Launcher 查找 Python 3.12，Linux 优先查找 `python3.12`。启动器自动创建 `.venv` 并安装 `requirements-runtime.txt` 中固定的依赖。之后访问 [本地工作区](http://127.0.0.1:8765)。
+关闭科研工作区后，运行同一启动脚本并传入 `--backup`，会在 `demo/backups` 生成 ZIP。用 `--restore 备份文件名.zip` 可同时恢复项目数据、原生会话、工作区和自动化记录，启动器会先保留回滚备份。原生会话引用绝对工作目录，含原生会话的备份须在原数据目录还原。本机登录凭据和用户模型配置由本机专属配置保管。
 
-密钥可保存在用户本机配置目录：Windows 为 `%LOCALAPPDATA%\LabWeave\deepseek.key`，另支持 `%USERPROFILE%\.labweave\deepseek.key`，以兼容 `%LOCALAPPDATA%` 被应用重定向的情况；Linux 为 `${XDG_CONFIG_HOME:-$HOME/.config}/labweave/deepseek.key`。文件仅填写密钥；这些位置不随项目目录同步或纳入 Git。兼容原有的 `demo/.local/deepseek.key`：读取顺序为非空的 `DEEPSEEK_API_KEY` 环境变量、原有项目密钥文件、本机配置文件，Windows 上最后查找用户目录中的备用文件。若项目目录在同步盘，原有项目密钥文件也可能被同步。仅准备环境可加 --install-only。原有本地工作区首次启动会自动迁移；同源浏览器的旧数据仅在服务器数据库尚未初始化时导入。
-
-## DSH 原生界面隔离预览
-
-预览使用临时 DSH 配置，不替代默认启动入口，不保留预览中的 DSH 设置与会话；连接现有后台时，需要该后台已载入当前代码。插件安装可能较慢，启动时不要关闭窗口。Windows 在项目根目录执行：
-
-~~~powershell
-.\.venv\Scripts\python.exe scripts\start_dsh_preview.py --use-existing-backend --use-configured-model
-~~~
-
-Linux 对应命令为 `./.venv/bin/python scripts/start_dsh_preview.py --use-existing-backend --use-configured-model`。
-
-该命令复用已运行在 `127.0.0.1:8765` 的后台，并使用已配置的本地 DeepSeek 密钥；若后台尚未运行，可去掉 `--use-existing-backend`，由预览启动并管理后台。按 Enter 结束预览，已复用的后台不会由预览停止。该预览尚不能证明所有 DSH 设置、缩放、项目隔离或科研组件已接入，详见 [插件说明](plugins/dsh-labweave-prototype/README.md)。
+迁移期间，`--legacy` 打开原有科研界面及历史 SDK 任务，地址为 [本机回退入口](http://127.0.0.1:8765)。先关闭当前模式，再启动另一模式。此前的临时插件预览脚本仍可用于隔离开发。详细记录见 [DSH 适配路线](docs/DSH前端适配路线.md) 和 [V3 科研闭环](docs/V3科研闭环使用与验收.md)。
 
 ## 既有后端与回退界面的功能
 
@@ -83,7 +66,7 @@ Linux 对应命令为 `./.venv/bin/python scripts/start_dsh_preview.py --use-exi
 
 ## 验证
 
-离线业务回归：
+DSH 原生端到端验收使用 `tests/integration_native_web.py`，添加 `--model` 会用已配置的 DeepSeek 对测试项目发起真实对话。离线业务回归命令如下。
 
 ~~~powershell
 .venv/Scripts/python.exe tests/test_local.py
