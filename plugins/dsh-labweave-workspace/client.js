@@ -3524,6 +3524,14 @@ window.__ModuleLoader__.load({
         return path.reduce((node, key) => (node && typeof node === 'object' ? node[key] : undefined), root)
       }
       const deriveProviderKeyRef = provider => `${String(provider || '').toUpperCase().replace(/[^A-Z0-9]+/g, '_')}_API_KEY`
+      const mutatedNsCache = new Map()
+      const writePathLocal = (root, path, value) => {
+        if (!path?.length) return value
+        const base = root && typeof root === 'object' && !Array.isArray(root) ? { ...root } : {}
+        const [head, ...rest] = path
+        base[head] = writePathLocal(base[head], rest, value)
+        return base
+      }
 
       function ModelOptionsSlot({ locked, dismiss, reportFailure }) {
         useNav()
@@ -3561,6 +3569,16 @@ window.__ModuleLoader__.load({
           const mirror = describe?.getSnapshot?.()
           const views = mirror?.view?.namespaces || []
           const namespaces = new Map(views.map(v => [v.ns, v]))
+          for (const [nsName, cached] of mutatedNsCache.entries()) {
+            const live = namespaces.get(nsName)
+            const liveRev = typeof live?.revision === 'number' ? live.revision : -1
+            const cachedRev = typeof cached?.revision === 'number' ? cached.revision : -1
+            if (!live || cachedRev > liveRev) {
+              if (cached) namespaces.set(nsName, cached)
+            } else {
+              mutatedNsCache.delete(nsName)
+            }
+          }
           let registered = [], declared = []
           if (remoteLlm?.listProviders && remoteLlm?.listConfigurableProviders) {
             try {
@@ -3623,10 +3641,13 @@ window.__ModuleLoader__.load({
 
         React.useEffect(() => {
           void loadMeta()
-          const onUpd = () => { void loadMeta() }
+          const onUpd = () => {
+            void loadMeta()
+            void dir?.load?.().catch(() => {})
+          }
           window.addEventListener('labweave:model-updated', onUpd)
           return () => window.removeEventListener('labweave:model-updated', onUpd)
-        }, [loadMeta])
+        }, [loadMeta, dir])
 
         React.useEffect(() => {
           if (current?.provider && current?.model) lastModelByProvider.set(current.provider, current.model)
@@ -3672,7 +3693,11 @@ window.__ModuleLoader__.load({
             const describe = ctx.configForms.describe()
             await describe.ensure()
             const mirror = describe.getSnapshot()
-            const nsView = mirror?.view?.namespaces?.find(n => n.ns === currentProvMeta.settingsNs)
+            const liveNsView = mirror?.view?.namespaces?.find(n => n.ns === currentProvMeta.settingsNs)
+            const cachedNsView = mutatedNsCache.get(currentProvMeta.settingsNs)
+            const nsView = (cachedNsView && (!liveNsView || (Number(cachedNsView.revision) || 0) > (Number(liveNsView.revision) || 0)))
+              ? cachedNsView
+              : liveNsView
             if (!nsView) throw Error('当前供应商不支持在线改写模型参数。')
             const spath = currentProvMeta.settingsPath || []
             const mpath = [...spath, 'models']
@@ -3726,8 +3751,28 @@ window.__ModuleLoader__.load({
             }
             const res = await remoteSettings.mutate(nsView.ns, ops, nsView.revision)
             if (!res?.ok) throw Error(res?.error?.message || '保存模型参数失败。')
+            const hasFullView = res.value && typeof res.value === 'object' && ('value' in res.value || 'user' in res.value)
+            const patchedView = hasFullView
+              ? { ...nsView, ...res.value, ns: nsView.ns }
+              : {
+                  ...nsView,
+                  revision: typeof res.value?.revision === 'number' ? res.value.revision : ((Number(nsView.revision) || 0) + 1),
+                  value: writePathLocal(nsView.value, mpath, nextList),
+                  user: ops[0]?.path ? writePathLocal(nsView.user, ops[0].path, ops[0].value) : nsView.user,
+                }
+            mutatedNsCache.set(nsView.ns, patchedView)
             await describe.ensure().catch(() => {})
-            await dir?.load?.().catch(() => {})
+            const expectsReasoning = Object.prototype.hasOwnProperty.call(patch, 'reasoningEfforts') ? Boolean(patch.reasoningEfforts) : undefined
+            const expectsCtx = typeof patch.contextWindow === 'number' ? patch.contextWindow : undefined
+            for (let attempt = 0; attempt < 20; attempt++) {
+              await dir?.load?.().catch(() => {})
+              const reloaded = dir?.store?.getSnapshot?.()?.groups
+                ?.find(g => g.id === current.provider)?.models?.find(m => m.id === current.model)
+              const rOk = expectsReasoning === undefined || Boolean(reloaded?.reasoning) === expectsReasoning
+              const cOk = expectsCtx === undefined || reloaded?.contextWindow === expectsCtx
+              if (rOk && cOk) break
+              await new Promise(r => setTimeout(r, 120))
+            }
             await syncModelCatalogAndSessions()
             await loadMeta()
             return true
