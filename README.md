@@ -1,32 +1,51 @@
-# ResearchOS V3.0
+# LabWeave
 
-以科研项目组织聊天、动态、点子、目标和资源的本地工作区。全局聊天、项目助手与定时复盘统一使用 DeepSeek Harness 官方 Python SDK；ResearchOS 管理业务数据，DSH 管理原生会话和执行。
+LabWeave 是以科研项目组织聊天、动态、点子、目标和资源的本地优先科研工作区，由 ResearchOS V3.0 演进而来。产品主线直接基于 DeepSeek Harness（DSH）原生 Web 界面，通过其插件、插槽和已有接口扩展科研能力；LabWeave 管理科研业务和本地数据，DSH 负责原生界面、会话及 Agent 执行。
 
-V3 增加项目级科研状态、经审批的算法实验闭环、可追溯证据网络。选择课题后点击「科研闭环」，即可从研究目标生成计划，执行 Python 对照矩阵，分析稳定性，确认报告并更新项目状态。详见 [V3 使用说明、实现边界与多轮验收](docs/V3科研闭环使用与验收.md)。
+## 产品主线与当前状态
 
-## 安装与启动
+- 直接把 DSH 现有工作区扩展为科研项目区，复用原生聊天、会话、设置、主题和快捷键；不再规划与 DSH 并行的独立产品前端或 Agent 运行时。
+- 顶部新建会话的目标是独立全局助手（默认名 `goat`，可更名）；每个科研项目包含聊天、动态、点子、目标、资源库五项功能。自动化可为全局或指定项目，插件可应用于单个项目或全部项目。
+- 当前默认启动入口仍打开既有自建界面，作为功能迁移期间的回退；它不是未来的产品前端。DSH 原生插件与独立预览已实现初步验证，但全局助手路由、项目及会话映射、项目作用域工具和五项功能仍在接入，不能视为正式产品已完成或 Web 会话已隔离。
+- 不删除既有界面、项目数据或能力；V3 的科研状态、审批、实验闭环及证据网络将逐项接入 DSH。现有回退界面的使用方式及实现边界见 [V3 使用说明、实现边界与多轮验收](docs/V3科研闭环使用与验收.md)，迁移计划见 [DSH 前端适配路线](docs/DSH前端适配路线.md)。
 
-已验证 Python **3.12.6**、DSH SDK/runtime **0.2.2rc2**、模型 **deepseek-flash**。需要 Git；首次安装需要联网。应用不依赖独立安装 Node.js，SDK 自带运行程序。
+## 现有回退入口：安装与启动
+
+既有后端与回退入口已验证 Python **3.12.6**、DSH SDK/runtime **0.2.2rc2**、模型 **deepseek-flash**。需要 Git；首次安装需要联网。此入口不依赖独立安装 Node.js，SDK 自带运行程序。DSH 原生插件预览的安装还需要 `pnpm`。
 
 Windows，在仓库根目录执行：
 
 ~~~powershell
 $env:DEEPSEEK_API_KEY = "你的密钥"
-python scripts/start.py
+.\start.ps1
 ~~~
 
 Linux：
 
 ~~~bash
 export DEEPSEEK_API_KEY="你的密钥"
-python3.12 scripts/start.py
+bash start.sh
 ~~~
 
-也可使用 Windows 的 start.ps1 或 Linux 的 start.sh（默认 python3）。启动器自动创建 .venv 并安装 requirements-runtime.txt 中固定的依赖。之后访问 [本地工作区](http://127.0.0.1:8765)。
+也可使用 Windows 的 `start.ps1` 或 Linux 的 `start.sh`。启动脚本优先使用项目根目录中现有的 `.venv`；首次启动时，Windows 优先通过 Python Launcher 查找 Python 3.12，Linux 优先查找 `python3.12`。启动器自动创建 `.venv` 并安装 `requirements-runtime.txt` 中固定的依赖。之后访问 [本地工作区](http://127.0.0.1:8765)。
 
-密钥也可放在不纳入 Git 的 demo/.local/deepseek.key，环境变量优先。仅准备环境可加 --install-only。原有本地工作区首次启动会自动迁移；同源浏览器的旧数据仅在服务器数据库尚未初始化时导入。
+密钥可保存在用户本机配置目录：Windows 为 `%LOCALAPPDATA%\LabWeave\deepseek.key`，另支持 `%USERPROFILE%\.labweave\deepseek.key`，以兼容 `%LOCALAPPDATA%` 被应用重定向的情况；Linux 为 `${XDG_CONFIG_HOME:-$HOME/.config}/labweave/deepseek.key`。文件仅填写密钥；这些位置不随项目目录同步或纳入 Git。兼容原有的 `demo/.local/deepseek.key`：读取顺序为非空的 `DEEPSEEK_API_KEY` 环境变量、原有项目密钥文件、本机配置文件，Windows 上最后查找用户目录中的备用文件。若项目目录在同步盘，原有项目密钥文件也可能被同步。仅准备环境可加 --install-only。原有本地工作区首次启动会自动迁移；同源浏览器的旧数据仅在服务器数据库尚未初始化时导入。
 
-## 已实现的功能
+## DSH 原生界面隔离预览
+
+预览使用临时 DSH 配置，不替代默认启动入口，不保留预览中的 DSH 设置与会话；连接现有后台时，需要该后台已载入当前代码。插件安装可能较慢，启动时不要关闭窗口。Windows 在项目根目录执行：
+
+~~~powershell
+.\.venv\Scripts\python.exe scripts\start_dsh_preview.py --use-existing-backend --use-configured-model
+~~~
+
+Linux 对应命令为 `./.venv/bin/python scripts/start_dsh_preview.py --use-existing-backend --use-configured-model`。
+
+该命令复用已运行在 `127.0.0.1:8765` 的后台，并使用已配置的本地 DeepSeek 密钥；若后台尚未运行，可去掉 `--use-existing-backend`，由预览启动并管理后台。按 Enter 结束预览，已复用的后台不会由预览停止。该预览尚不能证明所有 DSH 设置、缩放、项目隔离或科研组件已接入，详见 [插件说明](plugins/dsh-labweave-prototype/README.md)。
+
+## 既有后端与回退界面的功能
+
+下列能力来自已有后端与自建回退界面，不代表它们已经迁入 DSH 原生 Web；具体可用范围和验证状态以对应说明为准。
 
 | 模块 | 使用方式与行为 |
 |---|---|

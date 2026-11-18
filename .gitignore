@@ -31,6 +31,7 @@ demo/.local/*.log
 # npm / node
 node_modules/
 npm-debug.log*
+.playwright-cli/
 
 # optional large archives if any
 *.tgz

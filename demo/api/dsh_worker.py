@@ -3,16 +3,31 @@ import json
 import queue
 import sys
 import threading
+import traceback
 from deepseek_harness import DeepSeekHarness
+import mcp_http
 
 OUTPUT_LOCK = threading.Lock()
 RESPONSES = {}
 CONDITION = threading.Condition()
+REDACTIONS = set()
+
+
+def redact(value):
+    if isinstance(value, str):
+        for secret in REDACTIONS:
+            value = value.replace(secret, "[redacted]")
+        return value
+    if isinstance(value, list):
+        return [redact(item) for item in value]
+    if isinstance(value, dict):
+        return {redact(key): redact(item) for key, item in value.items()}
+    return value
 
 
 def emit(kind, **fields):
     with OUTPUT_LOCK:
-        print(json.dumps({"kind": kind, **fields}, ensure_ascii=True), flush=True)
+        print(json.dumps(redact({"kind": kind, **fields}), ensure_ascii=True), flush=True)
 
 
 def read_responses():
@@ -36,12 +51,21 @@ def answer(request_id, stop=None):
 def main():
     request = json.loads(sys.stdin.readline())
     threading.Thread(target=read_responses, daemon=True).start()
+    key = request.get("config", {}).get("api_key")
+    if isinstance(key, str) and key:
+        REDACTIONS.add(key)
 
     def question(value, cancelled):
         emit("question", requestId=value.request_id, questions=value.questions)
         return answer(value.request_id, cancelled)
 
     request["config"].update(approval_requests=True, on_user_question=question)
+    with mcp_http.prepare_windows_config(request["config"], REDACTIONS) as config:
+        request["config"] = config
+        run_request(request)
+
+
+def run_request(request):
     with DeepSeekHarness(**request["config"]) as harness:
         harness.start()
 
@@ -67,4 +91,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        print(redact(traceback.format_exc()), file=sys.stderr, flush=True)
+        raise SystemExit(1)

@@ -1,11 +1,16 @@
-"""ResearchOS tools using the standard MCP stdio transport."""
+"""LabWeave tools using the standard MCP stdio transport."""
 import json
 from pathlib import Path
 import sys
 import workspace
 import project_service
+import naming
 
 TOOLS = {
+    "assistant_name_get": ("Read the global assistant's current display name.", {}),
+    "assistant_rename": ("Change the global assistant's display name when requested in the conversation.", {"name": {"type": "string"}}),
+    "feature_labels": ("Read the five stable research feature IDs and their current names for this conversation scope. A global conversation may optionally specify projectId.", {}),
+    "rename_feature": ("Rename a research feature only in response to the user's conversation. Stable featureId is one of chat, feed, ideas, goals or library. In a project conversation this changes only that project; a global conversation changes the shared default unless projectId is specified.", {"featureId": {"type": "string", "enum": ["chat", "feed", "ideas", "goals", "library"]}, "label": {"type": "string"}}),
     "research_state_get": ("Read confirmed structured research state and pending proposals before planning.", {}),
     "research_state_propose": ("Propose research state changes for human confirmation; never overwrite confirmed state.", {key: {"type": "string"} for key in ("question", "stage", "hypotheses", "blockers", "nextAction", "decisions", "reason")}),
     "evidence_search": ("Search project hypotheses, experiments, conclusions and linked evidence, including source integrity.", {"query": {"type": "string"}}),
@@ -39,38 +44,76 @@ TOOLS = {
 }
 
 
+def dispatch(request, scope, *, protocol_version="2024-11-05"):
+    """Handle one MCP request with the server's fixed project scope."""
+    if "id" not in request:
+        return None
+    try:
+        method = request.get("method")
+        if method == "initialize":
+            result = {"protocolVersion": protocol_version, "capabilities": {"tools": {}},
+                      "serverInfo": {"name": "researchos", "version": "2.0.0"}}
+        elif method == "tools/list":
+            result = {"tools": [{"name": name, "description": description,
+                                "inputSchema": {"type": "object", "properties": {**schema, "projectId": {"type": "string"}}, "additionalProperties": False}}
+                               for name, (description, schema) in TOOLS.items()]}
+        elif method == "tools/call":
+            params = request.get("params", {})
+            try:
+                name = params.get("name")
+                if not isinstance(name, str) or name not in TOOLS:
+                    raise workspace.WorkspaceError(404, "未公开此工具。")
+                arguments = params.get("arguments", {})
+                if (scope != "global" and isinstance(arguments, dict)
+                        and arguments.get("projectId") not in (None, scope)):
+                    raise workspace.WorkspaceError(403, "不能访问其他项目。")
+                if not isinstance(arguments, dict):
+                    raise workspace.WorkspaceError(400, "工具参数必须是对象。")
+                if name in ("assistant_name_get", "assistant_rename"):
+                    # Only an existing project conversation or the explicit global
+                    # conversation may change/read this shared assistant setting.
+                    if scope != "global":
+                        project_service.project(workspace.snapshot(), scope)
+                    store = naming.NamingStore()
+                    value = {"name": store.assistant_name() if name == "assistant_name_get"
+                             else store.rename_assistant(arguments.get("name"))}
+                elif name in ("feature_labels", "rename_feature"):
+                    # The caller scope is bound when this MCP server is started,
+                    # never accepted from tool arguments or the generic HTTP API.
+                    target = arguments.get("projectId")
+                    if scope == "global" and target == "global":
+                        target = None
+                    store = naming.NamingStore()
+                    if name == "feature_labels":
+                        value = store.feature_labels(scope, project_id=target)
+                    else:
+                        value = store.rename_feature_from_conversation(
+                            scope, arguments.get("featureId"), arguments.get("label"), project_id=target)
+                else:
+                    value = project_service.call(name, arguments, scope)
+                result = {"content": [{"type": "text", "text": json.dumps(value, ensure_ascii=False)}]}
+            except Exception as exc:
+                result = {"isError": True, "content": [{"type": "text", "text": str(exc)}]}
+        elif method == "ping":
+            result = {}
+        else:
+            return {"jsonrpc": "2.0", "id": request["id"], "error": {"code": -32601, "message": "Unsupported method"}}
+        return {"jsonrpc": "2.0", "id": request["id"], "result": result}
+    except Exception as exc:
+        return {"jsonrpc": "2.0", "id": request.get("id"), "error": {"code": -32603, "message": str(exc)}}
+
+
 def main():
     workspace.DATA = Path(sys.argv[1])
     scope = sys.argv[2]
     for line in sys.stdin:
-        request = {}
         try:
             request = json.loads(line)
-            method = request.get("method")
-            if "id" not in request:
-                continue
-            if method == "initialize":
-                result = {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}},
-                          "serverInfo": {"name": "researchos", "version": "2.0.0"}}
-            elif method == "tools/list":
-                result = {"tools": [{"name": name, "description": description,
-                                    "inputSchema": {"type": "object", "properties": {**schema, "projectId": {"type": "string"}}, "additionalProperties": False}}
-                                   for name, (description, schema) in TOOLS.items()]}
-            elif method == "tools/call":
-                params = request.get("params", {})
-                try:
-                    value = project_service.call(params["name"], params.get("arguments", {}), scope)
-                    result = {"content": [{"type": "text", "text": json.dumps(value, ensure_ascii=False)}]}
-                except Exception as exc:
-                    result = {"isError": True, "content": [{"type": "text", "text": str(exc)}]}
-            elif method == "ping":
-                result = {}
-            else:
-                raise ValueError("Unsupported method")
-            response = {"jsonrpc": "2.0", "id": request["id"], "result": result}
+            response = dispatch(request, scope)
         except Exception as exc:
-            response = {"jsonrpc": "2.0", "id": request.get("id"), "error": {"code": -32603, "message": str(exc)}}
-        print(json.dumps(response, ensure_ascii=True), flush=True)
+            response = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": str(exc)}}
+        if response is not None:
+            print(json.dumps(response, ensure_ascii=True), flush=True)
 
 
 if __name__ == "__main__":

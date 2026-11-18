@@ -1,5 +1,7 @@
 # ResearchOS ↔ DeepSeek Harness bridge (first cut)
 
+> Historical note: the project is now named LabWeave. This describes the original bridge, retained for compatibility.
+
 ## What’s running
 
 | Process | Port | Role |

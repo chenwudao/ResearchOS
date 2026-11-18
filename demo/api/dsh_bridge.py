@@ -1,4 +1,4 @@
-"""ResearchOS → DeepSeek Harness (dsh web) bridge helpers.
+"""LabWeave → DeepSeek Harness (dsh web) bridge helpers.
 
 Auth model (DSH):
   - Each `dsh web` process prints a one-shot-per-process launch URL:
@@ -172,7 +172,7 @@ def public_status() -> dict[str, Any]:
             "bridge_state": str(BRIDGE_PATH.relative_to(ROOT)),
         },
         "how_to": [
-            "Keep `dsh web` on :3080 (jerry). Keep ResearchOS on :8765.",
+            "Keep `dsh web` on :3080 (jerry). Keep LabWeave on :8765.",
             "If open fails with auth required, paste the printed `dsh web: http://127.0.0.1:3080/?token=...` into POST /api/dsh/launch-url.",
             "Click DSH in the shell (or GET /api/dsh/open) once so THIS browser receives the DSH cookie.",
             "Model replies still need a DeepSeek API key inside DSH Settings → Models.",

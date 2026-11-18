@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Research Companion</title>
+  <title>LabWeave</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -529,10 +529,10 @@
   <div class="app">
     <aside class="rail">
       <div class="rail-head">
-        <img src="avatar.png" id="sidebar-avatar" alt="Research Companion" />
+        <img src="avatar.png" id="sidebar-avatar" alt="LabWeave 助理头像" />
         <div class="titles">
-          <strong>Research Companion</strong>
-          <span>Research Companion</span>
+          <strong>LabWeave</strong>
+          <span>科研工作空间</span>
         </div>
       </div>
       <div class="rail-scroll">
@@ -717,7 +717,7 @@
   <div class="settings-backdrop" id="modal-agent">
     <div class="settings-panel" role="dialog" aria-labelledby="agent-title">
       <h3 id="agent-title">助理配置</h3>
-      <p class="sub">设定 Research Companion 的人设与要求，保存在本机。</p>
+      <p class="sub">设定 LabWeave 助理的人设与要求，保存在本机。</p>
       <label for="agent-persona">人设</label>
       <input type="text" id="agent-persona" placeholder="例如：严谨、简洁的科研搭档" />
       <label for="agent-instructions">要求 / 指令</label>
@@ -813,7 +813,7 @@
       const r = await fetch('/api/workspace/status');
       const j = await r.json();
       if (!label) return j;
-      label.textContent = j.configured ? '执行已就绪' : '未配置模型';
+      label.textContent = j.configured ? '密钥已配置' : '未配置模型';
       return j;
     } catch (e) {
       if (label) label.textContent = '不可达';
@@ -1048,7 +1048,7 @@
   async function checkHealth() {
     try {
       const status = await workspaceApi('status');
-      modelStatus = status.configured ? 'DeepSeek V4.1 Flash' : '未配置 DeepSeek API 密钥';
+      modelStatus = status.configured ? (status.model || '已配置模型') : '未配置 DeepSeek API 密钥';
     } catch (_) {
       modelStatus = '本地服务未连接';
     }
@@ -1137,7 +1137,7 @@
       if (state.ui.view === 'main') {
         welcome.innerHTML =
           '<img src="' + assistantAvatar() + '" alt="" />' +
-          '<h2>你好，我是 Research Companion</h2>' +
+          '<h2>你好，我是 LabWeave</h2>' +
           '<p>告诉我你正在研究什么，或想一起推进的问题。</p>';
       } else {
         welcome.innerHTML =
@@ -1153,7 +1153,7 @@
       const av = m.role === 'user'
         ? '<div class="av user-av">你</div>'
         : '<img class="av" src="' + assistantAvatar() + '" alt="" />';
-      let body = '<div class="who">' + (m.role === 'user' ? '你' : 'Research Companion') +
+      let body = '<div class="who">' + (m.role === 'user' ? '你' : 'LabWeave') +
         ' · ' + fmtTime(m.ts) + '</div><p>' + escapeHtml(m.text) + '</p>';
       if (m.card && !m.card.workspaceActions) {
         body += '<div class="card"><h4>' + escapeHtml(m.card.title || '结果') + '</h4>';

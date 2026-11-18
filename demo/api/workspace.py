@@ -1,4 +1,4 @@
-"""Local workspace persistence and integrations for the ResearchOS interface."""
+"""Local workspace persistence and integrations for the LabWeave interface."""
 
 from contextlib import closing
 from datetime import date, timedelta
@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+import sys
 from subprocess import CalledProcessError
 from threading import Lock
 import venv
@@ -81,18 +82,37 @@ def text(value, limit):
     return value.strip()[:limit] if isinstance(value, str) else ""
 
 
+def local_key_path():
+    if sys.platform == "win32":
+        root = os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local"
+        return Path(root) / "LabWeave" / "deepseek.key"
+    root = os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config"
+    return Path(root) / "labweave" / "deepseek.key"
+
+
+def local_key_paths():
+    paths = [local_key_path()]
+    if sys.platform == "win32":
+        paths.append(Path.home() / ".labweave" / "deepseek.key")
+    return paths
+
+
 def deepseek_key():
     key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
     if key:
         return key
-    try:
-        return (DATA / "deepseek.key").read_text(encoding="utf-8").strip()
-    except FileNotFoundError:
-        return ""
+    for path in (DATA / "deepseek.key", *local_key_paths()):
+        try:
+            key = path.read_text(encoding="utf-8").strip()
+        except FileNotFoundError:
+            continue
+        if key:
+            return key
+    return ""
 
 
 def fetch_source(url):
-    request = Request(url, headers={"User-Agent": "ResearchOS/1.0"})
+    request = Request(url, headers={"User-Agent": "LabWeave/1.0"})
     with urlopen(request, timeout=12) as response:
         return response.read(2_000_000)
 

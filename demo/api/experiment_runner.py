@@ -86,8 +86,10 @@ def run_cell(project, workflow_id, run_id, event, deadline):
         try:
             if flows.manifest(project, plan) != flow['approval']['inputs']:
                 raise ValueError('批准后代码或数据发生变化。')
+            base_python = getattr(sys, '_base_executable', '')
+            worker_python = base_python if base_python and Path(base_python).exists() else sys.executable
             with (directory / 'stdout.log').open('wb') as stdout, (directory / 'stderr.log').open('wb') as stderr:
-                process = subprocess.Popen([sys.executable, str(Path(__file__).with_name('experiment_worker.py'))],
+                process = subprocess.Popen([worker_python, '-S', str(Path(__file__).with_name('experiment_worker.py'))],
                     stdin=subprocess.PIPE, stdout=stdout, stderr=stderr,
                     creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
                     start_new_session=os.name != 'nt')

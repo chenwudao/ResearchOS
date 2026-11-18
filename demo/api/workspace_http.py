@@ -13,10 +13,12 @@ import tasks
 import project_service
 import backup
 import research_api
+import naming
 
 
 POST = {
     **research_api.POST,
+    "assistant/name": lambda data: {"name": naming.NamingStore().rename_assistant(data.get("name"))},
     "state": workspace.save,
     "resource/upload": project_service.upload,
     "resource/clone": project_service.clone,
@@ -61,6 +63,8 @@ def serve(handler, method, path):
         if origin and urlsplit(origin).netloc != host:
             raise workspace.WorkspaceError(403, "仅允许同源访问。")
         if method == "GET":
+            if name == "assistant/name":
+                return handler._json(200, {"name": naming.NamingStore().assistant_name()})
             report = re.fullmatch(r'research/file/([A-Za-z0-9_-]+)/([a-f0-9]{32})/(report\.md|runs\.csv|analysis\.json|protocol\.json)', name)
             if report:
                 flow = research_api.flows.get(report[1], report[2])

@@ -10,7 +10,7 @@ description: >-
 Use when the user has an interest area but no locked research agenda, or when
 `project-gap-audit` shows missing goal clarity.
 
-## Defaults (ResearchOS)
+## Defaults (LabWeave)
 
 - **Seed paper:** optional. If the user pastes a DOI/title, anchor cards to that
   neighborhood; otherwise cold-start from interest + constraints. Never block

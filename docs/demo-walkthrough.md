@@ -1,5 +1,7 @@
 # ResearchOS demo walkthrough (P0 sample)
 
+> Historical note: the project is now named LabWeave. This walkthrough records the earlier P0 demo and its fallback UI, not the current product plan. See the [DSH native integration plan](DSH前端适配路线.md).
+
 - Date: 2026-10-23
 - Mode: **sample** (returns structured fixtures + writes artifacts; not live OpenAlex yet)
 

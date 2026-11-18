@@ -1,4 +1,4 @@
-"""Verify the pinned DSH SDK before integrating ResearchOS task execution."""
+"""Verify the pinned DSH SDK before integrating LabWeave task execution."""
 from pathlib import Path
 import json
 import sys

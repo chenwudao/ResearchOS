@@ -1,4 +1,6 @@
-# ResearchOS 项目介绍与功能说明
+# LabWeave 项目介绍与功能说明（ResearchOS V2.0 历史版本）
+
+> 历史版本说明：项目现名 LabWeave；本文保留 ResearchOS V2.0 的名称和对应版本记录。
 
 编写日期：2026 年 11 月 16 日
 

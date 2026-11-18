@@ -1,7 +1,7 @@
 ---
 name: module-spec
 description: >-
-  Turn one ResearchOS module (Radar, ReproBox, Debugger, LabLens, or Replay)
+  Turn one LabWeave module (Radar, ReproBox, Debugger, LabLens, or Replay)
   into an implementable spec: interfaces, dependencies, I/O, and acceptance.
 ---
 

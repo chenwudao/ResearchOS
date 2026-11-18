@@ -27,7 +27,7 @@ def main():
         subprocess.run([str(python), "-m", "pip", "install", "-r", str(requirements)], check=True)
         stamp.write_text(digest)
     if not args.install_only:
-        print("ResearchOS: http://127.0.0.1:8765", flush=True)
+        print("LabWeave: http://127.0.0.1:8765", flush=True)
         try:
             subprocess.run([str(python), str(ROOT / "demo/api/main.py")], cwd=ROOT, check=True)
         except KeyboardInterrupt:

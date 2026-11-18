@@ -1,4 +1,4 @@
-"""ResearchOS demo backend — port 8765 (jerry owns listener; jaden owns /api/skills/run/*)."""
+"""LabWeave demo backend — port 8765 (jerry owns listener; jaden owns /api/skills/run/*)."""
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from datetime import datetime
@@ -172,7 +172,7 @@ def sample_direction_framing(interest: str = ""):
                 "success": "One baseline re-run with logged config",
             },
         ],
-        "decision_prompt": "Pick A/B/C or merge; ResearchOS default recommendation is A.",
+        "decision_prompt": "Pick A/B/C or merge; LabWeave default recommendation is A.",
         "defaults": {
             "seed_paper": "optional",
             "foundational_rule": "survey + method origin; citations secondary",
@@ -467,7 +467,7 @@ def append_run_log(skill: str, input_summary: str, artifact_path: str):
     ensure_output()
     log = OUTPUT / "run-log.md"
     if not log.exists():
-        log.write_text("# ResearchOS run log\n\n", encoding="utf-8")
+        log.write_text("# LabWeave run log\n\n", encoding="utf-8")
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with log.open("a", encoding="utf-8") as f:
         f.write(f"- {ts} · `{skill}` · {input_summary} · artifact: `{artifact_path}`\n")
@@ -573,7 +573,7 @@ class Handler(SimpleHTTPRequestHandler):
                 200,
                 {
                     "ok": True,
-                    "service": "ResearchOS demo",
+                    "service": "LabWeave demo",
                     "port": PORT,
                     "skills_router": "jaden",
                     "p0_chain": "/api/skills/run/p0-chain",
@@ -810,7 +810,7 @@ class Handler(SimpleHTTPRequestHandler):
 if __name__ == "__main__":
     import research_workflows
     httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    print(f"ResearchOS on http://127.0.0.1:{PORT}")
+    print(f"LabWeave on http://127.0.0.1:{PORT}")
     tasks.recover()
     research_workflows.recover()
     stop_automation = automation.start()

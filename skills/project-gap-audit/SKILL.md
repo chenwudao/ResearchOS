@@ -1,7 +1,7 @@
 ---
 name: project-gap-audit
 description: >-
-  Compare ResearchOS / Research Companion opening-report goals against current
+  Compare LabWeave's opening-report goals (originally ResearchOS) against current
   modules and skills; output prioritized gaps with owners and next actions.
 ---
 

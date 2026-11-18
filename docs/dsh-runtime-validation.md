@@ -1,5 +1,7 @@
 # ResearchOS V2.0 功能验收
 
+> 历史版本说明：项目现名 LabWeave；本文记录更名前的 V2.0 验收，所述自建前端只作为迁移回退。当前产品路线以 [DSH 原生前端适配路线](DSH前端适配路线.md) 为准。
+
 验收日期：2026-11-12。依据原始《research agent后续完善计划》和 [后续 V2.0 方案](https://chatgpt.com/s/t_6af55c4763688191bbe7aad84c8a52df)。
 
 ## 实现对照
