@@ -1,5 +1,7 @@
 # ResearchOS product narrative
 
+> Historical note: the project is now named LabWeave. This document preserves the 2026 demo narrative.
+
 - Updated: 2026-10-24
 - Audience: course review / demo visitors
 

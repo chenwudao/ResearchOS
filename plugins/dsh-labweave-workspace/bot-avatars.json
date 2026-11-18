@@ -1,0 +1,602 @@
+[
+  {
+    "name": "经典",
+    "items": [
+      {
+        "id": "✦",
+        "label": "星光"
+      },
+      {
+        "id": "◎",
+        "label": "圆心"
+      },
+      {
+        "id": "△",
+        "label": "三角"
+      },
+      {
+        "id": "◇",
+        "label": "菱形"
+      },
+      {
+        "id": "✚",
+        "label": "十字"
+      },
+      {
+        "id": "☷",
+        "label": "条纹"
+      },
+      {
+        "id": "⚑",
+        "label": "旗帜"
+      },
+      {
+        "id": "⌘",
+        "label": "命令"
+      },
+      {
+        "id": "Σ",
+        "label": "求和"
+      },
+      {
+        "id": "λ",
+        "label": "拉姆达"
+      },
+      {
+        "id": "∞",
+        "label": "无穷"
+      },
+      {
+        "id": "✎",
+        "label": "铅笔"
+      }
+    ]
+  },
+  {
+    "name": "科研",
+    "items": [
+      {
+        "id": "lucide:microscope",
+        "label": "显微镜 生物"
+      },
+      {
+        "id": "lucide:flask-conical",
+        "label": "锥形瓶 化学"
+      },
+      {
+        "id": "lucide:flask-round",
+        "label": "圆底烧瓶"
+      },
+      {
+        "id": "lucide:test-tube",
+        "label": "试管 实验"
+      },
+      {
+        "id": "lucide:test-tubes",
+        "label": "试管组"
+      },
+      {
+        "id": "lucide:atom",
+        "label": "原子 物理"
+      },
+      {
+        "id": "lucide:dna",
+        "label": "遗传 DNA"
+      },
+      {
+        "id": "lucide:orbit",
+        "label": "轨道 天文"
+      },
+      {
+        "id": "lucide:telescope",
+        "label": "望远镜 天文"
+      },
+      {
+        "id": "lucide:magnet",
+        "label": "磁铁 物理"
+      },
+      {
+        "id": "lucide:radiation",
+        "label": "辐射"
+      },
+      {
+        "id": "lucide:scan-line",
+        "label": "扫描"
+      },
+      {
+        "id": "lucide:lightbulb",
+        "label": "灵感 点子"
+      },
+      {
+        "id": "lucide:brain",
+        "label": "大脑 认知"
+      },
+      {
+        "id": "lucide:focus",
+        "label": "聚焦"
+      },
+      {
+        "id": "lucide:target",
+        "label": "靶心 目标"
+      }
+    ]
+  },
+  {
+    "name": "数据",
+    "items": [
+      {
+        "id": "lucide:chart-line",
+        "label": "折线图 趋势"
+      },
+      {
+        "id": "lucide:chart-bar",
+        "label": "柱状图 统计"
+      },
+      {
+        "id": "lucide:chart-pie",
+        "label": "饼图 占比"
+      },
+      {
+        "id": "lucide:chart-scatter",
+        "label": "散点图 分析"
+      },
+      {
+        "id": "lucide:chart-area",
+        "label": "面积图"
+      },
+      {
+        "id": "lucide:chart-network",
+        "label": "关系图"
+      },
+      {
+        "id": "lucide:table",
+        "label": "表格"
+      },
+      {
+        "id": "lucide:database",
+        "label": "数据库"
+      },
+      {
+        "id": "lucide:filter",
+        "label": "筛选"
+      },
+      {
+        "id": "lucide:calculator",
+        "label": "计算器 统计"
+      },
+      {
+        "id": "lucide:sigma",
+        "label": "求和 数学"
+      },
+      {
+        "id": "lucide:variable",
+        "label": "变量"
+      },
+      {
+        "id": "lucide:percent",
+        "label": "百分比"
+      },
+      {
+        "id": "lucide:scale",
+        "label": "衡量"
+      },
+      {
+        "id": "lucide:activity",
+        "label": "波形"
+      },
+      {
+        "id": "lucide:workflow",
+        "label": "工作流"
+      }
+    ]
+  },
+  {
+    "name": "文献",
+    "items": [
+      {
+        "id": "lucide:book-open",
+        "label": "阅读 论文"
+      },
+      {
+        "id": "lucide:book-marked",
+        "label": "书签笔记"
+      },
+      {
+        "id": "lucide:library",
+        "label": "图书馆"
+      },
+      {
+        "id": "lucide:notebook",
+        "label": "笔记本"
+      },
+      {
+        "id": "lucide:file-text",
+        "label": "文档"
+      },
+      {
+        "id": "lucide:file-search",
+        "label": "检索文档 搜索"
+      },
+      {
+        "id": "lucide:files",
+        "label": "文件集"
+      },
+      {
+        "id": "lucide:folder-open",
+        "label": "文件夹"
+      },
+      {
+        "id": "lucide:quote",
+        "label": "引用 证据"
+      },
+      {
+        "id": "lucide:bookmark",
+        "label": "收藏"
+      },
+      {
+        "id": "lucide:highlighter",
+        "label": "标记"
+      },
+      {
+        "id": "lucide:pen-line",
+        "label": "书写"
+      },
+      {
+        "id": "lucide:feather",
+        "label": "羽毛笔"
+      },
+      {
+        "id": "lucide:link",
+        "label": "链接"
+      },
+      {
+        "id": "lucide:archive",
+        "label": "归档"
+      },
+      {
+        "id": "lucide:newspaper",
+        "label": "报刊 资讯"
+      }
+    ]
+  },
+  {
+    "name": "开发",
+    "items": [
+      {
+        "id": "lucide:code",
+        "label": "代码"
+      },
+      {
+        "id": "lucide:terminal",
+        "label": "终端"
+      },
+      {
+        "id": "lucide:git-branch",
+        "label": "分支"
+      },
+      {
+        "id": "lucide:git-commit-horizontal",
+        "label": "提交"
+      },
+      {
+        "id": "lucide:git-merge",
+        "label": "合并"
+      },
+      {
+        "id": "lucide:github",
+        "label": "代码仓库"
+      },
+      {
+        "id": "lucide:braces",
+        "label": "大括号"
+      },
+      {
+        "id": "lucide:binary",
+        "label": "二进制"
+      },
+      {
+        "id": "lucide:cpu",
+        "label": "芯片"
+      },
+      {
+        "id": "lucide:circuit-board",
+        "label": "电路板"
+      },
+      {
+        "id": "lucide:server",
+        "label": "服务器"
+      },
+      {
+        "id": "lucide:network",
+        "label": "网络"
+      },
+      {
+        "id": "lucide:bug",
+        "label": "调试"
+      },
+      {
+        "id": "lucide:puzzle",
+        "label": "插件"
+      },
+      {
+        "id": "lucide:bot",
+        "label": "机器人"
+      },
+      {
+        "id": "lucide:blocks",
+        "label": "模块"
+      }
+    ]
+  },
+  {
+    "name": "任务",
+    "items": [
+      {
+        "id": "lucide:list-checks",
+        "label": "清单"
+      },
+      {
+        "id": "lucide:circle-check",
+        "label": "核对 检查"
+      },
+      {
+        "id": "lucide:shield-check",
+        "label": "审核 证据"
+      },
+      {
+        "id": "lucide:clipboard-list",
+        "label": "任务列表"
+      },
+      {
+        "id": "lucide:calendar",
+        "label": "日历"
+      },
+      {
+        "id": "lucide:clock",
+        "label": "时间"
+      },
+      {
+        "id": "lucide:timer",
+        "label": "计时器"
+      },
+      {
+        "id": "lucide:bell",
+        "label": "提醒"
+      },
+      {
+        "id": "lucide:flag",
+        "label": "旗帜 目标"
+      },
+      {
+        "id": "lucide:milestone",
+        "label": "里程碑"
+      },
+      {
+        "id": "lucide:repeat",
+        "label": "循环"
+      },
+      {
+        "id": "lucide:history",
+        "label": "历史"
+      },
+      {
+        "id": "lucide:search",
+        "label": "搜索"
+      },
+      {
+        "id": "lucide:sparkles",
+        "label": "灵感"
+      },
+      {
+        "id": "lucide:compass",
+        "label": "指南针"
+      },
+      {
+        "id": "lucide:route",
+        "label": "路线"
+      }
+    ]
+  },
+  {
+    "name": "生活",
+    "items": [
+      {
+        "id": "lucide:sun",
+        "label": "太阳"
+      },
+      {
+        "id": "lucide:moon",
+        "label": "月亮"
+      },
+      {
+        "id": "lucide:cloud",
+        "label": "云"
+      },
+      {
+        "id": "lucide:leaf",
+        "label": "叶子"
+      },
+      {
+        "id": "lucide:flower",
+        "label": "花"
+      },
+      {
+        "id": "lucide:tree-pine",
+        "label": "松树"
+      },
+      {
+        "id": "lucide:mountain",
+        "label": "山"
+      },
+      {
+        "id": "lucide:globe",
+        "label": "地球"
+      },
+      {
+        "id": "lucide:heart",
+        "label": "爱心"
+      },
+      {
+        "id": "lucide:coffee",
+        "label": "咖啡"
+      },
+      {
+        "id": "lucide:music",
+        "label": "音乐"
+      },
+      {
+        "id": "lucide:camera",
+        "label": "相机"
+      },
+      {
+        "id": "lucide:paintbrush",
+        "label": "绘画"
+      },
+      {
+        "id": "lucide:bike",
+        "label": "骑行"
+      },
+      {
+        "id": "lucide:plane",
+        "label": "旅行"
+      },
+      {
+        "id": "lucide:house",
+        "label": "家庭"
+      }
+    ]
+  },
+  {
+    "name": "Emoji",
+    "items": [
+      {
+        "id": "🧪",
+        "label": "试管 化学"
+      },
+      {
+        "id": "🔬",
+        "label": "显微镜 科研"
+      },
+      {
+        "id": "🧬",
+        "label": "遗传 生物"
+      },
+      {
+        "id": "🔭",
+        "label": "望远镜"
+      },
+      {
+        "id": "🧠",
+        "label": "大脑"
+      },
+      {
+        "id": "💡",
+        "label": "灵感"
+      },
+      {
+        "id": "🧮",
+        "label": "计算"
+      },
+      {
+        "id": "📊",
+        "label": "统计"
+      },
+      {
+        "id": "📈",
+        "label": "趋势"
+      },
+      {
+        "id": "📚",
+        "label": "书籍"
+      },
+      {
+        "id": "📖",
+        "label": "阅读"
+      },
+      {
+        "id": "🔖",
+        "label": "书签"
+      },
+      {
+        "id": "🗂️",
+        "label": "文件"
+      },
+      {
+        "id": "📝",
+        "label": "笔记"
+      },
+      {
+        "id": "🔎",
+        "label": "搜索"
+      },
+      {
+        "id": "🧩",
+        "label": "插件"
+      },
+      {
+        "id": "🤖",
+        "label": "机器人"
+      },
+      {
+        "id": "💻",
+        "label": "电脑"
+      },
+      {
+        "id": "⚙️",
+        "label": "设置"
+      },
+      {
+        "id": "🛠️",
+        "label": "工具"
+      },
+      {
+        "id": "📅",
+        "label": "日程"
+      },
+      {
+        "id": "⏱️",
+        "label": "计时"
+      },
+      {
+        "id": "✅",
+        "label": "检查"
+      },
+      {
+        "id": "🎯",
+        "label": "目标"
+      },
+      {
+        "id": "🌱",
+        "label": "种子"
+      },
+      {
+        "id": "🌿",
+        "label": "植物"
+      },
+      {
+        "id": "🌍",
+        "label": "地球"
+      },
+      {
+        "id": "🚀",
+        "label": "火箭"
+      },
+      {
+        "id": "🛰️",
+        "label": "卫星"
+      },
+      {
+        "id": "☕",
+        "label": "咖啡"
+      },
+      {
+        "id": "🎨",
+        "label": "绘画"
+      },
+      {
+        "id": "🎵",
+        "label": "音乐"
+      }
+    ]
+  }
+]

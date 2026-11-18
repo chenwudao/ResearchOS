@@ -1,5 +1,7 @@
 # UI direction: Muse → Research companion
 
+> Historical interaction research for the earlier demo. Current implementation builds on the DSH native Web client; see [the DSH integration plan](DSH前端适配路线.md). This note is not a plan for a separate frontend.
+
 - Date: 2026-10-24
 - Meta **Muse** (https://ai.meta.com/muse/) is **not open source**.
 - Closest open interaction model: [OpenMuse](https://github.com/CopilotKit/openmuse) (chat + activity/plan + rich cards + agent computer). Other canvas IDEs (Cate/OpenUI) are coding-agent mission control — different job.

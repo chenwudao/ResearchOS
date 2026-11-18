@@ -7,7 +7,7 @@ description: >-
 
 # Pilot evaluation design
 
-Use when turning the Research Companion / ResearchOS proposal into a runnable
+Use when turning the LabWeave proposal (originally ResearchOS) into a runnable
 pilot (开题报告 slide 09), or when the team needs comparable evidence that the
 agent beats ad-hoc chat and fully manual work.
 
