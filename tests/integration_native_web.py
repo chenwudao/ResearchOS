@@ -25,7 +25,9 @@ def _mcp(scope, name, arguments):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", action="store_true", help="Also send a synthetic project tool request to DeepSeek")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--model", action="store_true", help="Also send a synthetic project tool request to DeepSeek")
+    mode.add_argument("--rightbar-only", action="store_true", help="Check the project chat tool panels without a model")
     args = parser.parse_args()
     previous = launcher.workspace.DATA
     try:
@@ -37,8 +39,11 @@ def main():
                 pdf.add_blank_page(width=400, height=600)
             pdf.write(root / "fixture.pdf")
             with launcher.native_services(0, home=root / "home", configured=args.model, background=False) as (url, _):
-                subprocess.run(["node", str(ROOT / "tests/integration_native_web.cjs"), "initial", str(root),
+                phase = "rightbar" if args.rightbar_only else "initial"
+                subprocess.run(["node", str(ROOT / "tests/integration_native_web.cjs"), phase, str(root),
                                 "model" if args.model else "offline"], input=url, text=True, check=True, timeout=300)
+            if args.rightbar_only:
+                return
             # Apply MCP feature lifecycle (create, push, rename, delete) to Research Alpha before restart.
             proof = json.loads((root / "session-proof.json").read_text(encoding="utf-8"))
             alpha_scope = proof["projectA"]

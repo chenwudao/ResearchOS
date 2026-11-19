@@ -375,7 +375,7 @@ def publish(item):
                         "id": "sb_run_" + identity,
                         "category": "实验记录",
                         "kind": "note",
-                        "text": item["title"] + " · " + item["status"] + " · " + item["environment"],
+                        "text": item["title"] + "，" + item["status"] + "，" + item["environment"],
                     }
                 )
 
@@ -523,15 +523,20 @@ def dialog_delivery(scope, session, identity=None, file=None):
     return receipts
 
 
-def artifact(project, identity, name):
-    with closing(database()) as db:
-        item = get(db, project, identity)
+def artifact_path(project, item, name):
     if not any(f["name"] == name for f in item["artifacts"]):
         raise workspace.WorkspaceError(404, "未登记此产物。")
-    output = run_dir(project, identity) / "output"
+    output = run_dir(project, item["id"]) / "output"
     file = output / name
     if not file.resolve().is_relative_to(output.resolve()) or file.is_symlink() or not file.is_file():
         raise workspace.WorkspaceError(404, "产物已移动。")
+    return file
+
+
+def artifact(project, identity, name):
+    with closing(database()) as db:
+        item = get(db, project, identity)
+    file = artifact_path(project, item, name)
     if file.suffix.lower() not in (".txt", ".md", ".csv", ".json", ".py", ".tsv", ".log", ".yaml", ".yml"):
         return {
             "name": name,

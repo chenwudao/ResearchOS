@@ -30,7 +30,7 @@ Export BibTeX/CSV-friendly rows for `evidence-ledger`.
 
 ## Steps
 
-1. Resolve seeds to stable IDs (demo may use curated samples).
+1. Resolve seeds to stable IDs.
 2. Expand prior / derivative / similar via open APIs when available.
 3. Deduplicate; attach relation labels.
 4. Write artifact + run-log; pass set to `foundational-frontier-split`.
@@ -47,5 +47,5 @@ Export BibTeX/CSV-friendly rows for `evidence-ledger`.
 | ID | Scenario | Expected |
 |----|----------|----------|
 | SN-1 | One seed DOI | Non-empty prior and derivative (or justified empty) |
-| SN-2 | RQ only, no seed | Returns search hints + asks for a seed, or limited sample with `mode: sample` |
+| SN-2 | RQ only, no seed | Returns search hints and asks for a seed |
 | SN-3 | Duplicate aliases | Single merged node |

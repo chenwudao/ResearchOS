@@ -144,12 +144,13 @@ def validate(project, plan):
     return plan
 
 
-def draft(project, args):
+def draft(project, args, *, source=None):
     ledger.check_project(project)
     plan = validate(project, args.get('plan'))
     with LOCK, closing(ledger.database()) as db, db:
         db.execute('BEGIN IMMEDIATE')
         identity = args.get('id')
+        old = {}
         if identity:
             row = db.execute('SELECT body,revision FROM research_workflows WHERE id=? AND project=?', (identity, project)).fetchone()
             if not row:
@@ -161,12 +162,14 @@ def draft(project, args):
         else:
             revision = 0
         parent = args.get('parentId')
-        if parent:
-            get(project, parent)
+        parent_flow = get(project, parent) if parent else {}
+        source = old.get('source') or parent_flow.get('source') or source
         value = {'id': identity or uuid4().hex, 'projectId': project, 'revision': revision,
                  'plan': plan, 'status': 'DRAFT', 'parentId': parent, 'created': projects.timestamp(),
                  'steps': [{'id': key, 'title': title, 'dependsOn': deps, 'status': 'PENDING'} for key, title, deps in STEPS],
                  'runs': [], 'approval': None, 'elapsedSeconds': 0, 'error': ''}
+        if source:
+            value['source'] = source
         return write(value, db)
 
 

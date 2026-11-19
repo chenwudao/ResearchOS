@@ -8,12 +8,14 @@ import sqlite3
 import threading
 
 import assistant_profile
+import bot_activity
 import automation
 from dsh_workspace_map import BindingError, WorkspaceBindings
 import features
-import memory_store
 import naming
 import project_service as projects
+import project_sources
+import project_tools
 import project_plugins
 import project_sandbox as sandbox
 import research_api
@@ -50,14 +52,15 @@ def catalog():
         path.mkdir(exist_ok=True)
         feat_list = features.list_features("global", identity)
         assigned = features.assignment_map(identity)
+        schedules = features.schedule_map(identity)
         rows.append({
             "scope": identity,
             "name": item["name"],
             "path": str(path),
             "features": [{**{k:f.get(k) for k in ("id","label","builtin","shared","hint","symbol","keywords","categories","botSessionId")},
-                          "assignments":assigned.get(f["id"],[])} for f in feat_list],
+                          "assignments":assigned.get(f["id"],[]),
+                          "scheduleIds":schedules.get(f["id"],[])} for f in feat_list],
             "botSessionIds": [f["botSessionId"] for f in feat_list if f.get("botSessionId")],
-            "coreMemories": memory_store.core_memories(identity, max_items=6, max_chars=1400),
         })
     with closing(workspace.database()) as db:
         tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
@@ -111,7 +114,9 @@ def project_view(scope):
         "rails": rails,
         "feedMeta": {"updated": feed.get("updated"), "error": feed.get("error"), "unavailable": feed.get("unavailable", [])},
         "reviews": review.get("reviews", []),
-        "memories": projects.memory_list(scope)[:40],
+        "memories": [{"id": m["id"], "category": m["category"], "pinned": m["pinned"], "source": m["source"],
+                      "content": (m.get("content") or "")[:200]}
+                     for m in projects.memory_list(scope)[:12]],
         "plugins": project_plugins.list_for(scope),
     }
 
@@ -124,8 +129,30 @@ def project_action(scope, data):
         return project_view(scope)
     if scope == "global":
         raise workspace.WorkspaceError(403, "请选择明确的科研项目。")
+    if action == "settings/view":
+        return project_sources.settings(scope)
+    if action == "settings/update":
+        if not args or set(args) - {"name", "description", "topic"}:
+            raise workspace.WorkspaceError(400, "无效的项目设置。")
+        fields = {**args}
+        if "name" in fields:
+            fields["name"] = naming.display_name(fields["name"])
+        projects.call("project_update", fields, scope)
+        return project_sources.settings(scope)
+    if action == "sources/save":
+        return project_sources.save(scope, args)
+    if action == "sources/remove":
+        return project_sources.remove(scope, args.get("id"))
+    if action == "sources/list":
+        return project_sources.list_sources(scope)
+    if action == "sources/directory":
+        return project_sources.list_directory(scope, args.get("sourceId"), args.get("path"))
+    if action == "sources/read":
+        return project_sources.read_file(scope, args)
     if action == "sandbox/list":
         return {**sandbox.dashboard(scope), "workflows": sandbox.workflows(scope)}
+    if action in ("bot/experiments", "bot/experiment", "bot/artifact"):
+        return bot_activity.view(scope, action, args)
     if action == "sandbox/environments":
         return sandbox.environments(scope)
     if action == "sandbox/create-env":
@@ -256,6 +283,9 @@ def project_action(scope, data):
                   "research/cancel", "research/accept", "research/log", "research/state", "research/review-evidence",
                   "research/plan", "research/evidence", "research/link"):
         return research_api.POST[action]({**args, "projectId": scope})
+    tools_result = project_tools.handle(scope, action, args)
+    if tools_result is not None:
+        return tools_result
     raise workspace.WorkspaceError(404, "未知项目操作。")
 
 
@@ -270,6 +300,10 @@ def dispatch(route, data):
         return {"name": store.rename_assistant(data["name"]) if "name" in data else store.assistant_name()}
     if route == "assistant-profile":
         return assistant_profile.update_profile(data) if data else assistant_profile.get_profile()
+    if route == "assistant-permission":
+        return assistant_profile.assistant_permission(data)
+    if route == "assistant-model":
+        return assistant_profile.assistant_model(data)
     if route == "create":
         item = projects.create_project(naming.display_name(data.get("name")), "proj_" + project_plugins.request_id(data))
         return {"scope": item["id"]}
@@ -324,6 +358,18 @@ def dispatch(route, data):
         raise workspace.WorkspaceError(400,"无效的沙盒操作。")
     if route == "project":
         return project_action(scope, data)
+    if route == "tool" and scope != "global" and data.get("tool") == "workflow_draft":
+        args = data.get("args", {})
+        if not isinstance(args, dict) or args.get("projectId") not in (None, scope):
+            raise workspace.WorkspaceError(403, "此对话不能修改其他项目的实验。")
+        session = data.get("sessionId")
+        feature = next((f for f in features.list_features(scope, scope)
+                        if session and f.get("botSessionId") == session), None)
+        if feature:
+            source = {"featureId": feature["id"], "sessionId": session}
+            flow = research_api.flows.draft(
+                scope, {**args, "plan": sandbox.bind_plan(scope, args.get("plan"))}, source=source)
+            return {"text": json.dumps(flow, ensure_ascii=False)}
     result = research_mcp.dispatch({"method": "tools/call", "id": 1, "params": {
         "name": data.get("tool"), "arguments": data.get("args", {})}}, scope)["result"]
     if result.get("isError"):

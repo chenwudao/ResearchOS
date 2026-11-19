@@ -76,17 +76,16 @@
 | 已有 | 怎么接 |
 |------|--------|
 | `project-gap-audit` | 把本节 P0 skills 写进下一版 backlog |
-| `evidence-ledger` | 双清单里的 claim 一律落 ledger（jaden 正在接 sample 路由） |
+| `evidence-ledger` | 在证据账本里记录双清单中的论断 |
 | `pilot-eval-design` | 评测题就用「同一 RQ：有无 direction+双清单 skill」三臂对比 |
 | `module-spec` / Radar | `foundational-frontier-brief` 可视为 Research Radar 的 v0 切片 |
-| 五模块大而全 | **先不要**；先打通「方向 → RQ → 基础/前沿表 → ledger」一条演示链 |
 
 ## 5. 设计原则（写进项目共识）
 
 1. **引导，不替用户定题**：agent 出选项与证据，人锁定方向与 RQ。  
 2. **基础与前沿必须分栏**：混成「相关论文 20 篇」不算完成。  
 3. **先检索再综合**：无 locator 的句子进 gap，不进结论。  
-4. **状态可恢复**：每次会话落 `docs/` 或 `demo/output/`，对齐开题的 project memory。  
+4. **状态可恢复**：在项目中保存研究决策和证据记录，便于后续会话继续。
 5. **范围克制**：对标 CoQuest / ResearchAgent / 两阶段 lit-review，而不是端到端 AI Scientist。
 
 ## 6. 建议你拍板的点

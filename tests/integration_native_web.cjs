@@ -32,12 +32,48 @@ async function main() {
     return { code: r.status, data: await r.json() }
   }, { route, data })
   const button = name => page.getByRole('button', { name, exact: true })
+  const assistantHome = button('打开助理')
   async function openQuickEntry(region) {
     await region.getByRole('button', { name: '添加内容或文件', exact: true }).click()
     await region.getByRole('button', { name: '+ 录入', exact: true }).click()
   }
   async function openSettings() {
     await button('设置').click()
+  }
+  // Only use on fixture screens without user-authored titles or messages.
+  async function checkProductCopy(region) {
+    const retiredNames = /DeepSeek\s+Harness|LabWeave|\bdsh\b/i
+    assert.doesNotMatch(await region.innerText(), retiredNames)
+    const labels = await region.locator(':is([title], [placeholder], [aria-label], [alt]):visible').evaluateAll(
+      nodes => nodes.flatMap(node => ['title', 'placeholder', 'aria-label', 'alt'].map(attr => node.getAttribute(attr) || ''))
+    )
+    assert.doesNotMatch(labels.join('\n'), retiredNames)
+  }
+  const languages = [
+    ['en', 'English', 'Configure model API'], ['ja', '日本語', 'モデル API を設定'],
+    ['es', 'Español', 'Configurar API del modelo'], ['fr', 'Français', 'Configurer l’API du modèle'],
+    ['de', 'Deutsch', 'Modell-API einrichten'], ['ru', 'Русский', 'Настройка API модели'],
+    ['pt', 'Português', 'Configurar API do modelo'], ['zh', '中文', '配置模型 API'],
+  ]
+  async function checkSetupLanguages() {
+    for (const [locale, , title] of languages) {
+      const guest = await context.browser().newContext({ locale, viewport: { width: 900, height: 700 } })
+      try {
+        const first = await guest.newPage()
+        await first.goto(url)
+        const setup = first.getByRole('dialog', { name: title, exact: true })
+        await setup.waitFor()
+        assert.equal(await first.getByRole('dialog').count(), 1)
+        assert.doesNotMatch(await first.locator('body').innerText(), /DeepSeek\s+(?:Account|账号)|LabWeave|\b(?:DSH|DS)\b|预览版|Preview Notice/i)
+        assert.equal(await setup.locator('select').count(), 1)
+        assert.equal(await setup.locator('input').count(), 1)
+        assert.equal(await setup.locator('input[type="password"]').count(), 1)
+        assert.equal((await first.locator('html').getAttribute('lang')).split('-')[0], locale)
+        await checkProductCopy(first.locator('body'))
+      } finally {
+        await guest.close()
+      }
+    }
   }
   async function checkBrand() {
     const mark = page.locator('[class*="brandIdentity"]:has(.lw-wordmark) .lw-brand-mark').first()
@@ -54,10 +90,10 @@ async function main() {
     })
     assert.equal(clipped, false, '左上角品牌图标超出可见区域')
     const icons = await page.locator('link[rel="icon"]').evaluateAll(links => links.map(link => new URL(link.href).pathname))
-    assert.ok(icons.length > 0 && icons.every(path => path === '/labweave-orbit.svg'))
+    assert.deepEqual(new Set(icons), new Set(['/favicon.svg', '/favicon-dark.svg']))
     const svg = await fetch(new URL(icons[0], url))
     assert.match(svg.headers.get('content-type'), /image\/svg\+xml/)
-    assert.equal(await svg.text(), fs.readFileSync(path.join(__dirname, '../plugins/dsh-labweave-workspace/labweave-orbit.svg'), 'utf8'))
+    assert.equal(await svg.text(), fs.readFileSync(path.join(__dirname, '../plugins/dsh-labweave-workspace/client/assets/labweave-orbit.svg'), 'utf8'))
     const manifest = await (await fetch(new URL('/manifest.webmanifest', url))).json()
     assert.equal(manifest.name, 'Weave')
     for (const icon of manifest.icons) {
@@ -78,12 +114,63 @@ async function main() {
     throw Error('目标会话未出现')
   }
   async function newProject(name) {
-    await button('创建科研项目').click()
-    const form = page.getByRole('dialog', { name: '创建科研项目' })
+    await button('新建工作区项目').click()
+    const form = page.getByRole('dialog', { name: '新建工作区项目' })
+    const create = form.getByRole('button', { name: '创建', exact: true })
+    assert.ok(await create.isDisabled())
     await form.getByLabel('项目名称').fill(name)
-    await form.getByRole('button', { name: '创建', exact: true }).click()
+    assert.ok(await create.isEnabled())
+    const styles = await form.locator('.lw-dialog-actions button').evaluateAll(buttons => buttons.map(button => ({
+      fill: getComputedStyle(button).backgroundColor,
+      left: button.getBoundingClientRect().left,
+    })))
+    assert.equal(styles[0].fill, 'rgba(0, 0, 0, 0)')
+    assert.notEqual(styles[1].fill, styles[0].fill)
+    assert.ok(styles[1].left > styles[0].left)
+    await create.click()
     await page.getByRole('navigation', { name: name + ' 项目功能' }).waitFor()
     return waitView(v => v?.name === name)
+  }
+  async function checkProjectTools(name) {
+    step = '项目聊天右侧栏'
+    await button('工具').click()
+    await page.locator('[data-sidebar-right-open]').waitFor()
+    const right = page.locator('[data-rightbar-col]')
+    const entry = label => right.getByText(label, { exact: true })
+    for (const label of ['工作区文件', 'Git', '存储空间', '项目代码沙盒', '新建终端', '浏览器']) {
+      await entry(label).first().waitFor()
+      assert.equal(await entry(label).count(), 1, `工具引导中应只有一个 ${label} 入口`)
+    }
+    for (const label of ['Git', '存储空间', '项目代码沙盒']) {
+      await entry(label).locator('xpath=ancestor::button[1]').locator('svg path').waitFor()
+    }
+    assert.equal(await right.getByRole('button', { name: '工具', exact: true }).count(), 0)
+    assert.equal(await entry('任务详情').count(), 0)
+    await preview('10-rightbar-guide')
+    await entry('工作区文件').click()
+    await entry('空目录').waitFor()
+    assert.match(await right.innerText(), /projects[/\\]proj_/)
+
+    async function openTab(label) {
+      await right.getByRole('button', { name: '新标签页', exact: true }).click()
+      await page.getByRole('button', { name: label, exact: true }).filter({ visible: true }).last().click()
+    }
+    await openTab('Git')
+    await button('刷新 Git 状态').locator('svg path').waitFor()
+    await openTab('存储空间')
+    await button('刷新存储空间').locator('svg path').waitFor()
+    await button('新建类别').locator('svg path').waitFor()
+    await openTab('项目代码沙盒')
+    const sandbox = page.getByRole('region', { name: name + ' 项目代码沙盒' })
+    await sandbox.getByLabel('下次试跑环境').waitFor()
+    await sandbox.getByRole('button', { name: '刷新项目代码沙盒' }).locator('svg path').waitFor()
+    await sandbox.getByText('还没有试跑记录', { exact: true }).waitFor()
+    await sandbox.getByText('管理环境与试跑预算').click()
+    await sandbox.getByLabel('增加试跑秒数').fill('30')
+    await sandbox.getByRole('button', { name: '授权项目试跑' }).click()
+    await sandbox.getByText(/可用试跑预算 30 秒/).waitFor()
+    await button('工具').click()
+    await page.locator('[data-sidebar-right-open]').waitFor({ state: 'detached' })
   }
   async function assertCollapsedRailAligned(targetBtn, message) {
     await page.locator('[data-sidebar-collapsed="true"]').waitFor()
@@ -102,22 +189,25 @@ async function main() {
   }
   try {
     await page.goto(url)
-    await button('Weave').last().waitFor()
+    await page.locator('.lw-wordmark').waitFor()
     await page.waitForFunction(() => /(^| — )Weave$/.test(document.title))
     await checkBrand()
-    const welcome = button('继续'), addKey = button('添加 API Key')
-    if (phase === 'initial') {
-      await welcome.or(addKey).first().waitFor()
-      if (await welcome.isVisible()) {
-        await welcome.click()
-        await welcome.waitFor({ state: 'hidden' })
-      }
+    const setup = page.getByRole('dialog', { name: '配置模型 API', exact: true })
+    if (phase === 'initial' && model !== 'model') {
+      await setup.waitFor()
+      await checkProductCopy(page.locator('body'))
+      await checkSetupLanguages()
     }
     if (model !== 'model' && (phase === 'initial' ||
-        await addKey.waitFor({ timeout: 5000 }).then(() => true, () => false))) {
-      await addKey.click()
-      await button('稍后配置').click()
-      await button('稍后配置').waitFor({ state: 'hidden' })
+        await setup.waitFor({ timeout: 5000 }).then(() => true, () => false))) {
+      await setup.getByRole('button', { name: '稍后配置', exact: true }).click()
+      await setup.waitFor({ state: 'hidden' })
+    }
+    if (phase === 'rightbar') {
+      await newProject('右侧栏验收')
+      await checkProjectTools('右侧栏验收')
+      console.log('工具引导、原生工作区文件、Git 和存储图标、沙盒空态及预算授权通过。')
+      return
     }
     const unauthed = await fetch(new URL('/api/labweave/catalog', url))
     assert.ok([401, 403].includes(unauthed.status))
@@ -138,16 +228,17 @@ async function main() {
       const persisted = Object.values(schedule.tables.tasks).find(r => r.record?.title === '仅乙的定时复盘')
       assert.ok(persisted, '指定项目的自动化任务未持久化')
       assert.equal(path.basename(persisted.target.create.cwd), before.projectB)
+      assert.ok(persisted.record.prompt.startsWith('[LabWeave '), '查看任务应保留历史任务原始指令')
       step = '原生项目改名与设置'
       assert.equal(await page.evaluate(() => devicePixelRatio), 1.5)
       if (!(await button('重命名研究甲').isVisible())) await button('研究甲').click()
       await button('重命名研究甲').click()
       const rename = page.getByRole('dialog', { name: '重命名项目' })
-      await rename.getByRole('textbox').fill('研究甲修订')
+      await rename.getByRole('textbox').fill('DSH 论文')
       await rename.getByRole('button', { name: '保存' }).click()
-      await page.getByText('研究甲修订', { exact: true }).first().waitFor()
-      assert.equal((await owner('project', { sessionId: before.session, action: 'view' })).data.name, '研究甲修订')
-      await button('Weave').last().click()
+      await page.getByText('DSH 论文', { exact: true }).first().waitFor()
+      assert.equal((await owner('project', { sessionId: before.session, action: 'view' })).data.name, 'DSH 论文')
+      await assistantHome.click()
       const renameEntry = page.getByRole('button', { name: '设置全局助手 Weave 资料', exact: true })
       await renameEntry.waitFor()
       await renameEntry.click()
@@ -167,11 +258,10 @@ async function main() {
       await button('深色').click()
       await page.getByRole('button', { name: '深色', pressed: true }).waitFor()
       await page.reload()
-      await button('我的研究助手').last().waitFor()
-      if (model !== 'model' && await addKey.waitFor({ timeout: 5000 }).then(() => true, () => false)) {
-        await addKey.click()
-        await button('稍后配置').click()
-        await button('稍后配置').waitFor({ state: 'hidden' })
+      await page.locator('.lw-wordmark').waitFor()
+      if (model !== 'model' && await setup.waitFor({ timeout: 5000 }).then(() => true, () => false)) {
+        await setup.getByRole('button', { name: '稍后配置', exact: true }).click()
+        await setup.waitFor({ state: 'hidden' })
       }
       assert.equal(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--dsh-content-font-size').trim()), '16px')
       if (!(await button('深色').isVisible())) await openSettings()
@@ -180,7 +270,7 @@ async function main() {
       await page.keyboard.press('Escape')
       await page.locator('[data-shortcut-modal="settings"]').waitFor({ state: 'hidden' })
       step = '验证重启后助手资料、自定义头像、SOUL 与全局记忆持久化'
-      await button('我的研究助手').last().click()
+      await assistantHome.click()
       const persistedEntry = page.getByRole('button', { name: '设置全局助手 我的研究助手 资料', exact: true })
       await persistedEntry.waitFor()
       await persistedEntry.click()
@@ -198,8 +288,8 @@ async function main() {
       await persistedProfile.getByRole('button', { name: '关闭助手资料', exact: true }).click()
       await persistedProfile.waitFor({ state: 'hidden' })
       step = '验证重启后的自定义功能 Bot 统一界面与右侧分类抽屉跳转'
-      const alphaBranch = page.getByRole('navigation', { name: '研究甲修订 项目功能' })
-      if (!(await alphaBranch.isVisible())) await button('研究甲修订').click()
+      const alphaBranch = page.getByRole('navigation', { name: 'DSH 论文 项目功能' })
+      if (!(await alphaBranch.isVisible())) await button('DSH 论文').click()
       await alphaBranch.getByRole('button', { name: '组会速递', exact: true }).waitFor()
       assert.equal(await alphaBranch.getByRole('button', { name: '临时栏目', exact: true }).count(), 0)
       await alphaBranch.getByRole('button', { name: '组会速递', exact: true }).click()
@@ -225,17 +315,17 @@ async function main() {
       await customRegion.getByLabel('向 组会速递 发送消息').waitFor()
       assert.equal(await customRegion.locator('.lw-fbot-tools, .lw-fbot-model-badge, .lw-fbot-model-select').count(), 0)
       await openQuickEntry(customRegion)
-      const customQuick = page.getByRole('dialog', { name: '组会速递 · 快速录入' })
-      await customQuick.getByRole('button', { name: '关闭 组会速递 · 快速录入', exact: true }).waitFor()
+      const customQuick = page.getByRole('dialog', { name: '快速录入：组会速递' })
+      await customQuick.getByRole('button', { name: '关闭 快速录入：组会速递', exact: true }).waitFor()
       await customQuick.getByRole('button', { name: '取消', exact: true }).waitFor()
       await preview('14-modal-close-dark')
-      await customQuick.getByRole('button', { name: '关闭 组会速递 · 快速录入', exact: true }).click()
+      await customQuick.getByRole('button', { name: '关闭 快速录入：组会速递', exact: true }).click()
       await customQuick.waitFor({ state: 'hidden' })
       console.log('重启后的会话、项目更名、助手名、深色主题、自定义功能 Bot 和自动化目标验证通过')
       return
     }
     step = '原生项目创建与五项功能'
-    await button('Weave').last().click()
+    await assistantHome.click()
     await waitView(v => v.scope === 'global')
     const globalLeading = page.locator('[data-conversation-header-leading]')
     await globalLeading.getByRole('button', { name: '助手历史对话', exact: true }).click()
@@ -270,10 +360,22 @@ async function main() {
     await heroEntry.click()
     const profileModal = page.getByRole('dialog', { name: '全局助手设置' })
     await profileModal.waitFor()
+    const profileLayout = await profileModal.evaluate(dialog => {
+      const root = dialog.getBoundingClientRect()
+      const header = dialog.querySelector('.lw-ap-chrome').getBoundingClientRect()
+      const content = dialog.querySelector('.lw-ap-content').getBoundingClientRect()
+      return { left: root.left, rightInset: innerWidth - root.right, top: root.top,
+        headerBottom: header.bottom, contentTop: content.top }
+    })
+    assert.ok(profileLayout.left > profileLayout.rightInset && profileLayout.rightInset < 28)
+    assert.ok(profileLayout.top >= 0 && profileLayout.headerBottom <= profileLayout.contentTop + 1)
+    const profileAvatar = profileModal.locator('.lw-ap-avatar-circle img')
+    await profileAvatar.waitFor()
     await profileModal.getByRole('tab', { name: '活动', exact: true }).click()
     await profileModal.getByRole('button',{ name:'查看所有预定任务' }).waitFor()
     await profileModal.getByRole('tab', { name: '审核', exact: true }).click()
     await profileModal.getByText('暂无批准记录', { exact: true }).waitFor()
+    await profileAvatar.waitFor()
     await profileModal.getByRole('tab', { name: '人设与记忆', exact: true }).click()
     await profileModal.getByRole('button', { name: '编辑', exact: true }).click()
     await profileModal.getByLabel('一句话简介').fill('专注科研实证与可复现工作流')
@@ -283,11 +385,13 @@ async function main() {
     await profileModal.getByLabel('更换头像').setInputFiles({ name: 'avatar.png', mimeType: 'image/png', buffer: samplePng })
     await profileModal.getByText('头像已更新。').waitFor()
     await profileModal.getByRole('button', { name: /SOUL/ }).click()
+    await profileAvatar.waitFor()
     await profileModal.getByLabel('核心准则（SOUL）').fill('1. 一切结论须追溯原始实验证据。')
     await profileModal.getByRole('button', { name: '保存 SOUL', exact: true }).click()
     await profileModal.getByText('SOUL 核心准则已保存。').waitFor()
-    await profileModal.getByRole('button', { name: /SOUL · 核心准则/ }).click()
+    await profileModal.getByRole('button', { name: /核心准则/ }).click()
     await profileModal.getByRole('button', { name: /记忆/ }).click()
+    await profileAvatar.waitFor()
     await profileModal.getByPlaceholder('输入要让全局助手长期记住的偏好或备忘…').fill('优先使用固定随机种子进行对照实验')
     await profileModal.getByRole('button', { name: '添加记忆', exact: true }).click()
     await profileModal.getByLabel('全局记忆列表').getByText('优先使用固定随机种子进行对照实验').waitFor()
@@ -319,10 +423,10 @@ async function main() {
     await page.mouse.move(480, 450)
     await page.locator('[data-sidebar-toggle] img.lw-brand-mark').waitFor()
     assert.equal(await page.locator('[class*="newSession"]:visible').count(), 0)
-    await assertCollapsedRailAligned(page.locator('nav[aria-label="科研项目快捷栏"] button').first(), '收起后项目图标应与上方品牌图标纵向对齐')
-    await page.locator('nav[aria-label="科研项目快捷栏"] button').first().click()
-    await page.getByRole('dialog', { name: '科研项目菜单' }).waitFor()
-    await page.getByRole('dialog', { name: '科研项目菜单' }).getByRole('button', { name: /回到全局助手/ }).click()
+    await assertCollapsedRailAligned(page.locator('nav[aria-label="工作区项目快捷栏"] button').first(), '收起后项目图标应与上方品牌图标纵向对齐')
+    await page.locator('nav[aria-label="工作区项目快捷栏"] button').first().click()
+    await page.getByRole('dialog', { name: '工作区项目菜单' }).waitFor()
+    await page.getByRole('dialog', { name: '工作区项目菜单' }).getByRole('button', { name: /回到全局助手/ }).click()
     await button('打开侧边栏').click()
     assert.equal(await page.locator('[data-slot="conversation.hero.agentPreset"] button:visible').count(), 0)
     assert.equal(await page.getByText('标准模式', { exact: true }).count(), 0)
@@ -348,8 +452,19 @@ async function main() {
     const settingsModal = page.locator('[data-shortcut-modal="settings"]')
     await settingsModal.waitFor()
     await settingsModal.locator('nav button[aria-current="true"]').waitFor()
+    await checkProductCopy(settingsModal)
     assert.equal(await settingsModal.locator('nav button', { hasText: /Agent\s*预设|preset|插件|plugin/i }).count(), 0)
     await settingsModal.getByRole('button', { name: '通用设置', exact: true }).click()
+    await checkProductCopy(settingsModal)
+    let activeLanguage = '中文'
+    for (const [locale, label] of languages) {
+      await settingsModal.getByRole('button', { name: activeLanguage, exact: true }).click()
+      await page.getByRole('menu').getByText(label, { exact: true }).click()
+      await page.waitForFunction(lang => document.documentElement.lang.split('-')[0] === lang, locale)
+      await settingsModal.getByRole('button', { name: label, exact: true }).waitFor()
+      await checkProductCopy(settingsModal)
+      activeLanguage = label
+    }
     assert.equal(await settingsModal.getByRole('button', { name: /打开配置文件|Open config/i }).count(), 0)
     assert.doesNotMatch(await settingsModal.innerText(), /Agent\s*预设|性能与用量|Session Log|打开配置文件/)
     const baseTreePx = await page.locator('.lw-tree').first().evaluate(el => Number.parseFloat(getComputedStyle(el).fontSize))
@@ -363,7 +478,7 @@ async function main() {
     assert.equal(await settingsModal.getByLabel('选择科研项目', { exact: true }).count(), 0)
     await page.keyboard.press('Escape')
     await settingsModal.waitFor({ state: 'hidden' })
-    assert.equal(await page.locator('[data-conversation-header-corner]').getByRole('button', { name: '右侧栏', exact: true }).count(), 0)
+    assert.equal(await page.locator('[data-conversation-header-corner]').getByRole('button', { name: '工具', exact: true }).count(), 0)
     assert.equal(await page.locator('[data-sidebar-right-open]').count(), 0)
     await preview('01-Weave')
     const a = await newProject('研究甲')
@@ -371,14 +486,15 @@ async function main() {
     assert.equal(await page.locator('.lw-starters, .lw-hero-ctx').count(), 0)
     assert.equal(await page.locator('[data-slot="conversation.hero.agentPreset"] button:visible').count(), 0)
     assert.equal(await page.locator('[data-conversation-header-leading] button').count(), 0)
-    assert.equal(await page.locator('[data-conversation-header-corner] button').count(), 1)
-    assert.equal(await page.locator('[data-conversation-header-corner]').getByRole('button', { name: '右侧栏', exact: true }).count(), 1)
-    assert.equal(await page.locator('[data-conversation-header-corner]').getByRole('button', { name: /课题关系图|背景与记忆/ }).count(), 0)
+    const projectTools = page.locator('[data-conversation-header-corner]')
+    await projectTools.getByRole('button', { name: '项目任务', exact: true }).waitFor()
+    await projectTools.getByRole('button', { name: '工具', exact: true }).waitFor()
+    assert.equal(await projectTools.getByRole('button', { name: /课题关系图|背景与记忆/ }).count(), 0)
     const projectBar = page.getByRole('navigation', { name: '研究甲 项目功能' })
     for (const label of ['聊天','动态','点子','目标','资源库']) await projectBar.getByRole('button', { name: label, exact: true }).waitFor()
     assert.equal(await projectBar.locator('xpath=ancestor::*[@data-sidebar-scrollport]').count(), 1)
     await button('收起侧边栏').click()
-    const collapsedProjectBtn = page.locator('nav[aria-label="科研项目快捷栏"]').getByRole('button', { name: '研究甲', exact: true })
+    const collapsedProjectBtn = page.locator('nav[aria-label="工作区项目快捷栏"]').getByRole('button', { name: '研究甲', exact: true })
     await assertCollapsedRailAligned(collapsedProjectBtn, '收起后项目图标尺寸与水平位置应与顶部对齐')
     await collapsedProjectBtn.click()
     const projectPopover = page.getByRole('dialog', { name: '研究甲 项目菜单' })
@@ -399,14 +515,14 @@ async function main() {
     const composerBox = await ideas.locator('.lw-fbot-composer').boundingBox()
     assert.ok(composerBox && composerBox.height <= 68, '胶囊型单行底部对话框应保持精简高度，实际高度=' + composerBox?.height)
     await openQuickEntry(ideas)
-    const quickDialog = page.getByRole('dialog', { name: '点子 · 快速录入' })
+    const quickDialog = page.getByRole('dialog', { name: '快速录入：点子' })
     await quickDialog.getByLabel('新点子').fill('仅项目甲可见的想法')
     await quickDialog.getByRole('button', { name: '添加', exact: true }).click()
     await ideas.locator('.lw-fbot-stats').waitFor()
     await ideas.getByText('仅项目甲可见的想法').first().waitFor()
     await ideas.getByText('仅项目甲可见的想法',{exact:true}).first().click()
     await ideas.locator('.lw-fbot-detail').getByRole('button', { name: '转为目标', exact: true }).waitFor()
-    assert.equal(await page.getByRole('main', { name: '研究甲 · 点子' }).count(), 1)
+    assert.equal(await page.getByRole('main', { name: '研究甲的点子' }).count(), 1)
     assert.equal(await page.getByRole('tablist', { name: '项目栏目切换' }).count(), 0)
     assert.equal(await page.locator('[data-conversation-content]:visible').count(), 0)
     await preview('02-project-ideas')
@@ -423,41 +539,23 @@ async function main() {
     const closeGoalPane = page.getByRole('button', { name: '关闭分栏 目标', exact: true })
     await closeGoalPane.locator('svg').waitFor()
     await closeGoalPane.click()
-    await projectBar.getByRole('button', { name: '聊天', exact: true }).click()
+    await projectBar.getByRole('button', { name: '在研究甲中新建对话', exact: true }).click()
     await waitView(v => v?.name === '研究甲')
-    await page.getByRole('button', { name: '右侧栏', exact: true }).click()
-    await page.locator('[data-sidebar-right-open]').waitFor()
-    const rightCol = page.locator('[data-rightbar-col]')
-    await rightCol.getByText('项目代码沙盒', { exact: true }).last().waitFor()
-    await rightCol.getByText('浏览器', { exact: true }).waitFor()
-    assert.equal(await rightCol.getByRole('button', { name: /更多工具/ }).count(), 0)
-    assert.equal(await rightCol.getByText('任务详情', { exact: true }).count(), 0)
-    await preview('10-rightbar-guide')
-    await rightCol.getByText('项目代码沙盒', { exact: true }).last().click()
-    const rightPane = page.getByRole('region',{name:'研究甲 项目代码沙盒'})
-    await rightPane.getByLabel('下次试跑环境').waitFor()
-    await rightPane.getByText('管理环境与试跑预算').click()
-    await rightPane.getByLabel('增加试跑秒数').fill('30')
-    await rightPane.getByRole('button',{name:'授权项目试跑'}).click()
-    await rightPane.getByText(/可用试跑预算 30 秒/).waitFor()
-    await page.getByRole('button', { name: '右侧栏', exact: true }).click()
-    await page.locator('[data-sidebar-right-open]').waitFor({ state: 'detached' })
+    await checkProjectTools('研究甲')
     assert.equal(await projectBar.getByLabel('研究甲 对话').count(), 0)
     await projectBar.getByRole('button', { name: '在研究甲中新建对话' }).click()
     await waitView(v => v?.name === '研究甲')
     assert.equal(await projectBar.getByLabel('研究甲 对话').count(), 0)
-    assert.equal(await page.locator('[data-conversation-header-corner] button').count(), 1)
+    await projectTools.getByRole('button', { name: '工具', exact: true }).waitFor()
     await preview('03-project-chats')
-    await button('管理研究甲长期记忆').click()
-    const projMemDialog = page.getByRole('dialog', { name: '研究甲 · 长期记忆' })
-    await projMemDialog.waitFor()
-    await projMemDialog.getByPlaceholder('输入要让该项目长期记住的决策、约束或实验结论…').fill('基线实验固定 seed=42')
-    await projMemDialog.getByRole('button', { name: '添加记忆', exact: true }).click()
-    await projMemDialog.getByLabel('项目记忆列表').getByText('基线实验固定 seed=42').waitFor()
-    await projMemDialog.getByRole('button', { name: '置顶', exact: true }).first().click()
-    await projMemDialog.getByLabel('项目记忆列表').getByText('核心置顶', { exact: true }).waitFor()
-    await projMemDialog.getByRole('button', { name: '关闭 研究甲 · 长期记忆', exact: true }).click()
-    await projMemDialog.waitFor({ state: 'hidden' })
+    await button('项目设置 研究甲').click()
+    const projectSettings = page.getByRole('dialog', { name: '项目设置', exact: true })
+    await projectSettings.getByLabel('项目名称').waitFor()
+    assert.equal(await projectSettings.getByLabel('项目名称').inputValue(), '研究甲')
+    await projectSettings.getByRole('button', { name: '来源文件夹', exact: true }).click()
+    await projectSettings.getByRole('button', { name: '添加文件夹', exact: true }).waitFor()
+    await projectSettings.getByRole('button', { name: '关闭 项目设置', exact: true }).click()
+    await projectSettings.waitFor({ state: 'hidden' })
     step = '目标、订阅与资源导入'
     await projectBar.getByRole('button', { name: '目标', exact: true }).click()
     const goals = page.getByRole('region', { name: '目标', exact: true })
@@ -465,7 +563,7 @@ async function main() {
     assert.equal(await page.locator('aside[aria-label*="分配任务"], button[aria-label*="分配任务"], .lw-fbot-drawer').count(), 0)
     assert.equal(await goals.locator('.lw-fbot-tools, .lw-fbot-model-badge, .lw-fbot-model-select').count(), 0)
     await openQuickEntry(goals)
-    const goalDialog = page.getByRole('dialog', { name: '目标 · 快速录入' })
+    const goalDialog = page.getByRole('dialog', { name: '快速录入：目标' })
     await goalDialog.getByLabel('新目标').fill('完成对照')
     await goalDialog.getByRole('button', { name: '添加', exact: true }).click()
     await goals.getByRole('checkbox', { name: '完成 完成对照' }).click()
@@ -478,8 +576,8 @@ async function main() {
     assert.equal(await page.locator('aside[aria-label*="分配任务"], button[aria-label*="分配任务"], .lw-fbot-drawer').count(), 0)
     assert.equal(await feed.locator('.lw-fbot-tools, .lw-fbot-model-badge, .lw-fbot-model-select').count(), 0)
     await openQuickEntry(feed)
-    const feedDialog = page.getByRole('dialog', { name: '动态 · 快速录入' })
-    await feedDialog.getByRole('button', { name: '关闭 动态 · 快速录入', exact: true }).waitFor()
+    const feedDialog = page.getByRole('dialog', { name: '快速录入：动态' })
+    await feedDialog.getByRole('button', { name: '关闭 快速录入：动态', exact: true }).waitFor()
     await feedDialog.getByRole('button', { name: '取消', exact: true }).waitFor()
     await preview('12-modal-close-feed')
     await feedDialog.getByLabel('订阅关键词').fill('fixture')
@@ -487,7 +585,7 @@ async function main() {
     await feed.getByText('主题已保存。', { exact: true }).waitFor()
     await openQuickEntry(feed)
     await feed.getByPlaceholder('fixture').waitFor()
-    await feedDialog.getByRole('button', { name: '关闭 动态 · 快速录入', exact: true }).click()
+    await feedDialog.getByRole('button', { name: '关闭 快速录入：动态', exact: true }).click()
     await feedDialog.waitFor({ state: 'hidden' })
     await preview('05-project-feed')
     await projectBar.getByRole('button', { name: '资源库', exact: true }).click()
@@ -495,13 +593,14 @@ async function main() {
     await library.getByText('还没有收录任何资源', { exact: true }).waitFor()
     assert.equal(await library.locator('.lw-fbot-tools, .lw-fbot-model-badge, .lw-fbot-model-select').count(), 0)
     await openQuickEntry(library)
-    const libDialog = page.getByRole('dialog', { name: '资源库 · 快速录入' })
-    await libDialog.getByRole('button', { name: '关闭 资源库 · 快速录入', exact: true }).waitFor()
+    const libDialog = page.getByRole('dialog', { name: '快速录入：资源库' })
+    await libDialog.getByRole('button', { name: '关闭 快速录入：资源库', exact: true }).waitFor()
     await libDialog.getByRole('button', { name: '取消', exact: true }).click()
     await libDialog.waitFor({ state: 'hidden' })
     assert.equal(await page.locator('aside[aria-label*="分配任务"], button[aria-label*="分配任务"], .lw-fbot-drawer').count(), 0)
-    await library.getByLabel('导入文件').setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('resource body') })
-    await library.getByText('resource body', { exact: true }).waitFor()
+    const originalNote = 'DSH 论文：示例命令 echo "$DSH_HOME"'
+    await library.getByLabel('导入文件').setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from(originalNote) })
+    await library.getByText(originalNote, { exact: true }).waitFor()
     await library.locator('.lw-doc-card').waitFor()
     await preview('06-project-library')
     step = 'PDF 阅读与点击打开'
@@ -513,6 +612,10 @@ async function main() {
     await library.getByText(/论文一\.pdf/).first().click()
     await library.getByRole('button', { name: '下一页' }).click()
     await library.getByText('2 / 2', { exact: true }).waitFor()
+    await library.getByRole('button', { name: '填入提问' }).click()
+    const readingDraft = await library.getByLabel('向 资源库 发送消息').inputValue()
+    assert.doesNotMatch(readingDraft, /labweave|\bdsh\b/i)
+    assert.match(readingDraft, /第\s*2\s*页/)
     step = '目标栏检查与正式实验草案创建'
     await projectBar.getByRole('button', { name: '目标', exact: true }).click()
     assert.equal(await page.locator('aside[aria-label*="分配任务"], button[aria-label*="分配任务"], .lw-fbot-drawer').count(), 0)
@@ -522,16 +625,21 @@ async function main() {
     step = '接口级项目插件隔离验证与右侧栏项目工作台'
     assert.equal((await owner('plugin', { requestId: require('node:crypto').randomUUID().replaceAll('-', ''),
       name: '周报', prompt: '总结本项目本周工作。', scope: 'all' })).code, 200)
-    await projectBar.getByRole('button', { name: '聊天', exact: true }).click()
+    await projectBar.getByRole('button', { name: '在研究甲中新建对话', exact: true }).click()
     await waitView(v => v?.name === '研究甲')
-    await page.getByRole('button', { name: '右侧栏', exact: true }).click()
+    await page.getByRole('button', { name: '工具', exact: true }).click()
+    await page.locator('[data-sidebar-right-open]').waitFor()
+    const rightCol = page.locator('[data-rightbar-col]')
+    const rightPane = page.getByRole('region', { name: '研究甲 项目代码沙盒' })
     if (!(await rightPane.isVisible().catch(() => false))) {
       await rightCol.getByText('项目代码沙盒', { exact: true }).last().click()
     }
     await rightPane.getByText(/可用试跑预算 30 秒/).waitFor()
+    await rightPane.getByRole('tab', { name: /正式实验/ }).click()
+    await rightPane.getByRole('button', { name: /待审批/ }).first().click()
     await rightPane.getByRole('button', { name: '批准计划并运行', exact: true }).waitFor()
     await preview('08-project-rightbar')
-    await page.getByRole('button', { name: '右侧栏', exact: true }).click()
+    await page.getByRole('button', { name: '工具', exact: true }).click()
     await page.locator('[data-sidebar-right-open]').waitFor({ state: 'detached' })
     step = '项目切换与全局新会话'
     const b = await newProject('研究乙')
@@ -597,16 +705,19 @@ async function main() {
     await editBotDialog.getByText('实验', { exact: true }).first().waitFor()
     await editBotDialog.getByRole('button', { name: '关闭功能 Bot 信息', exact: true }).click()
     await editBotDialog.waitFor({ state: 'hidden' })
-    await projectBarB.getByRole('button', { name: '聊天', exact: true }).click()
+    await projectBarB.getByRole('button', { name: '在研究乙中新建对话', exact: true }).click()
     await waitView(v => v?.scope === b.scope)
     if (model === 'model') {
       step = '项目内模型工具与功能改名'
       const input = page.locator('[contenteditable=true]:visible').last()
       await input.fill('请调用 labweave_rename_feature，将本项目的 ideas 改名为「灵感」。请实际调用工具并简短确认。')
       await button('发送消息').click()
-      const runningIcon = page.locator('[data-chat-running]:not([data-holding]) [class*="runningIcon"]').last()
+      const running = page.locator('[data-chat-running]:not([data-holding])').last()
+      assert.equal(await running.getByRole('status').textContent(), '深度思考中')
+      await running.getByText(/^深度思考中，用时 /).waitFor()
+      const runningIcon = running.locator('[class*="runningIcon"]')
       await runningIcon.waitFor()
-      assert.ok(await runningIcon.evaluate(el => getComputedStyle(el).backgroundImage.includes('labweave-orbit.svg')
+      assert.ok(await runningIcon.evaluate(el => getComputedStyle(el).backgroundImage.includes('weave-orbit.svg')
         && [...el.children].every(child => getComputedStyle(child).display === 'none')))
       const until = Date.now() + 120000
       let renamed
@@ -624,9 +735,9 @@ async function main() {
     await page.getByRole('dialog', { name: '删除项目' }).getByRole('button', { name: '确认删除' }).click()
     await button('待删除项目').waitFor({ state: 'hidden' })
     step = '顶部新会话回到全局并验证取消右侧栏与自动化队列'
-    await button('Weave').last().click()
+    await assistantHome.click()
     await waitView(v => v?.scope === 'global')
-    assert.equal(await page.locator('[data-conversation-header-corner]').getByRole('button', { name: '右侧栏', exact: true }).count(), 0)
+    assert.equal(await page.locator('[data-conversation-header-corner]').getByRole('button', { name: '工具', exact: true }).count(), 0)
     await page.getByRole('button', { name: '设置全局助手 Weave 资料', exact: true }).click()
     const schedProfile = page.getByRole('dialog', { name: '全局助手设置' })
     await schedProfile.waitFor()
@@ -634,17 +745,22 @@ async function main() {
     await schedProfile.getByRole('button', { name: '查看所有预定任务', exact: true }).click()
     await schedProfile.waitFor({ state: 'hidden' })
     await button('新建自动化任务').click()
+    await checkProductCopy(page.locator('body'))
     const target = page.getByRole('button', { name: /关联工作区/ })
     assert.match(await target.innerText(), /Weave/)
     await target.click()
     await page.getByRole('menu').getByText('研究乙', { exact: true }).click()
     assert.match(await target.innerText(), /研究乙/)
     await page.getByLabel('自动化任务名称').fill('仅乙的定时复盘')
-    await page.locator('textarea:visible').fill('查看本项目的目标。')
+    const savedInstruction = '查看 DSH 论文里的 $DSH_HOME 示例。'
+    const legacyTask = `[LabWeave ${b.scope}/ideas]\n${savedInstruction}\n任务归属：${JSON.stringify({ projectId: b.scope, featureId: 'ideas' })}。先读取此 Bot 的分配任务，按存储要求将结果写入对应功能。`
+    await page.locator('textarea:visible').fill(legacyTask)
     await button('创建').click()
     await page.getByText('仅乙的定时复盘', { exact: true }).first().waitFor()
+    await page.waitForFunction(expected => [...document.querySelectorAll('textarea')].some(el => el.value === expected),
+      legacyTask.replace('[LabWeave ', '[Weave '))
     step = '顶部新会话回到全局并隔离检查'
-    await button('Weave').last().click()
+    await assistantHome.click()
     const global = await waitView(v => v?.scope === 'global')
     assert.notEqual(global.sessionId, b.sessionId)
     assert.equal((await owner('project', { sessionId: global.sessionId, action: 'idea_create', args: { text: 'unscoped' } })).code, 403)

@@ -1,7 +1,7 @@
 ---
 name: project-gap-audit
 description: >-
-  Compare LabWeave's opening-report goals (originally ResearchOS) against current
+  Compare Weave's opening-report goals (originally ResearchOS) against current
   modules and skills; output prioritized gaps with owners and next actions.
 ---
 

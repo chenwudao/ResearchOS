@@ -59,4 +59,3 @@ Every affirmative paper row needs a stable ID. Sourceless sentences go only into
 |----|----------|----------|
 | FF-1 | Mature topic + neighborhood | Survey/origin in foundational; recent work in frontier |
 | FF-2 | Only blogs, no IDs | Content → Gaps |
-| FF-3 | Sample/demo mode | `mode: sample` + `demo/output/` artifacts |

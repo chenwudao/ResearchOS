@@ -11,7 +11,7 @@ from urllib.request import HTTPCookieProcessor, ProxyHandler, Request, build_ope
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import native_launcher as launcher
-import naming
+import features
 import project_service
 
 
@@ -23,11 +23,14 @@ def main():
             launcher.workspace.DATA = root / "data"
             alpha = project_service.create_project("文献梳理")
             beta = project_service.create_project("方法复现")
+            for project in (alpha, beta):
+                for feature in features.OPTIONAL_BUILTINS:
+                    features.enable_builtin(project["id"], feature)
             shared = "--shared" in sys.argv[1:]
             proof = root / "shared-proof.json"
             with launcher.native_services(0, home=root / "host", configured=True, background=False) as (url, _):
                 payload = {"url": url, "alpha": alpha["id"], "beta": beta["id"],
-                           "assistant": naming.NamingStore().assistant_name(), "browser": str(root / "browser"),
+                           "browser": str(root / "browser"),
                            "shared": shared, "form": "--form" in sys.argv[1:], "assign": "--assign" in sys.argv[1:],
                            "messaging": "--messaging" in sys.argv[1:], "proof": str(proof)}
                 subprocess.run(["node", str(ROOT / "tests/integration_feature_chats.cjs")], cwd=ROOT,

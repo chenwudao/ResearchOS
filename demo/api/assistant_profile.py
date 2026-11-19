@@ -3,6 +3,7 @@
 import base64
 from contextlib import closing
 from datetime import datetime, timezone
+import json
 import re
 
 import naming
@@ -29,6 +30,8 @@ _TEXT_LIMITS = {
     "persona": 2000,
     "soul": 8000,
 }
+_PERMISSION_PRESETS = {"read-only", "workspace-write", "danger-full-access"}
+_DEFAULT_ASSISTANT_PERMISSION = "read-only"
 
 
 def _now_iso():
@@ -130,6 +133,58 @@ def _set_field(db, key, value, now):
         "INSERT OR REPLACE INTO labweave_assistant_profile(profile_key, value, updated_at) VALUES (?, ?, ?)",
         (key, value, now),
     )
+
+
+def assistant_permission(data):
+    if set(data) - {"preset"} or ("preset" in data and (
+        not isinstance(data["preset"], str) or data["preset"] not in _PERMISSION_PRESETS
+    )):
+        raise workspace.WorkspaceError(400, "无效的助手权限。")
+    with closing(workspace.database()) as db, db:
+        _schema(db)
+        if "preset" in data:
+            _set_field(db, "permissionPreset", data["preset"], _now_iso())
+        row = db.execute(
+            "SELECT value FROM labweave_assistant_profile WHERE profile_key='permissionPreset'"
+        ).fetchone()
+    saved = row[0] if row else None
+    return {"preset": saved if saved in _PERMISSION_PRESETS else _DEFAULT_ASSISTANT_PERMISSION}
+
+
+def assistant_model(data):
+    preference = data.get("preference")
+    initialize = data.get("initialize", False)
+    if data and (
+        set(data) - {"preference", "initialize"} or type(initialize) is not bool
+        or not isinstance(preference, dict)
+        or set(preference) - {"mode", "provider", "model", "reasoningEffort", "contextWindow"}
+        or preference.get("mode") not in ("auto", "fixed")
+    ):
+        raise workspace.WorkspaceError(400, "无效的助手模型设置。")
+    if data:
+        for key in ("provider", "model", "reasoningEffort"):
+            value = preference.get(key)
+            if value is not None and (not isinstance(value, str) or not value.strip() or len(value) > 300):
+                raise workspace.WorkspaceError(400, "无效的模型或推理强度。")
+        if preference["mode"] == "fixed" and not (preference.get("provider") and preference.get("model")):
+            raise workspace.WorkspaceError(400, "请选择固定模型。")
+        size = preference.get("contextWindow")
+        if size is not None and (type(size) is not int or not 0 < size < 2**53):
+            raise workspace.WorkspaceError(400, "无效的上下文窗口。")
+    with closing(workspace.database()) as db, db:
+        _schema(db)
+        key = "modelPreference"
+        if data:
+            value = json.dumps(preference, ensure_ascii=False)
+            if initialize:
+                db.execute(
+                    "INSERT OR IGNORE INTO labweave_assistant_profile (profile_key, value, updated_at) VALUES (?, ?, ?)",
+                    (key, value, _now_iso()),
+                )
+            else:
+                _set_field(db, key, value, _now_iso())
+        row = db.execute("SELECT value FROM labweave_assistant_profile WHERE profile_key=?", (key,)).fetchone()
+    return json.loads(row[0]) if row else None
 
 
 def update_profile(data):

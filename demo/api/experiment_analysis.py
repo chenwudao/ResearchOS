@@ -157,7 +157,7 @@ def report(flow):
     for run in flow['runs']:
         ledger.link(project, {'source': report_id, 'target': identity + '_' + run['id'], 'relation': 'derived_from'})
     for name in ('report.md', 'analysis.json', 'protocol.json', 'runs.csv'):
-        register_resource(project, 'wf_' + identity + '_' + name.replace('.', '_'), '对照实验 · ' + name, relative + '/' + name)
+        register_resource(project, 'wf_' + identity + '_' + name.replace('.', '_'), '对照实验：' + name, relative + '/' + name)
     flow.update(analysis=result, reportPath=relative + '/report.md', evidenceIds=ids,
                 stateRevisionAtReport=ledger.state(project)['revision'])
     register_goals(flow)
