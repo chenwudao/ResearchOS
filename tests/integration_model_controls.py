@@ -10,6 +10,7 @@ import threading
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import native_launcher as launcher
+from project_service import create_project
 
 
 def main():
@@ -36,13 +37,16 @@ def main():
         with TemporaryDirectory(prefix="lw-model-ctrl-e2e-") as tmp:
             root = Path(tmp)
             launcher.workspace.DATA = root / "data"
+            create_project("模型选择测试")
             home = root / "home"
             patch = home / "profiles" / "web" / "cordis.patch.yml"
             patch.parent.mkdir(parents=True, exist_ok=True)
-            (home / ".credentials.yaml").write_text(
+            credentials = home / ".credentials.yaml"
+            credentials.write_text(
                 "version: 1\nrefs:\n  DEEPSEEK_API_KEY: sk-ds-test-123\n  CUSTOMGW_API_KEY: sk-gw-test-456\n",
                 encoding="utf-8",
             )
+            credentials.chmod(0o600)
             patch.write_text(
                 f"""- id: llm-pi-ai
   name: "@deepseek-ai/dsh-llm-pi-ai"

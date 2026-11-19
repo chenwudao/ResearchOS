@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "demo/api"))
 import backup
 import native_web as web
 import project_plugins
+import features
 import workspace
 
 
@@ -38,6 +39,8 @@ class NativeWorkspaceTests(unittest.TestCase):
     def test_legacy_items_and_fixed_session_scope(self):
         a, b = self.projects
         record = self.records[a]
+        self.assertEqual([f["id"] for f in web.project_view(a)["features"]], ["chat"])
+        self.assertEqual([f["id"] for f in web.project_view(b)["features"]], ["chat"])
         self.assertEqual(web.dispatch("create", {"name": "Alpha", "requestId": "a"*32})["scope"], a)
         web.dispatch("tool", {"workspace": record, "tool": "idea_create", "args": {"text": "only A"}})
         self.assertRaises(workspace.WorkspaceError, web.dispatch, "tool", {
@@ -55,6 +58,8 @@ class NativeWorkspaceTests(unittest.TestCase):
             "workspace": self.records["global"], "action": "feature_rename", "args": {"featureId": "chat", "label": "全局"}})
         self.assertRaises(workspace.WorkspaceError, web.dispatch, "project", {
             "workspace": record, "action": "feature_rename", "args": {"featureId": "ideas", "label": "   "}})
+        features.enable_builtin(a, "goals")
+        features.enable_builtin(b, "goals")
         updated_goals = web.dispatch("project", {
             "workspace": record,
             "action": "feature_update",
@@ -103,8 +108,7 @@ class NativeWorkspaceTests(unittest.TestCase):
         self.assertEqual(view_a["memories"][0]["source"], "manual")
         searched_a = web.dispatch("project", {"workspace": rec_a, "action": "memory_search", "args": {"query": "seed=99"}})
         self.assertEqual([m["id"] for m in searched_a], [mem_a["id"]])
-        cat_a = next(row for row in web.catalog() if row["scope"] == a)
-        self.assertEqual(cat_a["coreMemories"][0]["id"], mem_a2["id"])
+        self.assertEqual(view_a["memories"][0]["id"], mem_a2["id"])
         self.assertEqual(view_b["memories"], [])
         self.assertFalse(view_b["autoReview"])
 

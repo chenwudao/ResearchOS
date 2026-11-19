@@ -20,7 +20,10 @@ async function main() {
   },{route,args})
   let step='打开项目'
   try {
-    await page.goto(url);await button('继续').click();await button('继续').waitFor({state:'hidden'})
+    await page.goto(url)
+    await button('打开助理').waitFor()
+    const setup = page.getByRole('dialog', {name: '配置模型 API'})
+    if (await setup.isVisible()) await setup.getByRole('button', {name: '稍后配置'}).click()
     await button('沙盒验收').click()
     const tree=page.getByRole('navigation',{name:'沙盒验收 项目功能'})
     await tree.getByRole('button',{name:'聊天',exact:true}).click()

@@ -35,7 +35,7 @@ def example(payload):
     description = '人工生成的二分类演示数据，1200 行、10 个特征，生成随机种子 742。每个实验种子执行分层 75/25 训练池与验证划分；按预算从训练池分层抽样。验证集用于探索，后续须独立留出测试集。此示例不代表真实材料或临床数据。'
     (directory / 'README.txt').write_text(description, encoding='utf-8')
     for filename in ('run.py', 'dataset.csv', 'README.txt'):
-        projects.create_entry(project, 'library', {'text': '算法对照示例 · ' + filename, 'path': relative + '/' + filename, 'kind': 'file'})
+        projects.create_entry(project, 'library', {'text': '算法对照示例：' + filename, 'path': relative + '/' + filename, 'kind': 'file'})
     return flows.draft(project, {'plan': {
         'question': '在相同数据划分和训练样本预算下，候选算法是否稳定优于 Random Forest？',
         'hypothesis': 'Logistic Regression 或 Extra Trees 在该合成分类数据上能够获得稳定的验证准确率收益。',

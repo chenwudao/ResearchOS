@@ -81,8 +81,13 @@ class FeatureBotsTests(unittest.TestCase):
         self.assertNotIn(fid_all, [f["id"] for f in web.project_view(a)["features"]])
         self.assertIn(fid_all, [f["id"] for f in web.project_view(b)["features"]])
 
-        # Deleting 'chat' is always forbidden; deleting builtin 'feed' removes it cleanly.
+        # New projects start with chat only; deleting 'chat' is always forbidden.
+        self.assertEqual([f["id"] for f in web.project_view(a)["features"] if f["builtin"]], ["chat"])
+        self.assertEqual([f["id"] for f in web.project_view(b)["features"] if f["builtin"]], ["chat"])
         self.assertTrue(self.mcp(a, "feature_delete", {"featureId": "chat"})["isError"])
+        # Once optional builtins are enabled, deleting 'feed' is isolated to the current project.
+        features.enable_builtin(a, "feed")
+        features.enable_builtin(b, "feed")
         self.mcp(a, "feature_delete", {"featureId": "feed"})
         self.assertNotIn("feed", [f["id"] for f in web.project_view(a)["features"]])
         self.assertIn("feed", [f["id"] for f in web.project_view(b)["features"]])
@@ -155,6 +160,45 @@ class FeatureBotsTests(unittest.TestCase):
         web.dispatch("project", {"workspace": rec_a, "action": "entry_delete", "args": {"rail": fid, "id": pushed["id"]}})
         self.assertEqual(len(web.project_view(a)["rails"][fid]), 1)
 
+
+    def test_bot_assignment_markdown_rename_and_project_index(self):
+        a, b = self.projects
+        rec_a, rec_b = self.records[a], self.records[b]
+        features.enable_builtin(a, "ideas")
+        features.enable_builtin(b, "ideas")
+        markdown = "## 筛选标准\n\n- 只保留可验证的假设\n- 记录原文页码"
+        rows = web.dispatch("project", {
+            "workspace": rec_a, "action": "bot_assignment_write",
+            "args": {"featureId": "ideas", "kind": "duty", "title": "筛选假设", "instruction": markdown},
+        })
+        self.assertEqual(rows, [{"kind": "duty", "title": "筛选假设", "instruction": markdown}])
+        self.assertEqual(features.assignment_map(a)["ideas"][0]["instruction"], markdown)
+        self.assertEqual(features.assignment_map(b), {})
+
+        renamed = web.dispatch("project", {
+            "workspace": rec_a, "action": "bot_assignment_write",
+            "args": {"featureId": "ideas", "kind": "duty", "title": "验证假设",
+                     "originalTitle": "筛选假设", "instruction": markdown},
+        })
+        self.assertEqual([item["title"] for item in renamed], ["验证假设"])
+        self.assertEqual([item["title"] for item in features.assignment_map(a)["ideas"]], ["验证假设"])
+
+        features.schedule_links(a, "ideas", "schedule-1")
+        self.assertEqual(features.schedule_map(a), {"ideas": ["schedule-1"]})
+        cat_a = next(row for row in web.catalog() if row["scope"] == a)
+        cat_b = next(row for row in web.catalog() if row["scope"] == b)
+        idea_a = next(f for f in cat_a["features"] if f["id"] == "ideas")
+        idea_b = next(f for f in cat_b["features"] if f["id"] == "ideas")
+        self.assertEqual(idea_a["scheduleIds"], ["schedule-1"])
+        self.assertEqual(idea_a["assignments"][0]["title"], "验证假设")
+        self.assertEqual(idea_b["scheduleIds"], [])
+        self.assertEqual(idea_b["assignments"], [])
+
+        with self.assertRaises(workspace.WorkspaceError):
+            web.dispatch("project", {
+                "workspace": rec_b, "action": "bot_assignment_write",
+                "args": {"featureId": "ideas", "kind": "duty", "title": "越权", "instruction": "x", "projectId": a},
+            })
 
     def test_project_plus_and_chat_share_feature_profile(self):
         a,b=self.projects

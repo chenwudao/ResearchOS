@@ -68,7 +68,7 @@ def context(project_id):
     import automation
     feed = automation.public_jobs().get(project_id, {}).get("feed", {})
     result = automation.project_context(item, feed)
-    result.update(memories=memory_list(project_id)[:30], directory=str(folder(project_id)))
+    result["directory"] = str(folder(project_id))
     import research_ledger
     result['researchState'] = research_ledger.state(project_id)
     import research_workflows
@@ -241,7 +241,8 @@ def create_entry(project_id, rail, args):
     text = workspace.text(args.get("text"), 16000)
     if not features.is_valid_rail(project_id, rail) or not text:
         raise workspace.WorkspaceError(400, "条目内容为空。")
-    entry = {"id": "n_" + uuid4().hex, "text": text, "ts": timestamp(), "source": args.get("source") or "Weave"}
+    entry = {"id": "n_" + uuid4().hex, "text": text, "ts": timestamp(),
+             "source": workspace.text(args.get("source"), 240) or "Weave"}
     for field in ("due", "url", "parentId", "ideaId", "paperId", "dependsOn", "kind", "path", "taskId", "category", "libraryId"):
         if field in args and args[field] is not None:
             entry[field] = args[field]
@@ -280,6 +281,8 @@ def update_entry(project_id, rail, args):
         for field in ("url", "kind"):
             if field in args and args[field] is not None:
                 entry[field] = args[field]
+        if args.get("source") is not None:
+            entry["source"] = workspace.text(args["source"], 240) or "Weave"
         _apply_rich_fields(project_id, args, entry, allow_clear=True)
         if rail == "goals":
             if "due" in args:
@@ -467,6 +470,8 @@ def create_project(name, identity=None):
         saved["state"]["projects"].append(item)
         try:
             workspace.save(saved)
+            import features
+            features.suppress_optional_builtins(identity)
             return item
         except workspace.WorkspaceError as exc:
             if exc.status != 409:

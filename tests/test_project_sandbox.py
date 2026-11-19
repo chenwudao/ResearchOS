@@ -8,7 +8,9 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "demo/api"))
+import features
 import native_web
+import features
 import project_sandbox as sandbox
 import project_service as projects
 import workspace
@@ -21,6 +23,8 @@ class SandboxTests(unittest.TestCase):
         workspace.DATA = Path(self.temp.name) / "data"
         self.a = projects.create_project("甲")["id"]
         self.b = projects.create_project("乙")["id"]
+        features.enable_builtin(self.a, "ideas")
+        features.enable_builtin(self.a, "ideas")
         sandbox.recover()
         self.origin = {"sessionId": "session-a", "callId": "call-a", "bot": "点子", "featureId": "ideas"}
         self.args = {"title": "数据核查", "code": "print(7)", "timeoutSeconds": 5}

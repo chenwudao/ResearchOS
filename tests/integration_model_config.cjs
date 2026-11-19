@@ -24,55 +24,46 @@ async function run() {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 })
     await button('Weave').last().waitFor({ timeout: 30000 })
 
-    step = '关闭首次启动引导'
-    const welcome = button('继续')
-    const addKey = button('添加 API Key')
-    await welcome.or(addKey).first().waitFor({ timeout: 15000 })
-    if (await welcome.isVisible()) {
-      await welcome.click()
-      await welcome.waitFor({ state: 'hidden' })
-    }
-    if (await addKey.waitFor({ timeout: 4000 }).then(() => true, () => false)) {
-      await addKey.click()
-      const skip = button('稍后配置')
-      if (await skip.isVisible().catch(() => false)) {
-        await skip.click()
-        await skip.waitFor({ state: 'hidden' })
-      }
-    }
+    step = '首次使用只显示模型 API 配置'
+    const setup = page.getByRole('dialog', { name: '配置模型 API', exact: true })
+    await setup.waitFor()
+    assert.doesNotMatch(await setup.innerText(), /DeepSeek\s+(?:Account|账号)|LabWeave|\b(?:DSH|DS)\b|预览版|登录|注册/i)
+    assert.equal(await page.getByRole('dialog').count(), 1)
+    assert.equal(await setup.locator('input').count(), 1)
+    assert.equal(await setup.locator('select').count(), 1)
+    await setup.getByLabel('模型供应商', { exact: true }).selectOption('openai')
+    await setup.getByLabel('API Key', { exact: true }).fill('sk-e2e-imported-1234')
+    await setup.getByRole('button', { name: '保存并继续', exact: true }).click()
+    await setup.waitFor({ state: 'hidden' })
 
-    step = '打开原生模型与 API 面板并确认已移除自定义导入扩展区'
+    step = '验证 API 配置写入原生模型设置并在重新打开后生效'
+    await page.reload()
+    await button('Weave').last().waitFor()
+    await page.getByRole('button', { name: /gpt[- ]4o[- ]mini/i }).first().waitFor()
+    assert.equal(await page.getByRole('dialog').count(), 0)
     await button('模型与 API').click()
     const modal = page.locator('[data-shortcut-modal="settings"]')
     await modal.waitFor()
-    assert.equal(await modal.getByRole('region', { name: '科研工作区模型联动与外部配置导入' }).count(), 0)
-    assert.equal(await modal.getByText('本机用户目录 API 配置检测', { exact: true }).count(), 0)
-
-    step = '通过 DSH 原生入口创建自定义 OpenAI 兼容模型提供商'
-    await modal.getByRole('button', { name: '添加模型提供商', exact: true }).click()
-    await modal.getByText('自定义模型 API', { exact: true }).click()
-
-    await modal.getByLabel('Provider ID', { exact: true }).fill('customllm')
-    await modal.getByLabel('显示名称', { exact: true }).fill('Custom LLM')
-    await modal.locator('input[placeholder="https://gateway.example/v1"]').fill(`${stubUrl}/v1`)
-    await modal.locator('input[placeholder="输入 API 密钥"]').fill('sk-e2e-imported-1234')
-
-    await modal.getByRole('button', { name: '添加模型', exact: true }).click()
-    await modal.locator('input[placeholder="模型 ID"]:visible').last().fill('gpt-4o-mini')
-
-    await modal.getByRole('button', { name: '创建提供商', exact: true }).click()
-    await modal.getByText('Custom LLM', { exact: false }).waitFor({ timeout: 10000 })
+    await modal.getByText(/Custom LLM|openai/i).first().waitFor()
     await modal.getByRole('button', { name: '关闭', exact: true }).click()
     await modal.waitFor({ state: 'hidden' })
 
-    step = '新建科研项目并验证主聊天自动兼容已配置模型'
-    await button('创建科研项目').click()
-    const projForm = page.getByRole('dialog', { name: '创建科研项目' })
+    step = '新建工作区项目并验证主聊天自动兼容已配置模型'
+    await button('新建工作区项目').click()
+    const projForm = page.getByRole('dialog', { name: '新建工作区项目' })
     await projForm.getByLabel('项目名称').fill('新项目兼容')
     await projForm.getByRole('button', { name: '创建', exact: true }).click()
     const projectBar = page.getByRole('navigation', { name: '新项目兼容 项目功能' })
     await projectBar.waitFor()
-    await page.getByRole('button', { name: /gpt-4o-mini/ }).waitFor({ timeout: 10000 })
+    await page.getByRole('button', { name: /gpt[- ]4o[- ]mini/i }).waitFor({ timeout: 10000 })
+    await page.waitForFunction(async () => {
+      const sessionId = [...document.querySelectorAll('[data-conversation-session]')]
+        .find(el => el.getClientRects().length)?.getAttribute('data-conversation-session')
+      if (!sessionId) return false
+      const view = await fetch('/api/labweave/project', {method: 'POST',
+        headers: {'Content-Type': 'application/json'}, body: JSON.stringify({sessionId, action: 'view'})})
+      return view.ok && (await view.json()).name === '新项目兼容'
+    })
 
     const mainBox = page.locator('[contenteditable=true]:visible').last()
     await mainBox.waitFor({ timeout: 10000 })
@@ -85,6 +76,17 @@ async function run() {
     }, { timeout: 10000 }).catch(() => {})
     await sendMainBtn.click()
     await page.getByText('STUB_MODEL_OK', { exact: false }).first().waitFor({ timeout: 45000 })
+    step = '验证 Weave 工具卡及其原始参数'
+    const processRow = page.locator('button[data-turn-process][data-turn-process-tool-calls="1"]').last()
+    if (await processRow.getAttribute('aria-expanded') === 'false') await processRow.click()
+    const calls = page.locator('[data-step-process]').getByRole('button', {name: /已调用工具/}).first()
+    if (await calls.getAttribute('aria-expanded') === 'false') await calls.click()
+    const projectTool = page.locator('[data-tool="labweave_memory_search"]').last()
+    const toolHeader = projectTool.locator('[data-disclosure-row]')
+    await toolHeader.getByText(/查找项目记忆/).first().waitFor()
+    assert.doesNotMatch(await toolHeader.innerText(), /labweave_memory_search/)
+    await toolHeader.click()
+    await projectTool.getByText(/"query":\s*"DSH 论文 \$DSH_HOME"/).first().waitFor()
 
     step = '验证新项目功能 Bot 自动使用新配置的自定义模型并对话'
     await projectBar.getByRole('button', { name: '点子', exact: true }).click()
@@ -93,7 +95,7 @@ async function run() {
       regions: [...document.querySelectorAll('[role="region"], section[aria-label]')].map(el => el.getAttribute('aria-label')),
       mains: [...document.querySelectorAll('main')].map(el => el.getAttribute('aria-label')),
       lwPages: document.querySelectorAll('.lw-page, .lw-panel').length,
-      ideasMainText: document.querySelector('main[aria-label="新项目兼容 · 点子"]')?.innerText || '',
+      ideasMainText: document.querySelector('main[aria-label="新项目兼容的点子"]')?.innerText || '',
     }))
     console.log('AFTER_IDEAS_CLICK_DIAG:', JSON.stringify(diag))
     const ideas = page.getByRole('region', { name: '点子', exact: true })
@@ -109,7 +111,7 @@ async function run() {
     await ideas.getByText('STUB_MODEL_OK', { exact: false }).waitFor({ timeout: 45000 })
   } catch (err) {
     console.error('FAILED AT STEP:', step)
-    console.error('ON_FAIL_IDEAS_MAIN_TEXT:', await page.locator('main[aria-label="新项目兼容 · 点子"]').innerText().catch(() => 'NONE'))
+    console.error('ON_FAIL_IDEAS_MAIN_TEXT:', await page.locator('main[aria-label="新项目兼容的点子"]').innerText({ timeout: 2000 }).catch(() => 'NONE'))
     console.error('ON_FAIL_BODY_SNIPPET:', (await page.locator('body').innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 500))
     console.error(err)
     process.exitCode = 1

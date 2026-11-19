@@ -23,7 +23,8 @@ TOOLS = {
         "Push a categorized message or illustrated summary card into a project Feature Bot's context stream, "
         "or pass id to update/recategorize an existing entry. Decide based on the Bot's purpose and message intent "
         "whether to include a figure/diagram (imagePath in project folder, inline imageSvg diagram/chart, imageData, "
-        "or imageUrl) plus title and caption, or concise text only.",
+        "or imageUrl) plus title and caption, or concise text only. For sourced pushes, include the original "
+        "publication or repository link as url and its publisher, journal, or repository name as source.",
         {
             "featureId": {"type": "string"},
             "id": {"type": "string"},
@@ -36,6 +37,7 @@ TOOLS = {
             "imageData": {"type": "string"},
             "imageUrl": {"type": "string"},
             "url": {"type": "string"},
+            "source": {"type": "string"},
             "kind": {"type": "string"},
         },
     ),
@@ -57,8 +59,8 @@ TOOLS = {
     "project_update": ("Update project name, background or topic.", {"name": {"type": "string"}, "description": {"type": "string"}, "topic": {"type": "string"}}),
     "paper_citations": ("Get real bibliographic references from Crossref for a DOI.", {"doi": {"type": "string"}}),
     "project_list": ("List available research projects.", {}),
-    "project_create": ("Create a research project from the global assistant.", {"name": {"type": "string"}}),
-    "project_get_context": ("Read current project, notes, resources and long-term memories.", {}),
+    "project_create": ("Create a workspace project from the global assistant.", {"name": {"type": "string"}}),
+    "project_get_context": ("Read the current project details, notes, and resources.", {}),
     "resource_search": ("Find project resources.", {"query": {"type": "string"}}),
     "resource_read": ("Read a registered text resource, repository listing or PDF page.", {"id": {"type": "string"}, "page": {"type": "integer"}}),
     "paper_read": ("Read one page of a registered PDF with page attribution.", {"id": {"type": "string"}, "page": {"type": "integer"}}),

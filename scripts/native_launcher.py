@@ -14,10 +14,10 @@ import threading
 import time
 import webbrowser
 
-from start_dsh_preview import URL, start_process, stop_process
-
 ROOT = Path(__file__).resolve().parents[1]
-PLUGIN = ROOT / "plugins" / "dsh-labweave-prototype"
+PLUGIN = ROOT / "plugins" / "dsh-labweave-workspace"
+LEGACY_PLUGIN = "labweave-dsh-prototype"
+LOGIN_URL = re.compile(r"http://127\.0\.0\.1:\d+/\?token=[^\s\x1b]+")
 sys.path.insert(0, str(ROOT / "demo" / "api"))
 import automation
 import model_config
@@ -26,6 +26,37 @@ import project_sandbox
 import research_workflows
 import tasks
 import workspace
+
+
+def start_process(command, **kwargs):
+    if os.name == "nt":
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        kwargs["start_new_session"] = True
+    return subprocess.Popen(command, **kwargs)
+
+
+def stop_process(process):
+    if process is None or process.poll() is not None:
+        return
+    if os.name == "nt":
+        # Target only the process tree started by Weave.
+        try:
+            subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           check=False, timeout=15)
+        except (OSError, subprocess.TimeoutExpired):
+            process.terminate()
+    else:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    try:
+        process.wait(timeout=15)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
 
 
 def profile_home():
@@ -68,18 +99,26 @@ def prepare_profile(home):
                 else {"name": "dsh-profile-web", "private": True, "dsh": {"profile": {
                     "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"]}}})
     bundles = manifest["dsh"]["profile"]["bundles"]
+    dependencies = manifest.setdefault("dependencies", {})
+    # Replace the obsolete registration in place, preserving the remaining
+    # profile entries and the existing directory for DSH settings and sessions.
+    bundles[:] = [bundle for bundle in bundles if bundle != LEGACY_PLUGIN]
+    dependencies.pop(LEGACY_PLUGIN, None)
     if "@deepseek-ai/dsh-client-ui-sidebar-browser" not in bundles:
         bundles.append("@deepseek-ai/dsh-client-ui-sidebar-browser")
-    for plugin in (PLUGIN, ROOT / "plugins/dsh-labweave-workspace"):
-        name = json.loads((plugin / "package.json").read_text())["name"]
-        if name not in bundles:
-            bundles.append(name)
-        manifest.setdefault("dependencies", {})[name] = "file:" + plugin.as_posix()
-        target = profile / "node_modules" / name
-        target.mkdir(parents=True, exist_ok=True)
-        for src in plugin.iterdir():
-            if src.suffix in (".js", ".json", ".yml", ".svg", ".png"):
-                write_changed(target / src.name, src.read_bytes())
+    package_path = PLUGIN / "package.json"
+    package = package_path.read_bytes()
+    name = json.loads(package)["name"]
+    if name not in bundles:
+        bundles.append(name)
+    dependencies[name] = "file:" + PLUGIN.as_posix()
+    target = profile / "node_modules" / name
+    for src in PLUGIN.rglob("*"):
+        if src != package_path and src.suffix in (".js", ".json", ".yml", ".svg", ".png") and src.is_file():
+            destination = target / src.relative_to(PLUGIN)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            write_changed(destination, src.read_bytes())
+    write_changed(target / package_path.name, package)
     for filename in ("cordis.yml", "cordis.patch.yml"):
         if not (profile / filename).exists():
             write_changed(profile / filename, "[]\n")
@@ -112,6 +151,10 @@ def native_services(port=8770, *, home=None, configured=True, background=True, t
             if port:
                 with socket.socket() as probe:
                     try:
+                        # Match the Web listener on POSIX. Connections closing from
+                        # the previous run may still be in TIME_WAIT after --stop.
+                        if os.name == "posix":
+                            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                         probe.bind(("127.0.0.1", port))
                     except OSError as exc:
                         raise RuntimeError(f"本机端口 {port} 已被占用。") from exc
@@ -135,7 +178,7 @@ def native_services(port=8770, *, home=None, configured=True, background=True, t
                     errors = []
                     def read():
                         for line in process.stdout:
-                            match = URL.search(line)
+                            match = LOGIN_URL.search(line)
                             if match:
                                 ready.put(match.group(0))
                             elif "labweave" in line.lower() and any(s in line.lower() for s in ("error", "failed", "cannot")):
@@ -179,7 +222,7 @@ def business_owner():
         try:
             owner.bind(("127.0.0.1", 8765))
         except OSError as exc:
-            raise RuntimeError("旧版或另一份 LabWeave 服务占用 8765。请先关闭它，再启动科研工作区。") from exc
+            raise RuntimeError("本机端口 8765 已被占用。请先关闭占用该端口的服务，再启动 Weave。") from exc
         yield
 
 

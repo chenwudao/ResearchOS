@@ -21,61 +21,86 @@ async function main() {
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 })
     const button = name => page.getByRole('button', { name, exact: true })
-    const welcome = button('继续')
-    const addKey = button('添加 API Key')
-    await welcome.or(addKey).first().waitFor()
-    if (await welcome.isVisible()) { await welcome.click(); await welcome.waitFor({ state: 'hidden' }) }
-    if (await addKey.isVisible()) { await addKey.click(); await button('稍后配置').click() }
+    const project = page.getByRole('navigation', { name: '模型选择测试 项目功能' })
+    if (!await project.isVisible()) await button('模型选择测试').click()
+    await project.getByRole('button', { name: '在模型选择测试中新建对话', exact: true }).click()
+    assert.equal(await page.getByRole('dialog', { name: '配置模型 API', exact: true }).count(), 0)
 
     const openComposerModelMenu = async () => {
-      const btn = page.locator('[data-composer-card] button').filter({ hasText: /DeepSeek|gpt[- ]4o|o3[- ]mini|Custom|选择模型/i }).last()
+      const btn = page.locator('[data-composer-card] button[aria-haspopup="menu"][aria-label^="选择模型"]:visible').last()
       await btn.waitFor()
-      await btn.click()
       const menu = page.locator('[role="menu"][aria-label="模型与推理等级"], [role="group"][aria-label="模型与推理等级"]').last()
+      if (!await menu.isVisible()) await btn.click()
       await menu.waitFor()
       return { btn, menu }
     }
 
-    step = '验证模型弹出菜单展示模型、推理等级、上下文窗口与底部模型供应商入口'
+    step = '验证模型弹出菜单展示模型、推理等级、上下文窗口，且不含模型与 API 设置或全局默认'
     {
       const { menu } = await openComposerModelMenu()
       await menu.getByRole('menuitem', { name: /模型\s+DeepSeek/ }).waitFor()
       await menu.getByRole('menuitem', { name: /推理等级/ }).waitFor()
       await menu.getByRole('menuitem', { name: /上下文窗口/ }).waitFor()
-      await menu.getByRole('menuitem', { name: /模型供应商\s+DeepSeek/ }).waitFor()
+      assert.equal(await menu.getByRole('menuitem', { name: /模型供应商/ }).count(), 0)
+      assert.equal(await menu.getByRole('menuitem', { name: /模型与 API 设置/ }).count(), 0)
+      assert.equal(await menu.getByRole('button', { name: /^(设为全局默认|已设为默认)$/ }).count(), 0)
 
-      // Verify 模型供应商 is positioned below 模型 & 推理等级
-      const orderOk = await menu.evaluate(el => {
-        const items = [...el.querySelectorAll('[role="menuitem"]')]
-        const labels = items.map(i => (i.innerText || '').trim())
-        const modelIdx = labels.findIndex(t => t.startsWith('模型\n') || t.startsWith('模型 '))
-        const ctxIdx = labels.findIndex(t => t.includes('上下文窗口'))
-        const provIdx = labels.findIndex(t => t.includes('模型供应商'))
-        return modelIdx >= 0 && ctxIdx > modelIdx && provIdx > ctxIdx && provIdx === items.length - 1
-      })
-      assert.ok(orderOk, '模型供应商入口应位于弹出菜单最下方')
+      const assertRoot = async () => {
+        await menu.getByRole('menuitem', { name: /^模型\s/ }).waitFor()
+        await menu.getByRole('menuitem', { name: /^推理等级/ }).waitFor()
+        await menu.getByRole('menuitem', { name: /^上下文窗口/ }).waitFor()
+      }
+      const checkNavigation = async () => {
+        for (const name of ['模型', '推理等级', '上下文窗口']) {
+          await menu.getByRole('menuitem', { name: new RegExp('^' + name + '\\s') }).click()
+          const back = menu.locator('.lw-mo-back').filter({ hasText: new RegExp('^' + name + '$') })
+          await back.waitFor()
+          if (name === '上下文窗口') {
+            assert.equal(await menu.getByRole('menuitem', { name: /^(模型|推理等级|推理强度)/ }).count(), 0)
+          }
+          await back.click()
+          await assertRoot()
+        }
+      }
+      await checkNavigation()
+      if (process.env.LABWEAVE_CHECK_MODEL_NAVIGATION === '1') {
+        await page.setViewportSize({ width: 900, height: 700 })
+        await page.evaluate(() => { document.documentElement.style.zoom = '125%' })
+        await checkNavigation()
+        console.log('项目对话三个模型子页的返回及上下文标题通过，覆盖 100% 和 125% 缩放')
+        return
+      }
 
-      step = '验证切换模型供应商会同步改变上方模型与底部显示，且每个供应商对应不同模型'
-      await menu.getByRole('menuitem', { name: /模型供应商/ }).click()
-      const provPanel = menu.getByRole('group', { name: '模型供应商' })
-      await provPanel.waitFor()
-      await provPanel.getByRole('menuitemradio', { name: /DeepSeek.*2 个模型/ }).waitFor()
-      await provPanel.getByRole('menuitemradio', { name: /Custom Gateway.*2 个模型/ }).click()
-      await provPanel.waitFor({ state: 'hidden' })
+      const pickModel = async (name) => {
+        const current = menu.getByRole('menuitem', { name: /模型\s+/ }).first()
+        await current.click()
+        await page.locator('button.lw-mo-back').filter({ hasText: '模型' }).waitFor()
+        const candidates = [
+          menu.getByRole('menuitemradio', { name: new RegExp(name) }),
+          menu.getByRole('option', { name: new RegExp(name) }),
+          menu.getByRole('menuitem', { name: new RegExp(name) }),
+          menu.getByRole('button', { name: new RegExp(name) }),
+        ]
+        for (const loc of candidates) {
+          if (await loc.count()) {
+            await loc.first().click()
+            await menu.waitFor({ state: 'hidden' })
+            await openComposerModelMenu()
+            return
+          }
+        }
+        throw new Error('未找到模型选项: ' + name)
+      }
 
+      step = '验证可直接切换不同模型并配置推理强度与上下文窗口长度'
+      await pickModel('GPT-4o Mini')
       await menu.getByRole('menuitem', { name: /模型\s+GPT-4o Mini/ }).waitFor()
-      await menu.getByRole('menuitem', { name: /模型供应商\s+Custom Gateway/ }).waitFor()
       const triggerText = await page.locator('[data-composer-card] button').filter({ hasText: /GPT-4o Mini/ }).last().innerText()
-      assert.match(triggerText, /GPT-4o Mini/, '切换供应商后底部触发栏应同步改为目标供应商模型')
+      assert.match(triggerText, /GPT-4o Mini/, '切换模型后底部触发栏应同步更新')
 
-      step = '验证切换同供应商下不同模型并配置推理强度与上下文窗口长度'
-      await menu.getByRole('menuitem', { name: /模型供应商/ }).click()
-      await provPanel.waitFor()
-      await provPanel.getByRole('button', { name: 'O3 Mini', exact: true }).click()
-      await provPanel.waitFor({ state: 'hidden' })
+      await pickModel('O3 Mini')
       await menu.getByRole('menuitem', { name: /模型\s+O3 Mini/ }).waitFor()
 
-      // Enable custom reasoning strength for third-party custom model if absent, then switch effort
       const customReasonRow = menu.getByRole('menuitem', { name: /推理强度/ })
       if (await customReasonRow.isVisible().catch(() => false)) {
         await customReasonRow.click()
@@ -85,9 +110,9 @@ async function main() {
         await reasonPanel.waitFor({ state: 'hidden' })
       }
       await menu.getByRole('menuitem', { name: /推理等级/ }).click()
+      await page.locator('button.lw-mo-back').filter({ hasText: '推理等级' }).waitFor()
       await menu.getByRole('menuitemradio', { name: 'Low', exact: true }).click()
 
-      // Ensure menu closes before reopening
       if (await menu.isVisible().catch(() => false)) {
         await page.mouse.click(10, 10)
       }
@@ -104,7 +129,6 @@ async function main() {
       await ctxPanel.waitFor({ state: 'hidden' })
       await menu.getByRole('menuitem', { name: /上下文窗口\s+256K/ }).waitFor()
 
-      // Test custom numeric context window
       await menu.getByRole('menuitem', { name: /上下文窗口/ }).click()
       await ctxPanel.waitFor()
       await ctxPanel.getByLabel('自定义上下文窗口长度').fill('192K')
@@ -112,23 +136,36 @@ async function main() {
       await ctxPanel.waitFor({ state: 'hidden' })
       await menu.getByRole('menuitem', { name: /上下文窗口\s+192K/ }).waitFor()
 
-      // Also test setting DeepSeek Flash context window
-      await menu.getByRole('menuitem', { name: /模型供应商/ }).click()
-      await menu.getByRole('group', { name: '模型供应商' }).getByRole('menuitemradio', { name: /DeepSeek/ }).click()
+      const pickModel = async (name) => {
+        const current = menu.getByRole('menuitem', { name: /模型\s+/ }).first()
+        await current.click()
+        await page.locator('button.lw-mo-back').filter({ hasText: '模型' }).waitFor()
+        const candidates = [
+          menu.getByRole('menuitemradio', { name: new RegExp(name) }),
+          menu.getByRole('option', { name: new RegExp(name) }),
+          menu.getByRole('menuitem', { name: new RegExp(name) }),
+          menu.getByRole('button', { name: new RegExp(name) }),
+        ]
+        for (const loc of candidates) {
+          if (await loc.count()) {
+            await loc.first().click()
+            await menu.waitFor({ state: 'hidden' })
+            await openComposerModelMenu()
+            return
+          }
+        }
+        throw new Error('未找到模型选项: ' + name)
+      }
+
+      await pickModel('DeepSeek')
       await menu.getByRole('menuitem', { name: /模型\s+DeepSeek/ }).waitFor()
       await menu.getByRole('menuitem', { name: /上下文窗口/ }).click()
       await ctxPanel.getByRole('menuitemradio', { name: '1M', exact: true }).click()
       await menu.getByRole('menuitem', { name: /上下文窗口\s+1M/ }).waitFor()
 
-      // Switch back to Custom Gateway -> O3 Mini & verify context stayed 192K & set as global default
-      await menu.getByRole('menuitem', { name: /模型供应商/ }).click()
-      await menu.getByRole('group', { name: '模型供应商' }).getByRole('button', { name: 'O3 Mini', exact: true }).click()
+      await pickModel('O3 Mini')
       await menu.getByRole('menuitem', { name: /上下文窗口\s+192K/ }).waitFor()
-      await menu.getByRole('menuitem', { name: /模型供应商/ }).click()
-      await menu.getByRole('button', { name: '设为全局默认', exact: true }).click()
-      await menu.getByRole('button', { name: '已设为默认', exact: true }).waitFor()
 
-      // Narrow viewport & 125% zoom layout check
       await page.setViewportSize({ width: 900, height: 700 })
       await page.evaluate(() => { document.documentElement.style.zoom = '125%' })
       const fitCheck = await menu.evaluate(el => {
@@ -143,25 +180,14 @@ async function main() {
       await page.evaluate(() => { document.documentElement.style.zoom = '' })
     }
 
-    step = '验证点击添加/管理供应商与密钥跳转到模型与 API 设置'
-    {
-      const { menu } = await openComposerModelMenu()
-      await menu.getByRole('menuitem', { name: /模型供应商/ }).click()
-      await menu.getByRole('button', { name: /添加 \/ 管理供应商与密钥/ }).click()
-      await menu.waitFor({ state: 'hidden' })
-      await page.getByRole('dialog').getByText('模型与 API').first().waitFor()
-      await page.keyboard.press('Escape')
-      await page.getByRole('dialog').waitFor({ state: 'hidden' })
-    }
-
-    step = '页面刷新后验证上下文窗口、推理等级与默认供应商持久化'
+    step = '页面刷新后验证上下文窗口、推理等级与所选模型持久化'
     await page.setViewportSize({ width: 1280, height: 820 })
     await page.reload({ waitUntil: 'domcontentloaded' })
     const { menu } = await openComposerModelMenu()
     await menu.getByRole('menuitem', { name: /上下文窗口\s+192K/ }).waitFor()
-    await menu.getByRole('menuitem', { name: /模型供应商\s+Custom Gateway/ }).waitFor()
+    await menu.getByRole('menuitem', { name: /模型\s+O3 Mini/ }).waitFor()
 
-    console.log('模型供应商入口、推理强度与上下文窗口端到端测试全部通过')
+    console.log('模型选择、推理强度与上下文窗口端到端测试全部通过')
   } catch (err) {
     console.error('失败步骤: ' + step)
     console.error((await page.locator('body').innerText().catch(() => '')).slice(0, 1200))

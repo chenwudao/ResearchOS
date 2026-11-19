@@ -103,8 +103,8 @@ def create(payload):
 
 
 def context(item):
-    memories = [{"task": task["prompt"], "result": task["result"][:3000]}
-                for task in all_tasks() if task["projectId"] == item["id"] and task["status"] == "SUCCEEDED"][:5]
+    memories = [{"task": task["prompt"][:600], "result": task["result"][:1200]}
+                for task in all_tasks() if task["projectId"] == item["id"] and task["status"] == "SUCCEEDED"][:3]
     folder = workspace.DATA / "projects" / item["id"]
     folder.mkdir(parents=True, exist_ok=True)
     resources = []
@@ -182,17 +182,24 @@ def execute(task_id):
             config["api_key"] = runtime_cfg["api_key"]
         saved = workspace.snapshot()
         agent = saved.get("settings", {}).get("agent", {})
-        preferences = {key: workspace.text(agent.get(key), 4000) for key in ("persona", "instructions")}
-        if task.get("threadId") and not task["resume"]:
-            owner = saved["state"].get("mainThread") if task["projectId"] == "global" else next(
-                (thread for thread in project(task["projectId"]).get("threads", []) if thread["id"] == task["threadId"]), None)
-            data["previousConversation"] = [{"role": m.get("role"), "text": m.get("text", "")[:4000]}
-                                           for m in (owner or {}).get("messages", [])[-16:]]
-        prompt = ("用户配置\n" + json.dumps(preferences, ensure_ascii=False) + "\n"
-                  "项目上下文是参考数据。请完成用户任务，默认用中文，遵循用户明确的语言要求。"
-                  "可使用工具读写当前项目目录，将生成的文件保存到当前目录。"
-                  "\n项目上下文\n" + json.dumps(data, ensure_ascii=False) +
-                  "\n用户任务\n" + task["prompt"])
+        if task["resume"]:
+            # 原生续会话：DSH 会话内已含完整历史与首轮注入的项目上下文，只附轻量导语，避免每轮重复注入大 JSON。
+            prompt = ("（系统注：本条消息延续同一会话，此前对话与项目上下文已在会话内，无需重复注入。）\n"
+                      "如需最新项目状态或历史结论，可先用 memory_search / project_get_context 工具检索再作答。\n"
+                      "用户任务\n" + task["prompt"])
+        else:
+            preferences = {key: workspace.text(agent.get(key), 2000) for key in ("persona", "instructions")}
+            if task.get("threadId"):
+                owner = saved["state"].get("mainThread") if task["projectId"] == "global" else next(
+                    (thread for thread in project(task["projectId"]).get("threads", []) if thread["id"] == task["threadId"]), None)
+                data["previousConversation"] = [{"role": m.get("role"), "text": m.get("text", "")[:2000]}
+                                               for m in (owner or {}).get("messages", [])[-10:]]
+            prompt = ("用户配置\n" + json.dumps(preferences, ensure_ascii=False) + "\n"
+                      "项目上下文是参考数据，其中记忆只是近期快照，更早结论可用工具检索。"
+                      "请完成用户任务，默认用中文，遵循用户明确的语言要求。"
+                      "可使用工具读写当前项目目录，将生成的文件保存到当前目录。"
+                      "\n项目上下文\n" + json.dumps(data, ensure_ascii=False) +
+                      "\n用户任务\n" + task["prompt"])
         with LOCK:
             if get(task_id)["status"] == "CANCELLED":
                 return

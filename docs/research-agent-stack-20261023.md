@@ -142,7 +142,6 @@
 ## J. 和现有文件的关系
 
 - 技能规格：`docs/skill-survey-research-guidance.md`、`docs/skill-survey-direction-papers-20261023.md`
-- 缺口：`docs/gap-audit-20261023.md`（rev2）
 - 本文件：项目级「堆叠仓库」——后续可按桶继续追加行
 
 *初版由检索 + awesome 表整理；后台还会补一版更全条目。*

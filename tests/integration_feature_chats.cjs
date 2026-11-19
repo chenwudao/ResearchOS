@@ -14,6 +14,8 @@ async function main() {
   page.setDefaultTimeout(30000)
   const button = name => page.getByRole('button', { name, exact: true })
   const nav = name => page.getByRole('navigation', { name: name + ' 项目功能' })
+  const assistantHome = button('打开助理')
+  const sandbox = page.getByRole('region', { name: / 项目代码沙盒$/ }).filter({ visible: true })
   const owner = (route, data) => page.evaluate(async ({route,data}) => {
     const res = await fetch('/api/labweave/' + route, data === undefined ? {} : {
       method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data),
@@ -62,26 +64,22 @@ async function main() {
       return v.rails[f.id]?.some(e=>e.text.includes(note)) && f
     }, '模型创建功能或写入首条记录未完成：'+label, 170000)
   }
-  async function openChatSandbox(global) {
-    if(global && await page.getByLabel('沙盒目标项目').isVisible())return
-    if(!global && await page.locator('.lw-sandbox:visible').count())return
-    if(!await page.locator('[data-sidebar-right-open]').isVisible())await button('右侧栏').click()
+  async function openChatSandbox() {
+    if(await sandbox.count())return
+    if(!await page.locator('[data-sidebar-right-open]').isVisible())await button('工具').click()
     const right=page.locator('[data-rightbar-col]')
-    if(global && await page.getByLabel('沙盒目标项目').isVisible())return
-    if(!global && await page.locator('.lw-sandbox:visible').count())return
+    if(await sandbox.count())return
     await right.getByText('项目代码沙盒',{exact:true}).last().click()
-    if(global)await page.getByLabel('沙盒目标项目').waitFor()
-    else await page.locator('.lw-sandbox:visible').first().waitFor()
+    await sandbox.waitFor()
   }
   async function featurePage(project,label,note) {
     await nav(project).getByRole('button',{name:label,exact:true}).click()
-    const main=page.getByRole('main',{name:project+' · '+label,exact:true})
+    const main=page.getByRole('main',{name:project+'的'+label,exact:true})
     await main.waitFor()
     assert.equal(await page.locator('aside[aria-label*="分配任务"], button[aria-label*="分配任务"], .lw-fbot-drawer').count(),0)
     if(note)await main.getByText(note,{exact:false}).first().waitFor()
     assert.equal(await main.getByRole('button',{name:/^(项目)?代码沙盒$/}).count(),0)
-    assert.equal(await page.locator('.lw-sandbox:visible').count(),0)
-    assert.equal(await page.getByLabel('沙盒目标项目').filter({visible:true}).count(),0)
+    assert.equal(await sandbox.count(),0)
     assert.equal(await main.getByRole('textbox',{name:'向 '+label+' 发送消息'}).count(),1)
   }
   async function screenshot(name) {
@@ -99,7 +97,7 @@ async function main() {
     assert.ok(!(other.rails[shared.id]||[]).length)
     await nav('方法复现').getByRole('button',{name:common,exact:true}).waitFor()
     await featurePage('文献梳理',common,aNote)
-    const main=page.getByRole('main',{name:'文献梳理 · '+common,exact:true})
+    const main=page.getByRole('main',{name:'文献梳理的'+common,exact:true})
     console.log('从功能 Bot 自己的对话创建项目专属功能并归档')
     await main.getByRole('textbox',{name:'向 '+common+' 发送消息'}).fill('请在当前项目实际新建一个功能 Bot「证据索引」，职责是按材料来源整理证据。创建后请把「登记证据出处」作为一条记录写入新功能，分类为「待核对」。只用于本项目。')
     await main.getByRole('button',{name:'发送',exact:true}).click()
@@ -107,27 +105,29 @@ async function main() {
     assert.ok(!(await view(b)).features.some(f=>f.id===nested.id))
     const feature= (await view(a)).features.find(f=>f.id===shared.id)
     assert.ok(feature.botSessionId,'发起创建的功能应使用其专属对话')
-    assert.equal(await page.locator('.lw-sandbox:visible').count(),0)
+    assert.equal(await sandbox.count(),0)
     await nav('文献梳理').getByRole('button',{name:local,exact:true}).waitFor({timeout:18000})
     await featurePage('文献梳理',local,localNote)
     await screenshot('功能创建-功能Bot对话')
     console.log('从已打开沙盒的项目聊天切入功能分屏')
     await nav('文献梳理').getByRole('button',{name:'聊天',exact:true}).click()
-    await chatScope(cfg.alpha);await openChatSandbox(false)
+    await chatScope(cfg.alpha);await openChatSandbox()
     await nav('文献梳理').getByRole('button',{name:'分屏打开资源库',exact:true}).click()
-    await page.getByRole('main',{name:'文献梳理 · 资源库',exact:true}).waitFor()
-    await until(async()=>await page.locator('.lw-sandbox:visible').count()===0,'分屏后仍显示沙盒')
-    assert.equal(await page.getByRole('main',{name:'文献梳理 · 资源库'}).getByRole('button',{name:/^(项目)?代码沙盒$/}).count(),0)
+    await page.getByRole('main',{name:'文献梳理的资源库',exact:true}).waitFor()
+    await until(async()=>await sandbox.count()===0,'分屏后仍显示沙盒')
+    assert.equal(await page.getByRole('main',{name:'文献梳理的资源库'}).getByRole('button',{name:/^(项目)?代码沙盒$/}).count(),0)
     await nav('文献梳理').getByRole('button',{name:'聊天',exact:true}).click()
-    await chatScope(cfg.alpha);await openChatSandbox(false)
+    await chatScope(cfg.alpha);await openChatSandbox()
     fs.writeFileSync(cfg.proof,JSON.stringify({a,b,sharedId:shared.id,localId:nested.id}))
     console.log('真实全局共享、功能 Bot 对话创建、记录项目隔离、分屏收起与聊天重新打开沙盒均通过。')
   }
   let step='打开全局助手'
   try {
     await page.goto(cfg.url)
-    await button('继续').click(); await button('继续').waitFor({state:'hidden'})
-    await button(cfg.assistant).last().click()
+    await assistantHome.waitFor()
+    const setup = page.getByRole('dialog', { name: '配置模型 API' })
+    if (await setup.isVisible()) await setup.getByRole('button', { name: '稍后配置' }).click()
+    await assistantHome.click()
     await openNav('文献梳理'); await openNav('方法复现'); await chatScope('global')
     const catalog=(await owner('catalog')).data
     const a=catalog.find(r=>r.scope===cfg.alpha).workspaceId,b=catalog.find(r=>r.scope===cfg.beta).workspaceId
@@ -157,7 +157,7 @@ async function main() {
       step='点子 Bot 保存后给出独立回话'
       console.log('项目聊天已保留流式渲染。')
       await nav('文献梳理').getByRole('button',{name:'点子',exact:true}).click()
-      const main=page.getByRole('main',{name:'文献梳理 · 点子',exact:true})
+      const main=page.getByRole('main',{name:'文献梳理的点子',exact:true})
       await main.getByRole('textbox',{name:'向 点子 发送消息'}).fill('请帮我把「比较两种叶片取样时间」记进本项目的点子，完成后一句话告诉我。')
       await main.getByRole('button',{name:'发送',exact:true}).click()
       await until(async()=>(await view(a)).rails.ideas.some(x=>x.text.includes('叶片取样时间')),step,150000)
@@ -209,7 +209,7 @@ async function main() {
       await page.getByRole('dialog',{name:'删除功能 Bot'}).getByRole('button',{name:'确认删除'}).click()
       await nav('文献梳理').getByRole('button',{name:'点子',exact:true}).waitFor({state:'hidden'})
       assert.ok((await view(b)).features.some(f=>f.id==='ideas'))
-      await page.reload();await button(cfg.assistant).last().waitFor()
+      await page.reload();await assistantHome.waitFor()
       assert.ok(!(await view(a)).features.some(f=>f.id==='ideas'))
       const ledger=(await owner('assistant-history')).data
       assert.ok(!ledger.schedules.some(s=>s.id===job.id))
@@ -231,7 +231,7 @@ async function main() {
       await dialog.getByLabel('关键词',{exact:true}).fill('对照，统计、对照')
       await screenshot('项目创建Bot-表单')
       await dialog.getByRole('button',{name:'创建',exact:true}).click()
-      const main=page.getByRole('main',{name:'文献梳理 · 统计复核'})
+      const main=page.getByRole('main',{name:'文献梳理的统计复核'})
       await main.waitFor()
       const bot=(await view(a)).features.find(f=>f.label==='统计复核')
       assert.equal(bot.symbol,'lucide:microscope');assert.deepEqual(bot.keywords,['对照','统计'])
@@ -260,7 +260,8 @@ async function main() {
     const aFeature=await created(a,aLabel,aNote)
     await nav('文献梳理').getByRole('button',{name:aLabel,exact:true}).waitFor({timeout:18000})
     assert.ok(!(await view(b)).features.some(f=>f.id===aFeature.id))
-    await openChatSandbox(true)
+    assert.equal(await button('工具').count(), 0)
+    assert.equal(await sandbox.count(), 0)
     await featurePage('文献梳理',aLabel,aNote)
     await screenshot('功能创建-全局助手')
     step='项目聊天创建本项目功能'; console.log(step)
@@ -270,7 +271,7 @@ async function main() {
     const bFeature=await created(b,bLabel,bNote)
     await nav('方法复现').getByRole('button',{name:bLabel,exact:true}).waitFor({timeout:18000})
     assert.ok(!(await view(a)).features.some(f=>f.id===bFeature.id))
-    await openChatSandbox(false)
+    await openChatSandbox()
     await featurePage('方法复现',bLabel,bNote)
     await screenshot('功能创建-项目聊天')
     for(const builtin of ['动态','点子','目标','资源库'])await featurePage('方法复现',builtin)
@@ -280,7 +281,7 @@ async function main() {
     assert.equal((await created(a,aLabel,aNote)).id,aFeature.id)
     assert.equal((await created(b,bLabel,bNote)).id,bFeature.id)
     await featurePage('方法复现',bLabel,bNote)
-    console.log('真实全局与项目对话均成功创建新功能、归类首条记录、即时显示并在刷新后恢复。两项目互不串写。只有两类主聊天有右侧沙盒。')
+    console.log('全局与项目对话均成功创建新功能、归类首条记录、即时显示并在刷新后恢复。两项目互不串写。右侧沙盒仅在项目主聊天显示。')
   } catch(e){
     console.error('失败步骤 '+step)
     console.error('已显示的功能按钮：'+(await page.getByRole('navigation').getByRole('button').allTextContents().catch(()=>[])).join(' ').slice(0,400))

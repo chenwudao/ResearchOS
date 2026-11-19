@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const http = require('node:http')
 
 test('project schedule tools restrict list, edit and creation to the true session workspace', async () => {
-  const { registerNative } = await import('../plugins/dsh-labweave-prototype/native.js')
+  const { registerNative } = await import('../plugins/dsh-labweave-workspace/host/native.js')
   const rows = ['global', 'proj_a', 'proj_b'].map(scope => ({ scope, path: '/' + scope, name: scope }))
   const native = rows.map(row => ({ id: row.scope, path: row.path, title: row.scope, sessionIds: ['s-' + row.scope],
     async setTitle(title) { this.title = title } }))
@@ -44,7 +44,7 @@ test('project schedule tools restrict list, edit and creation to the true sessio
 })
 
 test('workspace-page feature_rename forwards scoped project action and refreshes catalog', async () => {
-  const { registerNative } = await import('../plugins/dsh-labweave-prototype/native.js')
+  const { registerNative } = await import('../plugins/dsh-labweave-workspace/host/native.js')
   const rows = ['global', 'proj_a', 'proj_b'].map(scope => ({ scope, path: '/' + scope, name: scope, workspaceId: scope }))
   const native = rows.map(row => ({ id: row.scope, path: row.path, title: row.name, sessionIds: [], async setTitle(title) { this.title = title } }))
   const routes = new Map()

@@ -13,9 +13,10 @@ import naming
 import workspace
 
 BUILTIN_ORDER = ("chat", "feed", "ideas", "goals", "library")
+OPTIONAL_BUILTINS = ("feed", "ideas", "goals", "library")
 PROTECTED_FEATURES = frozenset({"chat"})
 CUSTOM_FEATURE_ID_RE = re.compile(r"^feat_[a-f0-9]{8,24}$")
-_AVATAR_CATALOG = Path(__file__).resolve().parents[2] / "plugins/dsh-labweave-workspace/bot-avatars.json"
+_AVATAR_CATALOG = Path(__file__).resolve().parents[2] / "plugins/dsh-labweave-workspace/client/assets/bot-avatars.json"
 BOT_SYMBOLS = tuple(item["id"] for group in json.loads(_AVATAR_CATALOG.read_text(encoding="utf-8"))
                     for item in group["items"])
 
@@ -26,7 +27,7 @@ FEATURE_META = {
         "categories": [],
     },
     "feed": {
-        "hint": "前沿追踪 · 订阅推送",
+        "hint": "订阅并追踪前沿动态",
         "emptyText": "还没有收到任何动态推送",
         "categories": [
             ["paper", "论文"],
@@ -37,7 +38,7 @@ FEATURE_META = {
         ],
     },
     "ideas": {
-        "hint": "灵感假设 · 目标转化",
+        "hint": "把灵感转化为目标",
         "emptyText": "还没有收集任何点子",
         "categories": [
             ["fresh", "待验证灵感"],
@@ -48,7 +49,7 @@ FEATURE_META = {
         ],
     },
     "goals": {
-        "hint": "里程碑 · 实验追踪",
+        "hint": "追踪里程碑和实验",
         "emptyText": "还没有设定任何目标",
         "categories": [
             ["pending", "追踪中"],
@@ -59,7 +60,7 @@ FEATURE_META = {
         ],
     },
     "library": {
-        "hint": "文献 · 仓库 · 产物",
+        "hint": "文献、仓库和产物",
         "emptyText": "还没有收录任何资源",
         "categories": [
             ["pdf", "论文 PDF"],
@@ -94,6 +95,38 @@ def ensure_tables(db):
         "project_id TEXT NOT NULL, feature_id TEXT NOT NULL, session_id TEXT NOT NULL, "
         "updated_ts INTEGER NOT NULL, PRIMARY KEY (project_id, feature_id))"
     )
+
+
+def suppress_optional_builtins(project_id):
+    """New projects start with chat only. Existing projects are left unchanged."""
+    if not isinstance(project_id, str) or not project_id.startswith("proj_"):
+        return
+    now = int(time.time())
+    with closing(workspace.database()) as db, db:
+        ensure_tables(db)
+        for fid in OPTIONAL_BUILTINS:
+            db.execute(
+                "INSERT INTO labweave_features (scope, feature_id, label, hint, deleted, sort_order, updated_ts) "
+                "VALUES (?, ?, ?, '', 1, 999, ?) "
+                "ON CONFLICT(scope, feature_id) DO NOTHING",
+                (project_id, fid, naming.DEFAULT_FEATURE_LABELS[fid], now),
+            )
+
+
+def enable_builtin(project_id, feature_id):
+    """Re-enable an optional built-in Feature Bot in one project (tests and later restore)."""
+    fid = _clean_id(feature_id)
+    if fid not in OPTIONAL_BUILTINS:
+        raise workspace.WorkspaceError(400, "只能恢复可选的内置功能。")
+    now = int(time.time())
+    with closing(workspace.database()) as db, db:
+        ensure_tables(db)
+        db.execute(
+            "INSERT INTO labweave_features (scope, feature_id, label, hint, deleted, sort_order, updated_ts) "
+            "VALUES (?, ?, ?, '', 0, ?, ?) "
+            "ON CONFLICT(scope, feature_id) DO UPDATE SET deleted = 0, updated_ts = excluded.updated_ts",
+            (project_id, fid, naming.DEFAULT_FEATURE_LABELS[fid], (BUILTIN_ORDER.index(fid) + 1) * 10, now),
+        )
 
 
 def _projects_index():
@@ -527,6 +560,16 @@ def assignment_map(project):
         return result
 
 
+def schedule_map(project):
+    with closing(workspace.database()) as db:
+        ensure_tables(db)
+        result = {}
+        for fid,schedule in db.execute(
+                "SELECT feature,schedule FROM labweave_bot_schedules WHERE project=? ORDER BY schedule",(project,)):
+            result.setdefault(fid,[]).append(schedule)
+        return result
+
+
 def schedule_links(project, fid, identity=None, remove=False):
     with closing(workspace.database()) as db, db:
         ensure_tables(db)
@@ -554,6 +597,12 @@ def assignments(project, fid, change=None):
                 instruction = workspace.text(change.get("instruction"), 3000)
                 if not instruction:
                     raise workspace.WorkspaceError(400, "请说明要分配的任务。")
+                previous = change.get("originalTitle")
+                if previous is not None:
+                    previous = naming.display_name(previous)
+                    if previous != title:
+                        db.execute("DELETE FROM labweave_bot_assignments WHERE project=? AND feature=? AND kind=? AND title=?",
+                                   (project, fid, kind, previous))
                 db.execute("INSERT OR REPLACE INTO labweave_bot_assignments VALUES(?,?,?,?,?)", (*key, instruction))
         return [dict(zip(("kind", "title", "instruction"), r)) for r in db.execute(
             "SELECT kind,title,instruction FROM labweave_bot_assignments WHERE project=? AND feature=? ORDER BY kind,title", (project,fid))]

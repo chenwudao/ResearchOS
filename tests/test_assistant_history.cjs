@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 test('assistant history joins tool and approval outcomes across pages and reads later events once',async()=>{
-  const {historyReader}=await import('../plugins/dsh-labweave-prototype/assistant-history.js')
+  const {historyReader}=await import('../plugins/dsh-labweave-workspace/host/assistant-history.js')
   const events=[]
   const add=(type,data)=>events.push({type,data,seq:events.length,time:1700000000000+events.length})
   for(let i=0;i<255;i++)add('system/message',{})
