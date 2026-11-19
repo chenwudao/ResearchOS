@@ -47,7 +47,7 @@ async function main() {
   let step = '打开 DSH Web'
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded' })
-    await button('Weave').last().waitFor()
+    await button(phase === 'before' ? 'Weave' : '打开助理').last().waitFor()
     const ids = await page.evaluate(() => window.__DSH_BOOT__.entries.map(entry => entry.id))
     assert.equal(ids.filter(id => id === 'labweave-research-workspace').length, 1)
     assert.equal(ids.filter(id => id === 'labweave-dsh-prototype').length, phase === 'before' ? 1 : 0)

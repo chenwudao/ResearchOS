@@ -1,11 +1,12 @@
 // The login URL travels over stdin and is never included in diagnostic output.
 const assert = require('node:assert/strict')
+const { execFileSync } = require('node:child_process')
 const fs = require('node:fs')
 const path = require('node:path')
 const { chromium } = require('playwright')
 
 async function main() {
-  const [phase, root, model] = process.argv.slice(2)
+  const [phase, root, model, python] = process.argv.slice(2)
   const url = fs.readFileSync(0, 'utf8').trim()
   const context = await chromium.launchPersistentContext(path.join(root, 'browser'), {
     channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge', headless: true, locale: 'zh-CN', viewport: { width: 1280, height: 820 },
@@ -130,6 +131,20 @@ async function main() {
     await create.click()
     await page.getByRole('navigation', { name: name + ' 项目功能' }).waitFor()
     return waitView(v => v?.name === name)
+  }
+  async function enableLegacyColumns(project) {
+    assert.deepEqual(project.features.map(feature => feature.id), ['chat'])
+    // Populate the disposable database for the existing-column UI checks.
+    execFileSync(python, ['-c', [
+      'import sys',
+      'from pathlib import Path',
+      'sys.path.insert(0, sys.argv[1])',
+      'import workspace, features',
+      'workspace.DATA = Path(sys.argv[2])',
+      'for feature in features.OPTIONAL_BUILTINS: features.enable_builtin(sys.argv[3], feature)',
+    ].join('\n'), path.join(__dirname, '..', 'demo', 'api'), path.join(root, 'data'), project.scope])
+    assert.equal((await owner('catalog')).code, 200)
+    await page.evaluate(() => window.dispatchEvent(new Event('labweave:project-updated')))
   }
   async function checkProjectTools(name) {
     step = '项目聊天右侧栏'
@@ -482,6 +497,7 @@ async function main() {
     assert.equal(await page.locator('[data-sidebar-right-open]').count(), 0)
     await preview('01-Weave')
     const a = await newProject('研究甲')
+    await enableLegacyColumns(a)
     await heroMark.waitFor()
     assert.equal(await page.locator('.lw-starters, .lw-hero-ctx').count(), 0)
     assert.equal(await page.locator('[data-slot="conversation.hero.agentPreset"] button:visible').count(), 0)
@@ -556,6 +572,10 @@ async function main() {
     await projectSettings.getByRole('button', { name: '添加文件夹', exact: true }).waitFor()
     await projectSettings.getByRole('button', { name: '关闭 项目设置', exact: true }).click()
     await projectSettings.waitFor({ state: 'hidden' })
+    const legacyMemory = await owner('project', {
+      sessionId: a.sessionId, action: 'memory_write', args: { text: '基线实验固定 seed=42', pinned: true },
+    })
+    assert.equal(legacyMemory.code, 200)
     step = '目标、订阅与资源导入'
     await projectBar.getByRole('button', { name: '目标', exact: true }).click()
     const goals = page.getByRole('region', { name: '目标', exact: true })
@@ -632,7 +652,8 @@ async function main() {
     const rightCol = page.locator('[data-rightbar-col]')
     const rightPane = page.getByRole('region', { name: '研究甲 项目代码沙盒' })
     if (!(await rightPane.isVisible().catch(() => false))) {
-      await rightCol.getByText('项目代码沙盒', { exact: true }).last().click()
+      await rightCol.getByRole('button', { name: '新标签页', exact: true }).click()
+      await button('项目代码沙盒').filter({ visible: true }).last().click()
     }
     await rightPane.getByText(/可用试跑预算 30 秒/).waitFor()
     await rightPane.getByRole('tab', { name: /正式实验/ }).click()
@@ -643,6 +664,7 @@ async function main() {
     await page.locator('[data-sidebar-right-open]').waitFor({ state: 'detached' })
     step = '项目切换与全局新会话'
     const b = await newProject('研究乙')
+    await enableLegacyColumns(b)
     assert.notEqual(a.scope, b.scope)
     assert.equal(b.rails.ideas.length, 0)
     assert.deepEqual(b.plugins.map(p => p.name), ['周报'])
