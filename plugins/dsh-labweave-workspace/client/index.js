@@ -460,13 +460,17 @@ window.__ModuleLoader__.load({
       .lw-assigned-editor{display:grid;gap:10px;margin-top:10px}
       .lw-assigned-preview{border:.5px solid var(--dsw-alias-border-l2,rgba(128,128,128,.2));border-radius:var(--dsw-radius-md,8px);padding:9px 11px;background:var(--dsw-alias-bg-base,Canvas);max-height:220px;overflow:auto}
       .lw-task-count{position:absolute;top:-3px;right:-3px;min-width:14px;height:14px;padding:0 3px;border-radius:999px;background:var(--dsw-alias-state-business-primary,#3b82f6);color:#fff;font:600 9px/14px var(--ds-font-family-code,monospace);text-align:center}
-      .lw-bot-symbols{display:grid;grid-template-columns:repeat(auto-fill,minmax(36px,1fr));gap:4px;margin-top:6px;max-height:162px;overflow-y:auto;padding:2px}
+      .lw-bot-symbols{display:grid;grid-template-columns:repeat(auto-fill,minmax(36px,1fr));gap:4px;margin-top:6px;max-height:78px;overflow-y:auto;padding:2px}
       .lw-bot-symbols button{display:grid;place-items:center}.lw-bot-symbols svg,.lw-avatar-label svg{width:20px;height:20px}
       .lw-avatar-label,.lw-avatar-filter{display:flex;align-items:center;gap:8px}.lw-avatar-filter{margin-top:5px}.lw-avatar-filter select{flex:0 0 5.6em}.lw-avatar-filter input{min-width:0;flex:1}
       .lw-bot-symbols button,.lw-symbol-mark{font-family:"Segoe UI Symbol",sans-serif;text-align:center}
       .lw-bot-symbols button{min-height:34px;border:1px solid var(--dsw-alias-border-l2);border-radius:7px;background:var(--dsw-alias-bg-base);color:inherit;cursor:pointer}
-      .lw-dialog .lw-form .lw-bot-symbols button{font:500 18px/1.25 "Segoe UI Symbol",sans-serif}
-      .lw-dialog .lw-form .lw-bot-symbols button[aria-pressed=true]{color:var(--dsw-alias-label-primary,CanvasText);background:var(--dsw-alias-bg-secondary,ButtonFace);box-shadow:inset 0 0 0 1.5px currentColor}
+      .lw-form .lw-bot-symbols button{font:500 18px/1.25 "Segoe UI Symbol",sans-serif}
+      .lw-form .lw-bot-symbols button[aria-pressed=true]{color:var(--dsw-alias-label-primary,CanvasText);background:var(--dsw-alias-bg-secondary,ButtonFace);box-shadow:inset 0 0 0 1.5px currentColor}
+      .lw-bot-form-dialog .lw-dialog-head{margin-bottom:10px}
+      .lw-bot-form-dialog .lw-form{gap:10px}
+      .lw-bot-form-dialog .lw-form label{gap:4px}
+      .lw-bot-form-dialog .lw-form textarea{min-height:60px}
       .lw-symbol-mark{display:inline-grid;place-items:center;min-width:1em;line-height:1}
       .lw-bot-keywords{display:flex;gap:5px;flex-wrap:wrap;align-items:center}.lw-bot-keywords span{font-size:var(--lw-ui-xs);color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-1,rgba(128,128,128,.07));border:.5px solid var(--dsw-alias-border-l1,rgba(128,128,128,.14));border-radius:999px;padding:2px 8px;overflow-wrap:anywhere}
       body{
@@ -620,15 +624,13 @@ window.__ModuleLoader__.load({
       .lw-session-popover .lw-tool{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:var(--dsw-radius-md,8px);padding:0;flex:none;color:var(--dsw-alias-label-secondary);transition:background-color .14s ease,color .14s ease}
       .lw-session-popover .lw-tool:hover{color:var(--dsw-alias-label-primary)}
       .lw-session-popover .lw-tool-danger:hover{color:var(--dsw-alias-state-error-primary,#dc2626);background:var(--dsw-alias-interactive-bg-hover-danger,rgba(220,38,38,.1))}
-      [data-content-phase="hero"] .lw-corner-identity{display:none!important}
-      .lw-corner-identity{position:fixed;left:0;top:0;transform:translate(-50%,-50%);z-index:40;visibility:hidden;display:inline-flex;align-items:center;gap:14px;margin:0;height:56px;padding:0 20px 0 8px;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:clamp(24px,calc(26px + var(--lw-font-delta) * .5),32px);font-weight:700;letter-spacing:-.03em;line-height:1;cursor:pointer;max-width:min(52vw,420px);flex:none;-webkit-app-region:no-drag;pointer-events:auto}
-      .lw-corner-identity[data-placed="true"]{visibility:visible}
-      .lw-corner-identity:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.13))}
-      .lw-corner-identity-avatar{height:78%;width:auto;aspect-ratio:1;border-radius:50%;object-fit:contain;flex:none}
-      .lw-corner-identity[data-custom="true"] .lw-corner-identity-avatar{object-fit:cover}
-      .lw-corner-identity-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1}
+      header:has(.lw-active-profile-entry){--lw-active-avatar-size:clamp(54px,8.4vh,74px);position:relative;margin-block-end:calc(var(--lw-active-avatar-size) + 46px)}
+      .lw-active-profile-entry{position:absolute;inset-block-start:calc(100% + 4px);left:50%;translate:-50% 0;z-index:5;max-width:calc(100% - 24px);--lw-identity-avatar-size:var(--lw-active-avatar-size);--lw-identity-gap:5px;--lw-identity-padding:4px 14px 6px;--lw-identity-name-size:var(--lw-ui-md);--lw-identity-badge-size:22px}
+      .lw-active-profile-entry .lw-hero-entry-name{max-width:100%}
+      .lw-active-profile-entry .lw-hero-avatar-badge .lw-icon{width:11px;height:11px}
+      .lw-assistant-flight{position:fixed;inset:0;z-index:110;pointer-events:none}
       html[data-lw-room="global"] header [class*="titleGroup"],html[data-lw-room="global"] header [class*="headerTitle"],html[data-lw-room="global"] header [class*="sessionTitle"]{display:none!important}html[data-lw-room="global"] [data-slot="conversation.input.model"],html[data-lw-room="global"] [data-slot="conversation.input.permission"],html[data-lw-room="global"] [data-slot="conversation.input.plan"],html[data-lw-room="global"] [class*="uV2eYG_select"],html[data-lw-room="global"] [class*="uV2eYG_modes"]{display:none!important}
-      html[data-lw-room="global"] [class*="uV2eYG_add"]{display:none!important}
+      html[data-lw-room="global"] [data-composer-card] button[class$="_add"]{display:none!important}
       html[data-lw-room="global"] [data-chat-flow-kind="turn-process"],
       html[data-lw-room="global"] [data-step-process],
       html[data-lw-room="global"] [data-chat-call-id],
@@ -647,8 +649,8 @@ window.__ModuleLoader__.load({
       html[data-lw-room="global"] [data-composer-card] [class*="_trailing"]{grid-column:3;grid-row:2;margin:0;gap:4px}
       html[data-lw-room="global"] [data-composer-card] button[class*="_primary"]{width:32px;height:32px;border-radius:50%;padding:0;transform:none;background:var(--dsw-alias-button-primary-fill,var(--dsw-alias-label-primary,#0f1115));color:var(--dsw-alias-label-primary-foreground,#fff)}
       html[data-lw-room="global"] [data-composer-card] button[class*="_primary"]:disabled{opacity:.26}
-      .lw-assistant-progress{padding-inline:var(--dsh-composer-side-clearance)}
-      [data-conversation-content]:has(.lw-assistant-progress) [data-chat-running]{display:none!important}
+      .lw-add-action.lw-btn,.lw-add-action.lw-corner-btn,.lw-add-action.lw-sidebar-empty-btn{box-sizing:border-box;border:1px solid var(--dsw-alias-border-l4,rgba(128,128,128,.32))}
+      .lw-add-action .lw-icon{width:14px;height:14px;flex:none}
       .lw-turn-progress{box-sizing:border-box;width:100%;max-width:740px;min-width:0;display:flex;align-items:center;gap:8px;margin:0 auto 4px;padding:4px 8px;color:var(--dsw-alias-label-secondary);font-size:var(--lw-ui-sm);line-height:1.4}
       .lw-turn-progress img{width:18px;height:18px;flex:none}
       .lw-turn-progress [role="status"]{display:flex;flex:1;align-items:baseline;gap:6px;min-width:0}
@@ -657,7 +659,9 @@ window.__ModuleLoader__.load({
       .lw-turn-topic{flex:1 1 0;font-size:var(--lw-ui-xs)}
       .lw-turn-progress time{flex:none;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary)}
       .lw-turn-progress button{flex:none}
-      .lw-asst-attach{position:relative;display:inline-flex}
+      [data-chat-running]:has(>.lw-assistant-progress)>:not(.lw-assistant-progress){display:none!important}
+      .lw-assistant-progress{width:100%;min-width:0}
+      .lw-assistant-progress .lw-turn-progress{max-width:none;margin:0;padding:0}
       .lw-asst-settings{display:grid;gap:18px;padding:8px 2px 28px;max-width:640px;font-family:inherit;font-size:14px;line-height:22px;font-weight:400}
       .lw-asst-settings h2{margin:0;font-size:16px;font-weight:500;line-height:24px;color:var(--dsw-alias-label-primary)}
       .lw-asst-settings .lw-hint{margin:0;font-size:12px;line-height:18px;font-weight:400}
@@ -686,24 +690,22 @@ window.__ModuleLoader__.load({
       [data-content-phase="hero"] [class*="scrollBody"]:has(.lw-hero-profile-entry){justify-content:flex-start!important;padding-top:clamp(22px,8.5vh,84px)}
       [data-content-phase="hero"] [class*="composerHero"]:has(.lw-hero-profile-entry){gap:clamp(16px,3.8vh,36px)}
       [data-content-phase="hero"] [class*="headline"]:has(.lw-hero-profile-entry) [class*="titleGroup"]{display:none!important}
-      .lw-hero-profile-entry{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:14px 28px 12px;border:0;border-radius:24px;corner-shape:round;background:transparent;color:inherit;font-family:inherit;cursor:pointer;text-align:center;transition:background-color .16s ease,transform .16s ease}
-      .lw-hero-profile-entry:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.07))}
-      .lw-hero-profile-entry:active{transform:scale(.99)}
-      .lw-hero-profile-entry:focus-visible{outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary,#3b82f6));outline-offset:4px}
-      .lw-hero-avatar-frame{position:relative;width:92px;height:92px;border-radius:50%;corner-shape:round;display:grid;place-items:center;flex:none;background:var(--dsw-alias-bg-layer-1,rgba(128,128,128,.06));border:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.18));box-shadow:0 6px 22px rgba(0,0,0,.06);transition:box-shadow .18s ease,border-color .18s ease,transform .18s ease}
-      .lw-hero-profile-entry:hover .lw-hero-avatar-frame{border-color:var(--dsw-alias-border-l4,rgba(128,128,128,.35));box-shadow:0 10px 28px rgba(0,0,0,.1);transform:translateY(-1px)}
-      .lw-hero-avatar-frame[data-custom="false"] .lw-hero-avatar-img{width:68px;height:68px;object-fit:contain}
-      .lw-hero-avatar-frame[data-custom="true"] .lw-hero-avatar-img{width:90px;height:90px;border-radius:50%;corner-shape:round;object-fit:cover}
-      .lw-hero-avatar-badge{position:absolute;right:0;bottom:0;width:26px;height:26px;border-radius:50%;corner-shape:round;display:grid;place-items:center;background:var(--dsw-alias-bg-base,Canvas);border:.5px solid var(--dsw-alias-border-l3,rgba(128,128,128,.28));box-shadow:0 2px 8px rgba(0,0,0,.12);color:var(--dsw-alias-label-secondary);opacity:.85;transition:opacity .15s ease,color .15s ease,transform .15s ease}
+      .lw-assistant-identity{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--lw-identity-gap,12px);padding:var(--lw-identity-padding,14px 28px 12px);border:0;border-radius:24px;corner-shape:round;background:transparent;color:inherit;font-family:inherit;cursor:pointer;text-align:center;transition:background-color .16s ease,transform .16s ease}
+      .lw-assistant-identity:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.07))}
+      .lw-assistant-identity:active{transform:scale(.99)}
+      .lw-assistant-identity:focus-visible{outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary,#3b82f6));outline-offset:4px}
+      .lw-hero-avatar-frame{position:relative;width:var(--lw-identity-avatar-size,92px);height:var(--lw-identity-avatar-size,92px);border-radius:50%;corner-shape:round;display:grid;place-items:center;flex:none;background:var(--dsw-alias-bg-layer-1,rgba(128,128,128,.06));border:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.18));box-shadow:0 6px 22px rgba(0,0,0,.06);transition:box-shadow .18s ease,border-color .18s ease,transform .18s ease}
+      .lw-assistant-identity:hover .lw-hero-avatar-frame{border-color:var(--dsw-alias-border-l4,rgba(128,128,128,.35));box-shadow:0 10px 28px rgba(0,0,0,.1);transform:translateY(-1px)}
+      .lw-hero-avatar-frame[data-custom="false"] .lw-hero-avatar-img{width:74%;height:74%;object-fit:contain}
+      .lw-hero-avatar-frame[data-custom="true"] .lw-hero-avatar-img{width:calc(100% - 2px);height:calc(100% - 2px);border-radius:50%;corner-shape:round;object-fit:cover}
+      .lw-hero-avatar-badge{position:absolute;right:0;bottom:0;width:var(--lw-identity-badge-size,26px);height:var(--lw-identity-badge-size,26px);border-radius:50%;corner-shape:round;display:grid;place-items:center;background:var(--dsw-alias-bg-base,Canvas);border:.5px solid var(--dsw-alias-border-l3,rgba(128,128,128,.28));box-shadow:0 2px 8px rgba(0,0,0,.12);color:var(--dsw-alias-label-secondary);opacity:.85;transition:opacity .15s ease,color .15s ease,transform .15s ease}
       .lw-hero-avatar-badge .lw-icon{width:13px;height:13px}
-      .lw-hero-profile-entry:hover .lw-hero-avatar-badge{opacity:1;color:var(--dsw-alias-label-primary);transform:scale(1.06)}
-      .lw-hero-entry-name{font-size:clamp(28px,calc(28px + var(--lw-font-delta) * .85),36px);line-height:1.22;font-weight:600;letter-spacing:-.02em;color:var(--dsw-alias-label-primary);max-width:min(520px,80vw);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .lw-assistant-identity:hover .lw-hero-avatar-badge{opacity:1;color:var(--dsw-alias-label-primary);transform:scale(1.06)}
+      .lw-hero-entry-name{font-size:var(--lw-identity-name-size,clamp(28px,calc(28px + var(--lw-font-delta) * .85),36px));line-height:1.22;font-weight:600;letter-spacing:-.02em;color:var(--dsw-alias-label-primary);max-width:min(520px,80vw);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       .lw-hero-entry-tagline{font-size:var(--lw-ui-base);line-height:1.45;font-weight:400;color:var(--dsw-alias-label-tertiary);max-width:min(460px,78vw);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       @media(max-height:620px){
         [data-content-phase="hero"] [class*="scrollBody"]:has(.lw-hero-profile-entry){padding-top:16px}
-        .lw-hero-avatar-frame{width:76px;height:76px}
-        .lw-hero-avatar-frame[data-custom="false"] .lw-hero-avatar-img{width:56px;height:56px}
-        .lw-hero-avatar-frame[data-custom="true"] .lw-hero-avatar-img{width:74px;height:74px}
+        .lw-hero-profile-entry{--lw-identity-avatar-size:76px}
       }
 
       .lw-side-dialog{--lw-side-inset:12px;box-sizing:border-box;position:fixed;inset:var(--lw-side-inset) var(--lw-side-inset) var(--lw-side-inset) auto;margin:0;width:min(440px,calc(100% - 2 * var(--lw-side-inset)));max-width:none;height:auto;max-height:none;overflow:hidden;padding:0;border:.5px solid var(--dsw-alias-border-l2,rgba(128,128,128,.22));border-radius:22px;corner-shape:round;color:var(--dsw-alias-label-primary,CanvasText);background:var(--dsw-alias-bg-base,Canvas);box-shadow:var(--dsw-elevation-prominent,0 20px 48px rgba(0,0,0,.22));font-family:var(--dsw-font-family,inherit);font-size:var(--lw-ui-base);line-height:1.5}
@@ -1068,11 +1070,6 @@ window.__ModuleLoader__.load({
 
       .lw-fbot-stats{display:grid;gap:8px;padding:10px 14px;border-radius:14px;background:var(--dsw-alias-bg-layer-1,rgba(128,128,128,.035));border:.5px solid var(--dsw-alias-border-l1,rgba(128,128,128,.12))}
       .lw-fbot-stats-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-      .lw-fbot-stat-pills{display:flex;align-items:center;flex-wrap:wrap;gap:10px;font-size:var(--lw-ui-xs);color:var(--dsw-alias-label-secondary)}
-      .lw-stat-chip{display:inline-flex;align-items:center;gap:5px;font-variant-numeric:tabular-nums}
-      .lw-stat-dot{width:7px;height:7px;border-radius:999px;flex:none}
-      .lw-stat-track{display:flex;gap:2px;height:5px;width:100%;border-radius:999px;overflow:hidden;background:var(--dsw-alias-border-l1,rgba(128,128,128,.12))}
-      .lw-stat-seg{height:100%;min-width:6px;border-radius:999px;transition:width .24s ease}
       .lw-goal-ring-wrap{display:inline-flex;align-items:center;gap:10px}
       .lw-goal-ring{width:34px;height:34px;flex:none;transform:rotate(-90deg)}
       .lw-goal-ring-bg{fill:none;stroke:var(--dsw-alias-border-l2,rgba(128,128,128,.2));stroke-width:3.2}
@@ -1121,15 +1118,17 @@ window.__ModuleLoader__.load({
       .lw-fbot-composer textarea::placeholder{color:var(--dsw-alias-label-tertiary)}
       .lw-fbot-composer textarea:focus{outline:none}
       .lw-fbot-plus-btn,.lw-fbot-send-btn{width:32px;height:32px;flex:none;border:0;border-radius:50%;corner-shape:round;display:inline-grid;place-items:center;cursor:pointer;transition:background-color .14s ease,color .14s ease,opacity .14s ease,transform .12s ease}
-      .lw-fbot-plus-btn{background:transparent;color:var(--dsw-alias-label-secondary)}
-      .lw-fbot-plus-btn:hover,.lw-fbot-plus-btn[aria-expanded="true"]{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.14));color:var(--dsw-alias-label-primary)}
+      .lw-composer-attach{position:relative;display:inline-flex;flex:none}
+      .lw-fbot-plus-btn{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.14));color:var(--dsw-alias-label-primary)}
+      .lw-fbot-plus-btn:hover:not(:disabled),.lw-fbot-plus-btn[aria-expanded="true"]{background:var(--dsw-alias-interactive-bg-active,rgba(128,128,128,.24))}
+      .lw-fbot-plus-btn:disabled{opacity:.4;cursor:default}
       .lw-fbot-plus-btn .lw-icon{width:17px;height:17px}
       .lw-fbot-send-btn{background:var(--dsw-alias-button-primary-fill,var(--dsw-alias-label-primary,#0f1115));color:var(--dsw-alias-label-primary-foreground,#fff)}
       .lw-fbot-send-btn:hover:not(:disabled){opacity:.86;transform:scale(1.03)}
       .lw-fbot-send-btn:disabled{opacity:.26;cursor:not-allowed}
       .lw-fbot-send-btn .lw-icon{width:16px;height:16px}
       .lw-fbot-plus-btn:focus-visible,.lw-fbot-send-btn:focus-visible,.lw-empty-chip:focus-visible,.lw-fbot-rename-btn:focus-visible{outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary,#3b82f6));outline-offset:2px}
-      .lw-fbot-plus-menu{position:absolute;left:6px;bottom:calc(100% + 8px);z-index:30;min-width:154px;padding:6px;border:.5px solid var(--dsw-alias-border-l3,rgba(128,128,128,.24));border-radius:14px;background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-2,var(--dsw-alias-bg-base,Canvas)));box-shadow:var(--dsw-elevation-panel,0 12px 30px rgba(0,0,0,.14));backdrop-filter:var(--dsw-menu-backdrop-filter,none);display:grid;gap:2px}
+      .lw-fbot-plus-menu{position:absolute;inset-inline-start:0;bottom:calc(100% + 8px);z-index:30;min-width:154px;padding:6px;border:.5px solid var(--dsw-alias-border-l3,rgba(128,128,128,.24));border-radius:14px;background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-2,var(--dsw-alias-bg-base,Canvas)));box-shadow:var(--dsw-elevation-panel,0 12px 30px rgba(0,0,0,.14));backdrop-filter:var(--dsw-menu-backdrop-filter,none);display:grid;gap:2px}
       .lw-fbot-plus-menu button{width:100%;display:flex;align-items:center;gap:8px;padding:8px 10px;border:0;border-radius:9px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:var(--lw-ui-sm);font-weight:500;text-align:start;cursor:pointer}
       .lw-fbot-plus-menu button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
       .lw-fbot-plus-menu button .lw-icon{width:15px;height:15px;color:var(--dsw-alias-label-secondary)}
@@ -1738,7 +1737,7 @@ window.__ModuleLoader__.load({
                       if (folder?.id === source.id) setFolder(null)
                     }, LW('已移除来源。')) }, LW('移除')))))),
             !folder && h('div', { className: 'lw-actions' }, Btn({
-              variant: 'secondary', disabled: busy, onClick: () => editFolder(null),
+              variant: 'secondary', className: 'lw-add-action', disabled: busy, onClick: () => editFolder(null),
             }, h(Icon, { name: 'plus' }), LW('添加文件夹'))),
             folder && h('form', { className: 'lw-form', onSubmit: event => {
               event.preventDefault()
@@ -2070,7 +2069,7 @@ window.__ModuleLoader__.load({
           setBusy(false)
         }
       }
-      return h(Dialog, { title, close: dismiss }, h('form', { className: 'lw-form', onSubmit: submit },
+      return h(Dialog, { title, close: dismiss, className: 'lw-bot-form-dialog' }, h('form', { className: 'lw-form', onSubmit: submit },
         subtitle && h('p', { className: 'lw-hint', style: { margin: 0 } }, subtitle),
         h(AvatarPicker,{value:symbol,onChange:setSymbol,allowDefault:allowDefaultSymbol}),
         h('label', null, LW('名字'), h('input', { required: true, autoFocus: true, maxLength: 80, value: label, onChange: e => setLabel(e.target.value) })),
@@ -2276,39 +2275,6 @@ window.__ModuleLoader__.load({
       : item.kind === 'output' ? 'output'
       : item.kind === 'link' ? 'link' : 'file'
 
-    function categorizeFeatureItems(feature, featMeta, value, items) {
-      const baseCats = Array.isArray(featMeta?.categories) && featMeta.categories.length
-        ? featMeta.categories : [['push', LW('推送消息')], ['file', LW('文件资源')]]
-      const buckets = new Map(baseCats.map(([key, label]) => [key, { key, label, entries: [] }]))
-      const labelToKey = new Map(baseCats.map(([key, label]) => [label, key]))
-      const linkedIdeaIds = new Set((value?.rails?.goals || []).map(g => g.ideaId).filter(Boolean))
-      const ensureBucket = key => {
-        if (!buckets.has(key)) buckets.set(key, { key, label: key, entries: [] })
-        return buckets.get(key)
-      }
-      for (const it of items) {
-        let cat = it.category
-        if (cat && labelToKey.has(cat)) cat = labelToKey.get(cat)
-        if (!cat) {
-          const isFile = isReadableEntry(it) || isImageResource(it)
-          if (feature === 'feed') cat = isFile ? 'file' : feedKind(it)
-          else if (feature === 'ideas') cat = isFile ? 'file' : (linkedIdeaIds.has(it.id) ? 'converted' : 'fresh')
-          else if (feature === 'goals') cat = isFile ? 'file' : (it.done ? 'completed' : 'pending')
-          else if (feature === 'library') cat = libResKind(it)
-          else cat = isFile ? 'file' : 'push'
-        } else if (feature === 'ideas' && linkedIdeaIds.has(it.id) && cat === 'push') {
-          cat = 'converted'
-        }
-        ensureBucket(cat).entries.push(it)
-      }
-      if (feature === 'ideas' && Array.isArray(value?.reviews) && value.reviews.length) {
-        ensureBucket('review').entries.push(...value.reviews.map(r => ({
-          ...r, _metaType: 'review', text: r.reply || LW('AI 复盘建议'),
-        })))
-      }
-      return [...buckets.values()]
-    }
-
     const deliveryStatus = {
       WAITING_APPROVAL: LW('等待批准'), QUEUED: LW('已排队'), RUNNING: LW('运行中'), SUCCEEDED: LW('已完成'),
       FAILED: LW('运行失败'), CANCELLED: LW('已取消'), INTERRUPTED: LW('运行中断'), BLOCKED: LW('暂时无法执行'),
@@ -2407,6 +2373,57 @@ window.__ModuleLoader__.load({
     const BotExperiments = React.lazy(() => getWorkbenchViews().then(views => ({ default: views.Experiments })))
     const BotTaskDeliveries = React.lazy(() => getWorkbenchViews().then(views => ({ default: views.TaskDeliveries })))
 
+    function openComposerFile(input, imagesOnly) {
+      if (!input || input.disabled) return
+      const previous = input.getAttribute('accept')
+      if (imagesOnly) input.setAttribute('accept', 'image/*')
+      else input.removeAttribute('accept')
+      try { input.click() }
+      finally {
+        if (previous === null) input.removeAttribute('accept')
+        else input.setAttribute('accept', previous)
+      }
+    }
+
+    function ComposerAttachmentMenu({ disabled, onPick }) {
+      const [open, setOpen] = React.useState(false)
+      const ref = React.useRef(null)
+      const trigger = React.useRef(null)
+      React.useEffect(() => {
+        if (!open) return
+        const dismiss = event => {
+          if (!ref.current?.contains(event.target)) setOpen(false)
+        }
+        const escape = event => {
+          if (event.key !== 'Escape') return
+          setOpen(false)
+          if (ref.current?.contains(document.activeElement)) trigger.current?.focus()
+        }
+        document.addEventListener('pointerdown', dismiss)
+        document.addEventListener('keydown', escape)
+        return () => {
+          document.removeEventListener('pointerdown', dismiss)
+          document.removeEventListener('keydown', escape)
+        }
+      }, [open])
+      const pick = imagesOnly => {
+        setOpen(false)
+        trigger.current?.focus()
+        onPick(imagesOnly, ref.current)
+      }
+      const label = LW('导入图片或文件')
+      return h('div', { ref, className: 'lw-composer-attach' },
+        h('button', { ref: trigger, type: 'button', className: 'lw-fbot-plus-btn',
+          'aria-label': label, 'aria-expanded': open && !disabled, title: label, disabled,
+          onClick: () => setOpen(previous => !previous),
+        }, h(Icon, { name: 'plus' })),
+        open && !disabled && h('div', { className: 'lw-fbot-plus-menu', role: 'group', 'aria-label': label },
+          h('button', { type: 'button', onClick: () => pick(true) },
+            h(Icon, { name: 'image' }), h('span', null, LW('导入图片'))),
+          h('button', { type: 'button', onClick: () => pick(false) },
+            h(Icon, { name: 'file' }), h('span', null, LW('导入文件')))))
+    }
+
     function Panel({
       workspaceId, row, feature, featMeta, title, subtitle, emptyTitle,
       value, loadError, persisted, bot, openModels, onRenamed,
@@ -2418,20 +2435,11 @@ window.__ModuleLoader__.load({
       const [reading, setReading] = React.useState(null)
       const [activeItemId, setActiveItemId] = React.useState(null)
       const [activeReview, setActiveReview] = React.useState(null)
-      const [quickModal, setQuickModal] = React.useState(false)
       const [editingBot, setEditingBot] = React.useState(false)
       const [draftText, setDraftText] = React.useState(() => persisted?.draft || '')
 
-      // Sub-form state
-      const [topic, setTopic] = React.useState('')
-      const [quickText, setQuickText] = React.useState('')
-      const [quickDue, setQuickDue] = React.useState('')
-      const [quickDeps, setQuickDeps] = React.useState([])
-      const [quickCat, setQuickCat] = React.useState('push')
-      const [linkInput, setLinkInput] = React.useState('')
       const [editingId, setEditingId] = React.useState(null)
       const [editDraft, setEditDraft] = React.useState({ text: '', due: '' })
-      const [plusOpen, setPlusOpen] = React.useState(false)
       const [botTasks, setBotTasks] = React.useState(null)
       const [taskEditor, setTaskEditor] = React.useState(null)
       const [taskError, setTaskError] = React.useState('')
@@ -2454,18 +2462,6 @@ window.__ModuleLoader__.load({
       const bottomRef = React.useRef(null)
       const fileInputRef = React.useRef(null)
       const textareaRef = React.useRef(null)
-      const plusWrapRef = React.useRef(null)
-      React.useEffect(() => {
-        if (!plusOpen) return
-        const onDoc = e => {
-          if (plusWrapRef.current?.contains(e.target)) return
-          setPlusOpen(false)
-        }
-        const onKey = e => { if (e.key === 'Escape') setPlusOpen(false) }
-        document.addEventListener('pointerdown', onDoc)
-        document.addEventListener('keydown', onKey)
-        return () => { document.removeEventListener('pointerdown', onDoc); document.removeEventListener('keydown', onKey) }
-      }, [plusOpen])
 
       React.useEffect(() => {
         const controller = new AbortController()
@@ -2572,8 +2568,6 @@ window.__ModuleLoader__.load({
         }
       }
       const ordered = items.slice().reverse()
-      const groups = categorizeFeatureItems(feature, featMeta, value, ordered)
-
 
       const scrollToDetail = () => setTimeout(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 30)
       const readResource = (id, page = 1, keepItem = null) => run(async () => {
@@ -2636,25 +2630,21 @@ window.__ModuleLoader__.load({
       const goalsList = value.rails.goals || []
       const linkedIdeaIds = new Set(goalsList.map(g => g.ideaId).filter(Boolean))
 
-      const hasDetail = Boolean(reading || activeItem || activeReview)
-      const hasContent = items.length > 0 || bot.messages.length > 0 || bot.running
-        || hasDetail || (feature === 'ideas' && (value.reviews?.length || 0) > 0)
       const progress = (bot.running && bot.progress) || (bot.sending && preparingReply)
+      const hasDetail = Boolean(reading || activeItem || activeReview)
+      const hasContent = items.length > 0 || bot.messages.length > 0 || bot.running || Boolean(progress)
+        || hasDetail || (feature === 'ideas' && (value.reviews?.length || 0) > 0)
 
       const kindBadges = { paper: LW('论文'), news: LW('新闻'), repository: LW('仓库'), pdf: 'PDF', output: LW('实验产物'), link: LW('链接'), file: LW('文件'), push: LW('推送'), fresh: LW('灵感'), converted: LW('已转目标'), pending: LW('追踪中'), completed: LW('已完成') }
-      const catColor = key => ({
-        completed: 'var(--dsw-alias-state-success-primary,#16a34a)',
-        output: 'var(--dsw-alias-state-success-primary,#16a34a)',
-        converted: 'var(--dsw-alias-state-success-primary,#16a34a)',
-        pdf: 'var(--dsw-alias-label-primary,#0f1115)',
-        paper: 'var(--dsw-alias-label-primary,#0f1115)',
-        fresh: 'var(--dsw-alias-state-business-primary,#3b82f6)',
-        pending: 'var(--dsw-alias-state-business-primary,#3b82f6)',
-        repository: 'var(--dsw-alias-label-secondary,#475569)',
-        news: 'var(--dsw-alias-state-warn-primary,#ca8a04)',
-        review: '#8b5cf6',
-        file: '#64748b',
-      }[key] || 'var(--dsw-alias-label-tertiary,#94a3b8)')
+      const entryKindKey = item => {
+        const isFile = isReadableEntry(item) || isImageResource(item)
+        if (feature === 'feed') return isFile ? 'file' : feedKind(item)
+        if (feature === 'ideas') return isFile ? 'file' : (linkedIdeaIds.has(item.id) ? 'converted' : 'fresh')
+        if (feature === 'goals') return isFile ? 'file' : (item.done ? 'completed' : 'pending')
+        if (feature === 'library') return libResKind(item)
+        return isFile ? 'file' : (item.kind || 'push')
+      }
+      const entryBadgeLabel = item => kindBadges[entryKindKey(item)] || title
       const catIcon = key => ({
         paper: 'file', news: 'activity', repository: 'repo',
         fresh: 'ideas', converted: 'goals', review: 'spark',
@@ -2662,8 +2652,6 @@ window.__ModuleLoader__.load({
         pdf: 'file', output: 'spark', link: 'link',
         file: 'file', push: 'bot',
       }[key] || featureIcon(feature))
-      const nonEmptyGroups = groups.filter(g => g.entries.length > 0)
-      const totalGrouped = nonEmptyGroups.reduce((sum, g) => sum + g.entries.length, 0)
       const doneGoals = feature === 'goals' ? items.filter(x => x.done).length : 0
       const goalPct = feature === 'goals' && items.length ? Math.round((doneGoals / items.length) * 100) : 0
       const ringCircumference = 2 * Math.PI * 13
@@ -2672,7 +2660,6 @@ window.__ModuleLoader__.load({
       const taskKinds = {
         schedule: { label: LW('定时任务'), icon: 'calendar' },
         duty: { label: LW('职责'), icon: 'bot' },
-        storage: { label: LW('存储规则'), icon: 'memory' },
       }
       const taskDocument = task => h(React.Fragment, null,
         h('div', { className: 'lw-assigned-doc-head' },
@@ -2715,37 +2702,22 @@ window.__ModuleLoader__.load({
                   h('div', { className: 'lw-empty-emblem', 'aria-hidden': true }, h(Icon, { name: featMeta.symbol || featureIcon(feature) })),
                   h('strong', null, emptyTitle),
                   h('div', { className: 'lw-empty-chips' },
-                    h('button', { type: 'button', className: 'lw-empty-chip', onClick: () => setQuickModal(true) },
-                      h(Icon, { name: 'edit' }), h('span', null, LW('快速录入'))),
                     h('button', { type: 'button', className: 'lw-empty-chip', onClick: () => fileInputRef.current?.click() },
                       h(Icon, { name: 'upload' }), h('span', null, LW('上传文件'))))))
                 : h(React.Fragment, null,
-                  items.length > 0 && h('div', { className: 'lw-fbot-stats', 'aria-label': title + LW(' 进度与分类概览') },
+                  feature === 'goals' && items.length > 0 && h('div', { className: 'lw-fbot-stats', 'aria-label': title + LW(' 进度概览') },
                     h('div', { className: 'lw-fbot-stats-top' },
-                      feature === 'goals'
-                        ? h('div', { className: 'lw-goal-ring-wrap' },
-                          h('svg', { className: 'lw-goal-ring', viewBox: '0 0 34 34', 'aria-hidden': true },
-                            h('circle', { className: 'lw-goal-ring-bg', cx: 17, cy: 17, r: 13 }),
-                            h('circle', {
-                              className: 'lw-goal-ring-fg', cx: 17, cy: 17, r: 13,
-                              strokeDasharray: ringCircumference,
-                              strokeDashoffset: ringCircumference * (1 - goalPct / 100),
-                            })),
-                          h('div', { style: { display: 'grid', lineHeight: 1.3 } },
-                            h('strong', { style: { fontSize: 'var(--lw-ui-sm)' } }, `完成 ${doneGoals} / ${items.length}`),
-                            h('span', { className: 'lw-hint lw-mono', style: { fontSize: 'var(--lw-ui-xs)' } }, goalPct + '%')))
-                        : h('span', { style: { fontSize: 'var(--lw-ui-xs)', fontWeight: 600, color: 'var(--dsw-alias-label-secondary)' } },
-                          `共 ${items.length} 项`),
-                      h('div', { className: 'lw-fbot-stat-pills' },
-                        nonEmptyGroups.map(g => h('span', { key: g.key, className: 'lw-stat-chip' },
-                          h('span', { className: 'lw-stat-dot', style: { background: catColor(g.key) } }),
-                          g.label, ' ', g.entries.length)))),
-                    totalGrouped > 0 && h('div', { className: 'lw-stat-track', 'aria-hidden': true },
-                      nonEmptyGroups.map(g => h('div', {
-                        key: g.key,
-                        className: 'lw-stat-seg',
-                        style: { width: Math.max(8, Math.round((g.entries.length / totalGrouped) * 100)) + '%', background: catColor(g.key) },
-                      })))),
+                      h('div', { className: 'lw-goal-ring-wrap' },
+                        h('svg', { className: 'lw-goal-ring', viewBox: '0 0 34 34', 'aria-hidden': true },
+                          h('circle', { className: 'lw-goal-ring-bg', cx: 17, cy: 17, r: 13 }),
+                          h('circle', {
+                            className: 'lw-goal-ring-fg', cx: 17, cy: 17, r: 13,
+                            strokeDasharray: ringCircumference,
+                            strokeDashoffset: ringCircumference * (1 - goalPct / 100),
+                          })),
+                        h('div', { style: { display: 'grid', lineHeight: 1.3 } },
+                          h('strong', { style: { fontSize: 'var(--lw-ui-sm)' } }, `完成 ${doneGoals} / ${items.length}`),
+                          h('span', { className: 'lw-hint lw-mono', style: { fontSize: 'var(--lw-ui-xs)' } }, goalPct + '%'))))),
 
                   hasDetail && h('div', { ref: detailRef, className: 'lw-fbot-detail' },
                     reading ? h('section', { className: 'lw-reader-pane', style: { position: 'static' }, 'aria-label': LW('资源内容') },
@@ -2775,7 +2747,7 @@ window.__ModuleLoader__.load({
                     : activeItem && h('div', { style: { display: 'grid', gap: 10 } },
                       h('div', { className: 'lw-fbot-detail-head' },
                         h('div', { className: 'lw-actions' },
-                          h(Tag, { tone: 'neutral' }, kindBadges[activeItem.category || (feature === 'feed' ? feedKind(activeItem) : activeItem.kind)] || title),
+                          h(Tag, { tone: 'neutral' }, entryBadgeLabel(activeItem)),
                           activeItem.ts && h('span', { className: 'lw-hint lw-mono' }, fmtDateTime(activeItem.ts))),
                         h('button', { type: 'button', className: 'lw-dialog-close', 'aria-label': LW('关闭'), title: LW('关闭'), onClick: () => setActiveItemId(null) },
                           h(Icon, { name: 'close' }))),
@@ -2853,7 +2825,7 @@ window.__ModuleLoader__.load({
                               h('span', { className: 'lw-res-dot', 'data-kind': kind, style: { marginTop: 6 } }),
                               h('span', { className: 'lw-doc-title', title: item.text }, body || headline)),
                             h('div', { className: 'lw-doc-foot' },
-                              h(Tag, { tone: 'neutral' }, kindBadges[item.category || kind] || kindBadges[kind] || title),
+                              h(Tag, { tone: 'neutral' }, kindBadges[kind] || title),
                               readable && Btn({ variant: 'secondary', size: 'xs', onClick: e => { e.stopPropagation(); openEntry(item) } }, LW('阅读')))))
                       }))
                     : h('div', { style: { display: 'grid', gap: 8 }, 'aria-label': title + LW(' 上下文记录') },
@@ -2862,8 +2834,8 @@ window.__ModuleLoader__.load({
                         const imgSrc = entryImageSrc(item)
                         const isActive = activeItemId === item.id || reading?.id === item.id || (item.libraryId && reading?.id === item.libraryId)
                         const readable = isReadableEntry(item)
-                        const category = item.category || (feature === 'feed' ? feedKind(item) : item.kind)
-                        const itemIcon = item.done ? 'check' : catIcon(category || feature)
+                        const entryKey = entryKindKey(item)
+                        const itemIcon = item.done ? 'check' : catIcon(entryKey || feature)
                         return h('article', {
                           key: item.id || feedKey(item),
                           className: 'lw-fbot-card',
@@ -2885,7 +2857,7 @@ window.__ModuleLoader__.load({
                                 onClick: e => { e.stopPropagation(); openEntry(item) } }, headline),
                               h('div', { className: 'lw-actions' },
                                 item.due && h('span', { className: 'lw-hint lw-mono', style: { fontSize: 'var(--lw-ui-xs)' } }, item.due),
-                                h(Tag, { tone: item.done ? 'success' : 'neutral' }, item.done ? LW('已完成') : (kindBadges[category] || title)),
+                                h(Tag, { tone: item.done ? 'success' : 'neutral' }, entryBadgeLabel(item)),
                                 readable && Btn({ variant: 'secondary', size: 'xs', onClick: e => { e.stopPropagation(); openEntry(item) } }, LW('阅读')))),
                             (body || (!imgSrc && item.caption)) && h('div', { className: 'lw-muse-row-sub' }, body || item.caption)),
                           imgSrc && h(EntryImage, { src: imgSrc, alt: item.caption || headline,
@@ -2893,7 +2865,7 @@ window.__ModuleLoader__.load({
                           h(EntrySource, { item }))
                       }))),
 
-                  bot.messages.length > 0 && h('div', { className: 'lw-bot-turns', 'aria-label': title + LW(' 对话记录') },
+                  (bot.messages.length > 0 || progress) && h('div', { className: 'lw-bot-turns', 'aria-label': title + LW(' 对话记录') },
                     bot.messages.map(msg => h('div', { key: msg.id, className: 'lw-bot-msg', 'data-role': msg.role },
                       h('div', { className: 'lw-bot-msg-meta' },
                         h('span', null, msg.role === 'user' ? LW('你') : title),
@@ -2906,13 +2878,13 @@ window.__ModuleLoader__.load({
                               setDraftText(restored)
                               requestAnimationFrame(() => textareaRef.current?.focus())
                             }) }))),
-                      msg.text)))),
+                      msg.text)),
+                    progress && h(TurnProgress, { progress, onApproval: bot.openApproval }))),
               bot.sessionId && h(ConversationReceipts, { key: bot.sessionId, sessionId: bot.sessionId }),
               h('div', { ref: bottomRef }))),
 
           h('form', { className: 'lw-fbot-composer-wrap', onSubmit: submitComposer },
-            progress && h(TurnProgress, { progress, onApproval: bot.openApproval }),
-            h('div', { ref: plusWrapRef, className: 'lw-fbot-composer' },
+            h('div', { className: 'lw-fbot-composer' },
               h('input', {
                 ref: fileInputRef,
                 type: 'file',
@@ -2921,25 +2893,7 @@ window.__ModuleLoader__.load({
                 style: { display: 'none' },
                 onChange: e => { const f = e.target.files[0]; e.target.value = ''; if (f) importFile(f) },
               }),
-              h('button', {
-                type: 'button',
-                className: 'lw-fbot-plus-btn',
-                'aria-label': LW('添加内容或文件'),
-                'aria-expanded': plusOpen,
-                'aria-haspopup': 'menu',
-                title: LW('导入文件或快速录入'),
-                disabled: busy,
-                onClick: () => setPlusOpen(prev => !prev),
-              }, h(Icon, { name: 'plus' })),
-              plusOpen && h('div', { className: 'lw-fbot-plus-menu', 'aria-label': LW('添加操作') },
-                h('button', {
-                  type: 'button', disabled: busy,
-                  onClick: () => { setPlusOpen(false); fileInputRef.current?.click() },
-                }, h(Icon, { name: 'upload' }), h('span', null, LW('导入文件'))),
-                h('button', {
-                  type: 'button',
-                  onClick: () => { setPlusOpen(false); setQuickModal(true) },
-                }, h(Icon, { name: 'edit' }), h('span', null, LW('+ 录入')))),
+              h(ComposerAttachmentMenu, { disabled: busy, onPick: imagesOnly => openComposerFile(fileInputRef.current, imagesOnly) }),
               h('textarea', {
                 ref: textareaRef,
                 rows: 1,
@@ -2994,7 +2948,8 @@ window.__ModuleLoader__.load({
           workbenchTab === 'tasks' && h('section', { className: 'lw-bot-workstack', 'aria-label': LW('任务线程') },
             h('div', { className: 'lw-bot-workline' },
               h('h3', null, LW('任务线程')),
-              Btn({ variant: 'primary', size: 'sm', disabled: busy, onClick: () => openTaskEditor(null, 'schedule') }, LW('+ 定时任务'))),
+              Btn({ size: 'sm', className: 'lw-add-action', disabled: busy, onClick: () => openTaskEditor(null, 'schedule') },
+                h(Icon, { name: 'plus' }), LW('定时任务'))),
             taskError && !taskEditor && h('p', { role: 'alert', className: 'lw-error' }, taskError),
             taskNotice && h('p', { role: 'status', className: 'lw-notice' }, taskNotice),
             assignmentError && h('p', { role: 'alert', className: 'lw-error' }, assignmentError),
@@ -3012,57 +2967,12 @@ window.__ModuleLoader__.load({
             h('section', { className: 'lw-bot-workstack', 'aria-label': LW('分工') },
               h('div', { className: 'lw-bot-workline' }, h('h3', null, LW('分工')),
                 h('div', { className: 'lw-actions' },
-                  Btn({ size: 'xs', disabled: busy, onClick: () => openTaskEditor(null, 'duty') }, LW('+ 职责')),
-                  Btn({ size: 'xs', disabled: busy, onClick: () => openTaskEditor(null, 'storage') }, LW('+ 存储规则')))),
-              rules.map(task => h('article', { key: task.kind + ':' + task.title, className: 'lw-assigned-doc' },
-                h('span', { className: 'lw-assigned-kind' }, taskKinds[task.kind].label),
+                  Btn({ size: 'xs', className: 'lw-add-action', disabled: busy, onClick: () => openTaskEditor(null, 'duty') },
+                    h(Icon, { name: 'plus' }), LW('职责')))),
+              rules.map((task, idx) => h('article', { key: task.kind + ':' + task.title + ':' + idx, className: 'lw-assigned-doc' },
+                h('span', { className: 'lw-assigned-kind' }, (taskKinds[task.kind] || taskKinds.duty).label),
                 taskDocument(task))))))),
 
-        quickModal && h(Dialog, { title: LW('快速录入：') + title, close: () => { if (!busy) setQuickModal(false) } },
-          feature === 'feed' ? h('form', { className: 'lw-form', onSubmit: e => {
-            e.preventDefault(); if (!topic.trim()) return
-            run(async () => { await action('topic', { topic: topic.trim() }); setTopic(''); setNotice(LW('主题已保存。')); setQuickModal(false) })
-          } },
-            h('label', null, LW('订阅关键词'), h('input', { required: true, autoFocus: true, value: topic, placeholder: value.topic || LW('输入关键词…'), onChange: e => setTopic(e.target.value) })),
-            h('div', { className: 'lw-actions lw-dialog-actions' },
-              Btn({ variant: 'ghost', disabled: busy, onClick: () => setQuickModal(false) }, LW('取消')),
-              value.topic && Btn({ variant: 'secondary', disabled: busy, onClick: () => run(async () => { await action('refresh_feed'); setNotice(LW('动态已刷新。')); setQuickModal(false) }) }, LW('立即刷新动态')),
-              Btn({ variant: 'primary', type: 'submit', disabled: busy || !topic.trim() }, LW('保存订阅'))))
-          : feature === 'library' ? h('form', { className: 'lw-form', onSubmit: e => {
-            e.preventDefault(); if (!linkInput.trim()) return
-            run(async () => { await action('link', { url: linkInput.trim() }); setLinkInput(''); setNotice(LW('已保存资源链接。')); setQuickModal(false) })
-          } },
-            h('label', null, LW('资源链接 / Git 仓库地址'), h('input', { required: true, autoFocus: true, type: 'url', value: linkInput, placeholder: 'https://…', onChange: e => setLinkInput(e.target.value) })),
-            h('div', { className: 'lw-actions lw-dialog-actions' },
-              Btn({ variant: 'ghost', disabled: busy, onClick: () => setQuickModal(false) }, LW('取消')),
-              Btn({ variant: 'secondary', disabled: busy || !linkInput.trim(), onClick: () => run(async () => { await action('clone', { url: linkInput.trim() }); setLinkInput(''); setNotice(LW('Git 仓库已克隆至项目目录。')); setQuickModal(false) }) }, LW('克隆为 Git 仓库')),
-              Btn({ variant: 'primary', type: 'submit', disabled: busy || !linkInput.trim() }, LW('添加链接'))))
-          : h('form', { className: 'lw-form', onSubmit: e => {
-            e.preventDefault(); if (!quickText.trim()) return
-            run(async () => {
-              if (feature === 'ideas') {
-                await action('idea_create', { text: quickText.trim() })
-              } else if (feature === 'goals') {
-                await action('goal_create', { text: quickText.trim(), ...(quickDue ? { due: quickDue } : {}), ...(quickDeps.length ? { dependsOn: quickDeps } : {}) })
-              } else {
-                await action('feature_push', { featureId: feature, text: quickText.trim(), category: quickCat.trim() || 'push', source: LW('手动录入') })
-              }
-              setQuickText(''); setQuickDue(''); setQuickDeps([]); setQuickModal(false)
-            })
-          } },
-            h('label', null, feature === 'ideas' ? LW('新点子') : feature === 'goals' ? LW('新目标') : LW('内容'),
-              h('textarea', { required: true, autoFocus: true, rows: 3, value: quickText, placeholder: `输入要保存到「${title}」的内容…`, onChange: e => setQuickText(e.target.value) })),
-            feature === 'goals' && h(React.Fragment, null,
-              h('label', null, LW('截止日期（可选）'), h('input', { type: 'date', value: quickDue, onChange: e => setQuickDue(e.target.value) })),
-              goalsList.length > 0 && h('label', null, LW('前置目标（可选）'),
-                h('select', { multiple: true, style: { minHeight: 68 }, value: quickDeps,
-                  onChange: e => setQuickDeps(Array.from(e.target.selectedOptions, o => o.value)) },
-                  goalsList.map(g => h('option', { key: g.id, value: g.id }, g.text))))),
-            feature !== 'ideas' && feature !== 'goals' && h('label', null, LW('归档分类'),
-              h('input', { value: quickCat, placeholder: LW('如 push / 论文 / 实验'), onChange: e => setQuickCat(e.target.value) })),
-            h('div', { className: 'lw-actions lw-dialog-actions' },
-              Btn({ variant: 'ghost', disabled: busy, onClick: () => setQuickModal(false) }, LW('取消')),
-              Btn({ variant: 'primary', type: 'submit', disabled: busy || !quickText.trim() }, LW('添加'))))),
         taskEditor && h(Dialog, {
           title: taskEditor.id ? LW('编辑分配任务') : LW('新建分配任务'),
           close: () => { if (!busy) setTaskEditor(null) },
@@ -3074,10 +2984,9 @@ window.__ModuleLoader__.load({
                 onChange: e => setTaskEditor({ ...taskEditor, kind: e.target.value }),
               },
                 h('option', { value: 'duty' }, LW('职责')),
-                h('option', { value: 'storage' }, LW('存储规则')),
                 h('option', { value: 'schedule' }, LW('定时任务')))),
             taskEditor.id && h('p', { className: 'lw-assigned-hint', style: { margin: 0 } },
-              (taskKinds[taskEditor.kind] || {}).label || taskEditor.kind),
+              (taskKinds[taskEditor.kind] || taskKinds.duty).label),
             h('label', null, LW('任务名称'),
               h('input', {
                 required: true, autoFocus: true, maxLength: 80, value: taskEditor.title, disabled: busy,
@@ -3091,7 +3000,7 @@ window.__ModuleLoader__.load({
             h('label', null, LW('内容（Markdown）'),
               h('textarea', {
                 required: true, rows: 9, maxLength: 3000, value: taskEditor.instruction, disabled: busy,
-                placeholder: LW('用 Markdown 写下职责、输出格式或存储要求…'),
+                placeholder: LW('用 Markdown 写下职责或工作要求…'),
                 onChange: e => setTaskEditor({ ...taskEditor, instruction: e.target.value }),
               })),
             taskEditor.instruction.trim() && h('div', { className: 'lw-assigned-preview', 'aria-label': LW('Markdown 预览') },
@@ -3955,8 +3864,26 @@ window.__ModuleLoader__.load({
       function GlobalConversationProgress({ binding }) {
         const session = useStore(binding.session)
         const history = useStore(binding.eventSource)
+        const anchor = React.useRef(null)
+        const [target, setTarget] = React.useState(null)
+        React.useLayoutEffect(() => {
+          if (!session.running) {
+            setTarget(null)
+            return
+          }
+          const conversation = anchor.current?.closest('[data-conversation-content][data-conversation-session]')
+          if (!conversation) return
+          // The pinned client owns the running row inside the message list.
+          const locate = () => setTarget(conversation.querySelector('[data-chat-running]:not([data-holding])'))
+          locate()
+          const observer = new MutationObserver(locate)
+          observer.observe(conversation, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-chat-running', 'data-holding'] })
+          return () => observer.disconnect()
+        }, [session.running])
         const progress = session.running && conversationProgress(history.entries)
-        return progress ? h('div', { className: 'lw-assistant-progress' }, h(TurnProgress, { progress })) : null
+        return h(React.Fragment, null, h('span', { hidden: true, ref: anchor }),
+          target && progress && ReactDOM.createPortal(
+            h('div', { className: 'lw-assistant-progress' }, h(TurnProgress, { progress })), target))
       }
       slot('conversation.input.dock', { id: 'labweave-messenger', order: 12, inject: sessionId => ({ sessionId }) }, ({ sessionId }) => {
         useNav()
@@ -3966,7 +3893,7 @@ window.__ModuleLoader__.load({
         const binding = ctx.sessions.binding(sessionId)
         return h(React.Fragment, null,
           h('style', { 'data-lw-messenger': sessionId }, [
-            scope + ' [data-slot="conversation.input.model"],' + scope + ' [data-slot="conversation.input.permission"],' + scope + ' [data-slot="conversation.input.plan"],' + scope + ' [class*="uV2eYG_select"],' + scope + ' [class*="uV2eYG_modes"],' + scope + ' [class*="uV2eYG_add"]{display:none!important}',
+            scope + ' [data-slot="conversation.input.model"],' + scope + ' [data-slot="conversation.input.permission"],' + scope + ' [data-slot="conversation.input.plan"],' + scope + ' [class*="uV2eYG_select"],' + scope + ' [class*="uV2eYG_modes"],' + scope + ' [data-composer-card] button[class$="_add"]{display:none!important}',
             scope + ' [data-chat-flow-kind="turn-process"],' + scope + ' [data-step-process"],' + scope + ' [data-chat-call-id],' + scope + ' [data-tool]{display:none!important}',
             scope + ' [data-variant="think"]{display:none!important}',
             scope + ' [data-content-phase="active"] [class*="scrollBody"],' + scope + ' [data-phase="active"] [class*="scrollBody"]{padding-top:8px}',
@@ -3978,76 +3905,116 @@ window.__ModuleLoader__.load({
         useNav()
         const workspace = useStore(ctx.workspaces.list).items.find(w => w.sessionIds.includes(sessionId))
         if (!workspace || !rows.some(r => r.workspaceId === workspace.workspaceId && r.scope === 'global')) return null
-        const [open, setOpen] = React.useState(false)
-        const wrapRef = React.useRef(null)
-        React.useEffect(() => {
-          if (!open) return
-          const onDoc = e => { if (!wrapRef.current?.contains(e.target)) setOpen(false) }
-          const onKey = e => { if (e.key === 'Escape') setOpen(false) }
-          document.addEventListener('pointerdown', onDoc)
-          document.addEventListener('keydown', onKey)
-          return () => {
-            document.removeEventListener('pointerdown', onDoc)
-            document.removeEventListener('keydown', onKey)
-          }
-        }, [open])
-        const pick = accept => {
-          setOpen(false)
-          const root = document.querySelector('[data-conversation-session="' + CSS.escape(sessionId) + '"]')
-          const input = root?.querySelector('input[type="file"]')
-          if (!input || input.disabled) return
-          const prev = input.getAttribute('accept')
-          if (accept) input.setAttribute('accept', accept)
-          else input.removeAttribute('accept')
-          input.click()
-          window.setTimeout(() => {
-            if (prev == null) input.removeAttribute('accept')
-            else input.setAttribute('accept', prev)
-          }, 1500)
-        }
-        return h('div', { ref: wrapRef, className: 'lw-asst-attach' },
-          h('button', {
-            type: 'button', className: 'lw-fbot-plus-btn',
-            'aria-label': LW('导入图片或文件'), 'aria-haspopup': 'menu', 'aria-expanded': open,
-            title: LW('导入图片或文件'),
-            onClick: () => setOpen(prev => !prev),
-          }, h(Icon, { name: 'plus' })),
-          open && h('div', { className: 'lw-fbot-plus-menu', role: 'menu', 'aria-label': LW('导入图片或文件') },
-            h('button', { type: 'button', role: 'menuitem', onClick: () => pick('image/*') },
-              h(Icon, { name: 'image' }), h('span', null, LW('导入图片'))),
-            h('button', { type: 'button', role: 'menuitem', onClick: () => pick('') },
-              h(Icon, { name: 'file' }), h('span', null, LW('导入文件')))))
+        return h(ComposerAttachmentMenu, { onPick: (imagesOnly, anchor) => {
+          const input = anchor?.closest('[data-composer-card]')?.querySelector('input[type="file"]')
+          openComposerFile(input, imagesOnly)
+        } })
       })
       const BrandMark = ({ size }) => h('img', {
         src: './weave-orbit.svg', alt: '', 'aria-hidden': true, draggable: false,
         width: size, height: size, className: 'lw-brand-mark',
       })
+      let assistantEntrance
+      function queueAssistantEntrance(button) {
+        assistantEntrance = null
+        if (matchMedia('(prefers-reduced-motion: reduce)').matches) return
+        const pairs = [
+          ['.lw-brand-mark', '.lw-hero-avatar-img'],
+          ['.lw-wordmark', '.lw-hero-entry-name'],
+        ].flatMap(([from, to]) => {
+          const origin = button.querySelector(from)
+          const bounds = origin?.getBoundingClientRect()
+          return bounds?.width && bounds.height ? [{ origin, bounds, to }] : []
+        })
+        if (!pairs.length) return
+        assistantEntrance = { pairs, expires: performance.now() + 4000 }
+        const sidebar = button.closest('[data-sidebar-drawer], [data-slot="sidebar"]')
+        const navigation = sidebar?.querySelector('.lw-tree, .lw-rail')
+        for (let node = navigation?.parentElement; node && sidebar.contains(node); node = node.parentElement) {
+          if (node.scrollTop > 0) node.scrollTo({ top: 0, behavior: 'smooth' })
+        }
+        navigation?.animate([{ translate: '0 0' }, { translate: '0 -9px', offset: .55 }, { translate: '0 0' }],
+          { duration: 280, easing: 'ease-out' })
+      }
+
+      function playAssistantEntrance(hero, entrance) {
+        const layer = document.createElement('div')
+        layer.className = 'lw-assistant-flight'
+        layer.setAttribute('aria-hidden', 'true')
+        document.body.append(layer)
+        const animations = []
+        const timing = { duration: 420, delay: 100, easing: 'cubic-bezier(.2,.75,.25,1)', fill: 'both' }
+        for (const { origin, bounds, to } of entrance.pairs) {
+          const target = hero.querySelector(to)
+          const end = target?.getBoundingClientRect()
+          if (!end?.width || !end.height) continue
+          const copy = target.cloneNode(true)
+          const style = getComputedStyle(target)
+          Object.assign(copy.style, {
+            position: 'absolute', margin: '0', left: end.left + 'px', top: end.top + 'px',
+            width: end.width + 'px', height: end.height + 'px',
+            color: style.color, font: style.font, letterSpacing: style.letterSpacing,
+            borderRadius: style.borderRadius, objectFit: style.objectFit,
+          })
+          layer.append(copy)
+          const x = bounds.left + bounds.width / 2 - end.left - end.width / 2
+          const y = bounds.top + bounds.height / 2 - end.top - end.height / 2
+          const scale = bounds.height / end.height
+          animations.push(copy.animate([
+            { transform: "translate(" + x + "px," + y + "px) scale(" + scale + ")", opacity: 1 },
+            { transform: 'none', opacity: 1, offset: .88 },
+            { transform: 'none', opacity: 0 },
+          ], timing))
+          animations.push(target.animate([{ opacity: 0 }, { opacity: 0, offset: .88 }, { opacity: 1 }], timing))
+          animations.push(origin.animate([{ opacity: 0 }, { opacity: 0, offset: .52 }, { opacity: 1 }], timing))
+        }
+        const cleanup = () => {
+          for (const animation of animations) animation.cancel()
+          layer.remove()
+        }
+        Promise.allSettled(animations.map(animation => animation.finished)).then(cleanup)
+        return cleanup
+      }
+
+      function AssistantIdentity({ row, active = false, entryRef }) {
+        const displayName = row?.name || 'Weave'
+        const hasCustomAvatar = Boolean(row?.hasCustomAvatar && row?.avatar)
+        const avatarSrc = hasCustomAvatar ? row.avatar : './weave-orbit.svg'
+        const tagline = !active && row?.tagline
+        return h('button', {
+          ref: entryRef, type: 'button',
+          className: 'lw-assistant-identity ' + (active ? 'lw-active-profile-entry' : 'lw-hero-profile-entry'),
+          'aria-label': '设置全局助手 ' + displayName + ' 资料',
+          'aria-haspopup': 'dialog', title: LW('点击设置助手头像与资料'),
+          onClick: () => window.dispatchEvent(new CustomEvent(openProfileEvent)),
+        },
+          h('span', { className: 'lw-hero-avatar-frame', 'data-custom': hasCustomAvatar ? 'true' : 'false' },
+            h('img', { src: avatarSrc, alt: '', 'aria-hidden': true, draggable: false, className: 'lw-brand-mark lw-hero-avatar-img' }),
+            h('span', { className: 'lw-hero-avatar-badge', 'aria-hidden': true }, h(Icon, { name: 'edit' }))),
+          h('span', { className: 'lw-hero-entry-name' }, displayName),
+          tagline && h('span', { className: 'lw-hero-entry-tagline' }, tagline))
+      }
+
       function GlobalHeroEntry({ size }) {
         useNav()
         useStore(ctx.sessions.list)
         useStore(ctx.workspaces.list)
+        const panel = useStore(ctx.layout.panelInfo)
+        const ref = React.useRef(null)
+        const cleanup = React.useRef(null)
         const room = currentRow()
+        React.useLayoutEffect(() => {
+          if (!assistantEntrance || !ref.current?.getClientRects().length ||
+              (room && room.scope !== 'global') || panel.activePanelId != null) return
+          const entrance = assistantEntrance
+          assistantEntrance = null
+          if (performance.now() >= entrance.expires || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+          cleanup.current?.()
+          cleanup.current = playAssistantEntrance(ref.current, entrance)
+        })
+        React.useLayoutEffect(() => () => cleanup.current?.(), [])
         if (room && room.scope !== 'global') return h(BrandMark, { size })
-        const g = globalRow()
-        const displayName = g?.name || 'Weave'
-        const hasCustomAvatar = Boolean(g?.hasCustomAvatar && g?.avatar)
-        const avatarSrc = hasCustomAvatar ? g.avatar : './weave-orbit.svg'
-        const tagline = g?.tagline || ''
-        return h('button', {
-          type: 'button',
-          className: 'lw-hero-profile-entry',
-          'aria-label': `设置全局助手 ${displayName} 资料`,
-          title: '点击设置助手头像与资料',
-          onClick: () => window.dispatchEvent(new CustomEvent(openProfileEvent)),
-        },
-          h('span', { className: 'lw-hero-avatar-frame', 'data-custom': hasCustomAvatar ? 'true' : 'false' },
-            h('img', {
-              src: avatarSrc, alt: '', 'aria-hidden': true, draggable: false,
-              className: 'lw-brand-mark lw-hero-avatar-img',
-            }),
-            h('span', { className: 'lw-hero-avatar-badge', 'aria-hidden': true }, h(Icon, { name: 'edit' }))),
-          h('span', { className: 'lw-hero-entry-name' }, displayName),
-          tagline && h('span', { className: 'lw-hero-entry-tagline' }, tagline))
+        return h(AssistantIdentity, { row: globalRow(), entryRef: ref })
       }
       slot('sidebar.brand.mark', { priority: -30 }, BrandMark)
       slot('conversation.hero.brand.mark', { priority: -30 }, GlobalHeroEntry)
@@ -4074,10 +4041,11 @@ window.__ModuleLoader__.load({
         }, [canOpen, workspaceId, attempt])
         if (selectedId !== undefined) return null
         return h('div', { role: failed ? 'alert' : 'status', className: 'lw-hint' },
-          failed ? LW('无法打开助理。') : LW('正在打开助理…'),
+          failed ? LW('无法打开助手。') : LW('正在打开助手…'),
           failed && Btn({ variant: 'ghost', onClick: () => { setFailed(false); retry() } }, LW('重试')))
       })
-      function openAssistantHome() {
+      function openAssistantHome(button) {
+        queueAssistantEntrance(button)
         closeDrawer()
         forgetPage()
         const g = globalRow()
@@ -4103,19 +4071,19 @@ window.__ModuleLoader__.load({
         React.useLayoutEffect(() => {
           const btn = ref.current?.closest('button')
           if (!btn) return
-          btn.setAttribute('aria-label', LW('打开助理'))
+          btn.setAttribute('aria-label', LW('打开助手'))
           btn.removeAttribute('title')
           const onClick = event => {
             event.preventDefault()
             event.stopPropagation()
-            openAssistantHome()
+            openAssistantHome(btn)
           }
           btn.addEventListener('click', onClick)
           return () => btn.removeEventListener('click', onClick)
         }, [rev, globalName])
         return h('span', { ref, className: 'lw-brand-entry' },
           h('span', { className: 'lw-wordmark' }, 'Weave'),
-          h('span', { className: 'lw-brand-assistant', 'data-active': active ? 'true' : 'false', 'aria-hidden': true }, LW('打开助理')))
+          h('span', { className: 'lw-brand-assistant', 'data-active': active ? 'true' : 'false', 'aria-hidden': true }, LW('打开助手')))
       })
 
       const tool = (name, label, onClick, className = '') => h('button', { type: 'button',
@@ -4447,7 +4415,7 @@ window.__ModuleLoader__.load({
               }))
           }),
           !projectRows.length && h('button', {
-            type: 'button', className: 'lw-sidebar-empty-btn',
+            type: 'button', className: 'lw-sidebar-empty-btn lw-add-action',
             onClick: () => setDialog({ type: 'create' }),
           }, h(Icon, { name: 'plus' }), h('span', null, LW('新建第一个工作区项目'))),
           dialogs)
@@ -4787,7 +4755,6 @@ window.__ModuleLoader__.load({
       const guideArtwork = {
         sandbox: guideGlyph('M9 3h6 M10 3v5.6L5.7 18a2.3 2.3 0 0 0 2 3.3h8.6a2.3 2.3 0 0 0 2-3.3L14 8.6V3 M7.5 15h9'),
         git: guideGlyph(paths.repo),
-        storage: guideGlyph('M4 7.5h16V20H4z M4 7.5 6.2 4h11.6L20 7.5 M9.5 12h5'),
       }
 
       if (ctx.sidebarRightTabs?.register) {
@@ -4841,14 +4808,6 @@ window.__ModuleLoader__.load({
           guideIcon: guideArtwork.git,
           description: '查看本项目仓库和工作树的状态、变更和最近提交。',
         },
-        {
-          id: 'labweave-project-storage',
-          kind: 'labweave-storage',
-          title: '存储空间',
-          order: 14,
-          guideIcon: guideArtwork.storage,
-          description: '按关键词类别归档项目文件，也可以在对话里自定义类别。',
-        },
       ]
       function projectToolTab(kind) {
         return function ProjectToolTab() {
@@ -4900,7 +4859,7 @@ window.__ModuleLoader__.load({
           return () => { disposed=true; window.removeEventListener(navEvent,sync); subs.forEach(unsubscribe=>unsubscribe()); off?.() }
         }, 'LabWeave ' + spec.kind + ' visibility')
         slot('sidebar.right.pane.tab.title', { key: spec.id }, () => h('span',null,LW(spec.title)))
-        slot('sidebar.right.pane.tab', { key: spec.id }, projectToolTab(spec.kind === 'labweave-git' ? 'git' : 'storage'))
+        slot('sidebar.right.pane.tab', { key: spec.id }, projectToolTab('git'))
       }
       PROJECT_TOOL_TABS.forEach(registerProjectToolTab)
 
@@ -4917,35 +4876,6 @@ window.__ModuleLoader__.load({
         const [sessionDialog, setSessionDialog] = React.useState(null)
         const triggerRef = React.useRef(null)
         const popoverRef = React.useRef(null)
-        const wrapRef = React.useRef(null)
-        const identityRef = React.useRef(null)
-        const placeIdentity = React.useCallback(() => {
-          const start = wrapRef.current
-          const btn = identityRef.current
-          if (!start || !btn) return
-          const header = start.closest('header')
-          if (!header) return
-          const hr = header.getBoundingClientRect()
-          btn.style.left = `${hr.left + hr.width / 2}px`
-          btn.style.top = `${hr.top + hr.height / 2}px`
-          btn.style.height = `${Math.min(56, Math.max(48, hr.height - 24))}px`
-          btn.dataset.placed = 'true'
-        }, [])
-        React.useLayoutEffect(() => {
-          placeIdentity()
-          const start = wrapRef.current
-          const header = start?.closest('header')
-          const ro = new ResizeObserver(placeIdentity)
-          if (header) ro.observe(header)
-          if (start) ro.observe(start)
-          window.addEventListener('resize', placeIdentity)
-          window.addEventListener('scroll', placeIdentity, { passive: true, capture: true })
-          return () => {
-            ro.disconnect()
-            window.removeEventListener('resize', placeIdentity)
-            window.removeEventListener('scroll', placeIdentity, { capture: true })
-          }
-        })
         const placePopover = () => {
           const rect = triggerRef.current?.getBoundingClientRect()
           if (!rect) return
@@ -4975,31 +4905,20 @@ window.__ModuleLoader__.load({
         if (!isGlobal) return null
         const historyList = historySessionsFor(row.workspaceId, workspaces, sessions, allBotSessionIds())
         const startNewGlobalSession = () => {
+          assistantEntrance = null
           setOpen(false)
           forgetPage()
           nav.startSession(row.workspaceId)
           changed()
         }
-        const identityName = row.name || 'Weave'
-        const identityAvatar = row.hasCustomAvatar && row.avatar ? row.avatar : './weave-orbit.svg'
-        const identityButton = !current.blank && h('button', {
-          ref: identityRef, type: 'button', className: 'lw-corner-identity',
-          'data-custom': row.hasCustomAvatar && row.avatar ? 'true' : 'false',
-          'aria-label': `设置全局助手 ${identityName} 资料`,
-          title: LW('点击设置助手头像与资料'),
-          onClick: () => window.dispatchEvent(new CustomEvent(openProfileEvent)),
-        },
-          h('img', { src: identityAvatar, alt: '', className: 'lw-corner-identity-avatar', 'aria-hidden': true }),
-          h('span', { className: 'lw-corner-identity-name' }, identityName))
-        return h('div', { className: 'lw-corner-wrap', ref: wrapRef },
-          identityButton && ReactDOM.createPortal(identityButton, document.body),
+        return h('div', { className: 'lw-corner-wrap' },
           h('button', {
             ref: triggerRef, type: 'button', className: 'lw-corner-btn',
             'aria-expanded': open, 'aria-haspopup': 'dialog', 'aria-label': LW('助手历史对话'),
             onClick: () => { if (!open) placePopover(); setOpen(prev => !prev) },
           }, h(Icon, { name: 'chat' }), h('span', null, LW('历史对话')), historyList.length > 0 && h('span', { className: 'lw-seg-count' }, historyList.length)),
           !current.blank && h('button', {
-            type: 'button', className: 'lw-corner-btn', 'aria-label': LW('新建全局对话'),
+            type: 'button', className: 'lw-corner-btn lw-add-action', 'aria-label': LW('新建全局对话'),
             onClick: startNewGlobalSession,
           }, h(Icon, { name: 'plus' }), h('span', null, LW('新对话'))),
           open && ReactDOM.createPortal(
@@ -5011,7 +4930,8 @@ window.__ModuleLoader__.load({
             h('div', { className: 'lw-session-popover-head' },
               h('strong', null, LW('历史对话')),
               h('span', { className: 'lw-actions', style: { gap: 4 } },
-                Btn({ variant: 'ghost', size: 'xs', disabled: Boolean(current.blank), onClick: startNewGlobalSession }, LW('+ 新对话')),
+                Btn({ variant: 'ghost', size: 'xs', className: 'lw-add-action', disabled: Boolean(current.blank), onClick: startNewGlobalSession },
+                  h(Icon, { name: 'plus' }), LW('新对话')),
                 tool('close', LW('关闭列表'), () => setOpen(false)))),
             h('div', { className: 'lw-session-popover-list' },
               !historyList.length
@@ -5172,7 +5092,11 @@ window.__ModuleLoader__.load({
           } catch (err) { notice(err.message) }
           changed()
         }
-        if (!sid || isGlobal) return null
+        if (!sid) return null
+        if (isGlobal) {
+          if (!row || current.blank || panel.activePanelId != null) return null
+          return h(AssistantIdentity, { row, active: true })
+        }
         const bot = row.features?.find(feature => feature.botSessionId === sid)
         const returnTarget = bot ? { workspaceId: row.workspaceId, feature: bot.id } : workbenchReturn.get(sid)
         return h('div', { className: 'lw-corner-wrap lw-project-corner' },

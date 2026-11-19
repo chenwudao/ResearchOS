@@ -43,9 +43,9 @@ def main():
 
             delta = {"role": "assistant", "content": answer}
             finish = "stop"
-            if tools and current in ("REWIND_GLOBAL_1_ASK", "REWIND_BOT_1_ASK"):
+            if tools and current in ("REWIND_GLOBAL_1_ASK", "REWIND_PROJECT_1_ASK", "REWIND_BOT_1_ASK"):
                 if not any(message.get("tool_call_id") == "progress_search" for message in messages):
-                    time.sleep(0.7)
+                    time.sleep(1.2)
                     delta = {"role": "assistant", "tool_calls": [{
                         "index": 0, "id": "progress_search", "type": "function", "function": {
                             "name": "labweave_project_list", "arguments": "{}",

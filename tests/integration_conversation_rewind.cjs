@@ -22,7 +22,7 @@ async function main(url, afterRestart, home) {
     const nativeArea = () => page.locator('[data-conversation-session]:visible').last()
     if (afterRestart) {
       step = 'resume after restarting Weave'
-      await button(page, '打开助理').first().click()
+      await button(page, '打开助手').first().click()
       await button(page, '助手历史对话').click()
       const history = page.getByRole('dialog', { name: '助手历史对话列表', exact: true })
       await history.locator('.lw-session-popover-list .lw-row-main').first().click()
@@ -36,15 +36,31 @@ async function main(url, afterRestart, home) {
       return
     }
 
-    step = 'set the global assistant permission'
-    await button(page, '设置').click()
-    const settings = page.locator('[data-shortcut-modal="settings"]')
-    await button(settings, '助手设置').click()
-    const permission = settings.getByLabel('助手权限', { exact: true })
-    await permission.selectOption('read-only')
-    await settings.getByText('此设置仅作用于全局助手，从下一轮回复起生效。', { exact: true }).waitFor()
-    await page.keyboard.press('Escape')
-    await settings.waitFor({ state: 'hidden' })
+    async function checkProfile(entry, active) {
+      const profile = button(page, '设置全局助手 Weave 资料')
+      await profile.waitFor()
+      assert.equal(await profile.count(), 1)
+      assert.equal(await page.getByRole('button', { name: '助手资料', exact: true }).count(), 0)
+      assert.equal(await profile.evaluate((el, className) => el.classList.contains(className), entry), true)
+      assert.equal(await profile.locator('img').evaluate(async img => {
+        await img.decode()
+        return img.naturalWidth > 0
+      }), true)
+      assert.equal(await profile.getByText('Weave', { exact: true }).isVisible(), true)
+      if (active) {
+        assert.equal(await profile.evaluate(el => {
+          const entry = el.getBoundingClientRect()
+          const header = el.closest('header').getBoundingClientRect()
+          return entry.top >= header.bottom && entry.top - header.bottom < 10 &&
+            Math.abs((entry.left + entry.right) - (header.left + header.right)) < 4
+        }), true)
+      }
+      await profile.click()
+      const dialog = page.getByRole('dialog', { name: '全局助手设置', exact: true })
+      await dialog.waitFor()
+      await button(dialog, '关闭助手资料').click()
+      await dialog.waitFor({ state: 'hidden' })
+    }
 
     async function check(section, area, composer, sendLabel, bot = false) {
       const ask = n => 'REWIND_' + section + '_' + n + '_ASK'
@@ -52,25 +68,57 @@ async function main(url, afterRestart, home) {
       const content = text => bot ? area.locator('.lw-bot-msg').filter({ hasText: text }).last()
         : area.locator('[data-chat-flow-kind]').getByText(text, { exact: true }).last()
       async function send(n) {
-        const checkProgress = n === 1 && section !== 'PROJECT'
-        await composer.fill(ask(n) + (checkProgress ? ' ' + '核对科研记录'.repeat(30) : ''))
+        const checkProgress = n === 1
+        await composer.fill(ask(n) + (checkProgress && bot ? ' ' + '核对科研记录'.repeat(30) : ''))
         await button(area, sendLabel).click()
         const progress = area.locator('.lw-turn-progress')
-        if (checkProgress) {
+        const nativeProgress = area.locator('[data-chat-running]:not([data-holding])')
+        if (checkProgress && !bot) {
+          const status = nativeProgress.getByRole('status')
+          if (section === 'GLOBAL') {
+            await nativeProgress.getByText('正在等待模型响应', { exact: true }).waitFor()
+            assert.equal(await status.count(), 1)
+            assert.equal(await nativeProgress.locator('.lw-turn-topic').textContent(), ask(n))
+          } else {
+            await status.waitFor()
+            assert.equal(await status.textContent(), '深度思考中')
+            assert.equal(await progress.count(), 0)
+          }
+          const insideMessages = await nativeProgress.evaluate(el => Boolean(el.closest('[class*="scrollBody"]')))
+          assert.equal(insideMessages, true)
+          const input = await area.locator('[data-composer-card]').boundingBox()
+          const user = await content(ask(n)).boundingBox()
+          const indicator = await nativeProgress.boundingBox()
+          assert.ok(user && indicator && input && user.y < indicator.y &&
+            indicator.y + indicator.height <= input.y + 1, JSON.stringify({ user, indicator, input }))
+        }
+        if (checkProgress && section === 'GLOBAL') {
+          assert.equal(await progress.count(), 1)
+          const phase = nativeProgress.locator('.lw-turn-phase')
+          await page.getByText(/正在整理.*结果/).and(phase).waitFor()
+          await page.getByText('正在推理', { exact: true }).and(phase).waitFor()
+          await nativeProgress.locator('time').waitFor()
+          await page.getByText('正在生成回复', { exact: true }).and(phase).waitFor()
+        }
+        if (checkProgress && bot) {
           await progress.getByRole('status').filter({ hasText: ask(n) }).waitFor()
           await progress.getByText(/正在整理.*结果/).waitFor()
           await progress.getByText('正在推理', { exact: true }).waitFor()
           await progress.locator('time').waitFor()
           assert.equal(await area.locator('[data-chat-running]:visible').count(), 0)
           assert.equal(await progress.count(), 1)
-          const card = await area.locator(bot ? '.lw-fbot-composer' : '[data-composer-card]').boundingBox()
-          const strip = await progress.boundingBox()
-          assert.ok(Math.abs(card.x - strip.x) <= 2 && Math.abs(card.width - strip.width) <= 2 &&
-            strip.y + strip.height <= card.y + 1, JSON.stringify({ card, strip }))
+          const turns = area.locator('.lw-fbot-scroll .lw-bot-turns')
+          assert.equal(await turns.locator(':scope > .lw-turn-progress').count(), 1)
+          assert.equal(await area.locator('form .lw-turn-progress').count(), 0)
+          const latestQuestion = await turns.locator('.lw-bot-msg[data-role="user"]').last().boundingBox()
+          const indicator = await progress.boundingBox()
+          const composerBox = await area.locator('.lw-fbot-composer').boundingBox()
+          assert.ok(latestQuestion && indicator && composerBox && latestQuestion.y + latestQuestion.height <= indicator.y &&
+            indicator.y + indicator.height <= composerBox.y + 1, JSON.stringify({ latestQuestion, indicator, composerBox }))
           await progress.getByText('正在生成回复', { exact: true }).waitFor()
         }
         await content(reply(n)).waitFor()
-        if (checkProgress) await progress.waitFor({ state: 'hidden' })
+        if (checkProgress) await (bot ? progress : nativeProgress).waitFor({ state: 'hidden' })
       }
       async function select(role, n) {
         const label = role === 'user' ? '撤回提问' : '撤回答复'
@@ -137,8 +185,22 @@ async function main(url, afterRestart, home) {
       console.log(section + ' rewind verified')
     }
 
-    await button(page, '打开助理').first().click()
+    await button(page, '打开助手').first().click()
+    step = 'open the assistant profile from the initial view'
+    await checkProfile('lw-hero-profile-entry', false)
+
+    step = 'set the global assistant permission'
+    await button(page, '设置').click()
+    const settings = page.locator('[data-shortcut-modal="settings"]')
+    await button(settings, '助手设置').click()
+    const permission = settings.getByLabel('助手权限', { exact: true })
+    await permission.selectOption('read-only')
+    await settings.getByText('此设置仅作用于全局助手，从下一轮回复起生效。', { exact: true }).waitFor()
+    await page.keyboard.press('Escape')
+    await settings.waitFor({ state: 'hidden' })
     await check('GLOBAL', nativeArea(), nativeArea().locator('[contenteditable=true]').last(), '发送消息')
+    step = 'open the assistant profile below the conversation header'
+    await checkProfile('lw-active-profile-entry', true)
     const globalSession = await nativeArea().getAttribute('data-conversation-session')
     step = 'reload the rewound session'
     await page.reload()
@@ -151,6 +213,11 @@ async function main(url, afterRestart, home) {
     await button(page, '深色').click()
     await page.getByRole('button', { name: '深色', exact: true, pressed: true }).waitFor()
     await page.keyboard.press('Escape')
+    step = 'check the assistant profile in a narrow, zoomed dark view'
+    await page.setViewportSize({ width: 900, height: 700 })
+    await page.evaluate(() => { document.documentElement.style.zoom = '1.25' })
+    await checkProfile('lw-active-profile-entry', true)
+    await page.evaluate(() => { document.documentElement.style.zoom = '' })
     step = 'open project'
     await page.setViewportSize({ width: 1110, height: 760 })
     const project = page.getByRole('navigation', { name: '撤回测试 项目功能', exact: true })

@@ -646,7 +646,7 @@ def call(name, args, project_id):
             feed = automation.public_jobs().get(project_id, {}).get("feed", {})
             hidden = set(item.get("dismissedFeed", []))
             entries.extend(e for e in feed.get("items", []) if (e.get("url") or e["text"]) not in hidden)
-        return {"featureId": fid, "label": meta["label"], "categories": meta["categories"], "entries": entries}
+        return {"featureId": fid, "label": meta["label"], "entries": entries}
     if name == "feature_push":
         import features
         fid = args.get("featureId")

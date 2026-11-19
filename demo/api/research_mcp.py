@@ -18,10 +18,10 @@ TOOLS = {
     "feature_list": ("List active Feature Bots for the current project or explicitly specified projectId. Global assistant itself retains only the core chat assistant.", {}),
     "feature_create": ("Add a custom Feature Bot with a name, description, symbol and keywords. Global chat must specify an explicit projectId or 'all'; project chat adds only to its own project.", {"label":{"type":"string"},"hint":{"type":"string"},"symbol":{"type":"string","enum":list(features.BOT_SYMBOLS)},"keywords":{"type":"array","items":{"type":"string"}}}),
     "feature_delete": ("Remove a non-chat Feature Bot (builtin feed/ideas/goals/library or custom feature) from the specified projectId/'all' (global chat) or current project. Cannot delete 'chat'.", {"featureId": {"type": "string"}}),
-    "feature_entries": ("Read the categories and current archived entries in a project Feature Bot's right-side category archive.", {"featureId": {"type": "string"}}),
+    "feature_entries": ("Read current entries pushed to a project Feature Bot.", {"featureId": {"type": "string"}}),
     "feature_push": (
-        "Push a categorized message or illustrated summary card into a project Feature Bot's context stream, "
-        "or pass id to update/recategorize an existing entry. Decide based on the Bot's purpose and message intent "
+        "Push a message or illustrated summary card into a project Feature Bot's timeline stream, "
+        "or pass id to update an existing entry. Decide based on the Bot's purpose and message intent "
         "whether to include a figure/diagram (imagePath in project folder, inline imageSvg diagram/chart, imageData, "
         "or imageUrl) plus title and caption, or concise text only. For sourced pushes, include the original "
         "publication or repository link as url and its publisher, journal, or repository name as source.",
@@ -30,7 +30,6 @@ TOOLS = {
             "id": {"type": "string"},
             "title": {"type": "string"},
             "text": {"type": "string"},
-            "category": {"type": "string"},
             "caption": {"type": "string"},
             "imagePath": {"type": "string"},
             "imageSvg": {"type": "string"},

@@ -38,13 +38,13 @@ async function main() {
     await brief.getByText('持续学习回归', { exact: true }).first().waitFor()
 
     step = 'tasks and durable schedule edits'
-    await btn(workbench, '+ 职责').click()
+    await btn(workbench, '职责').click()
     let editor = dialog('新建分配任务')
     await editor.getByLabel('任务名称').fill('回归检查')
     await editor.getByLabel('内容（Markdown）').fill('检查 **旧任务指标**')
     await btn(editor, '保存').click()
     await workbench.getByText('旧任务指标', { exact: true }).waitFor()
-    await btn(workbench, '+ 定时任务').click()
+    await btn(workbench, '定时任务').click()
     editor = dialog('新建分配任务')
     await editor.getByLabel('任务名称').fill('每周跟进')
     await editor.getByLabel('内容（Markdown）').fill('汇总待复核数据')
@@ -62,7 +62,7 @@ async function main() {
     await workbench.getByText('还没有定时任务。', { exact: true }).waitFor()
 
     step = 'live delivery and the original Bot conversation'
-    await btn(workbench, '+ 定时任务').click()
+    await btn(workbench, '定时任务').click()
     editor = dialog('新建分配任务')
     await editor.getByLabel('任务名称').fill('投递验收')
     await editor.getByLabel('内容（Markdown）').fill('汇总数据')

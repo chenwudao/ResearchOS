@@ -21,7 +21,7 @@ async function main() {
   let step='打开项目'
   try {
     await page.goto(url)
-    await button('打开助理').waitFor()
+    await button('打开助手').waitFor()
     const setup = page.getByRole('dialog', {name: '配置模型 API'})
     if (await setup.isVisible()) await setup.getByRole('button', {name: '稍后配置'}).click()
     await button('沙盒验收').click()

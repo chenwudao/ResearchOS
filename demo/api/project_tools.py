@@ -1,12 +1,8 @@
-"""Project work-tree listings, Git status and keyword-category storage."""
-from datetime import datetime, timezone
-import json
+"""Project work-tree listings and Git status."""
 import os
 import re
-import shutil
 import subprocess
 from pathlib import Path
-from uuid import uuid4
 
 import project_service as projects
 import workspace
@@ -15,12 +11,6 @@ SKIP_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".mypy_cache",
              ".pytest_cache", ".tox", ".idea", ".vscode", "dist", "build"}
 LIST_LIMIT = 400
 LOG_LIMIT = 8
-MAX_UPLOAD = 20 * 1024 * 1024
-MANIFEST = "manifest.json"
-
-
-def timestamp():
-    return datetime.now(timezone.utc).isoformat()
 
 
 def _root(project_id):
@@ -289,196 +279,6 @@ def git_status(project_id, tree_id=None):
     return {"directory": listing["directory"], "repos": repos, "trees": listing["trees"]}
 
 
-def _storage_root(project_id):
-    path = _root(project_id) / "storage"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
-def _load_manifest(project_id):
-    folder = _storage_root(project_id)
-    path = folder / MANIFEST
-    if not path.is_file():
-        return {"categories": []}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {"categories": []}
-    categories = data.get("categories")
-    if not isinstance(categories, list):
-        return {"categories": []}
-    cleaned = []
-    for item in categories:
-        if not isinstance(item, dict) or not item.get("id") or not item.get("name"):
-            continue
-        keywords = item.get("keywords") if isinstance(item.get("keywords"), list) else []
-        cleaned.append({
-            "id": str(item["id"]),
-            "name": str(item["name"])[:80],
-            "keywords": [str(k).strip()[:40] for k in keywords if str(k).strip()][:16],
-            "createdAt": item.get("createdAt") or timestamp(),
-            "updatedAt": item.get("updatedAt") or item.get("createdAt") or timestamp(),
-        })
-    return {"categories": cleaned}
-
-
-def _save_manifest(project_id, data):
-    path = _storage_root(project_id) / MANIFEST
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    return data
-
-
-def _category(data, key):
-    if not key:
-        return None
-    needle = str(key).strip()
-    for item in data["categories"]:
-        if item["id"] == needle or item["name"].casefold() == needle.casefold():
-            return item
-    return None
-
-
-def _safe_name(name):
-    text = workspace.text(name, 180) or "file"
-    text = re.sub(r"[\\/]+", "_", text).strip(" .")
-    return text or "file"
-
-
-def _list_files(project_id, category):
-    folder = _storage_root(project_id) / category["id"]
-    if not folder.is_dir():
-        return []
-    files = []
-    for child in sorted(folder.iterdir(), key=lambda p: p.name.lower()):
-        if not child.is_file() or child.is_symlink() or child.name.startswith("."):
-            continue
-        try:
-            stat = child.stat()
-        except OSError:
-            continue
-        files.append({
-            "name": child.name,
-            "path": str(child.relative_to(_root(project_id))),
-            "size": stat.st_size,
-            "updatedAt": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
-        })
-    return files
-
-
-def storage_list(project_id):
-    data = _load_manifest(project_id)
-    categories = [{**item, "files": _list_files(project_id, item)} for item in data["categories"]]
-    return {"categories": categories}
-
-
-def storage_define(project_id, name, keywords=None, category_id=None):
-    title = workspace.text(name, 80)
-    if not title:
-        raise workspace.WorkspaceError(400, "请填写类别名称。")
-    words = []
-    for raw in keywords or []:
-        word = workspace.text(str(raw), 40)
-        if word and word not in words:
-            words.append(word)
-    data = _load_manifest(project_id)
-    existing = _category(data, category_id) or _category(data, title)
-    now = timestamp()
-    if existing:
-        existing["name"] = title
-        existing["keywords"] = words or existing["keywords"]
-        existing["updatedAt"] = now
-        _save_manifest(project_id, data)
-        return existing
-    item = {
-        "id": "cat_" + uuid4().hex[:16],
-        "name": title,
-        "keywords": words,
-        "createdAt": now,
-        "updatedAt": now,
-    }
-    data["categories"].append(item)
-    (_storage_root(project_id) / item["id"]).mkdir(parents=True, exist_ok=True)
-    _save_manifest(project_id, data)
-    return item
-
-
-def storage_remove_category(project_id, category_id):
-    data = _load_manifest(project_id)
-    item = _category(data, category_id)
-    if not item:
-        raise workspace.WorkspaceError(404, "类别不存在。")
-    data["categories"] = [c for c in data["categories"] if c["id"] != item["id"]]
-    _save_manifest(project_id, data)
-    folder = _storage_root(project_id) / item["id"]
-    if folder.is_dir():
-        shutil.rmtree(folder)
-    return {"ok": True, "id": item["id"]}
-
-
-def _unique(path):
-    if not path.exists():
-        return path
-    stem, suffix, parent, n = path.stem, path.suffix, path.parent, 2
-    while True:
-        candidate = parent / f"{stem}-{n}{suffix}"
-        if not candidate.exists():
-            return candidate
-        n += 1
-
-
-def storage_save(project_id, category_key, source=None, filename=None, content=None):
-    data = _load_manifest(project_id)
-    item = _category(data, category_key)
-    if not item:
-        raise workspace.WorkspaceError(404, "请先创建或指定存储类别。")
-    dest_dir = _storage_root(project_id) / item["id"]
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    root = _root(project_id)
-    if source:
-        origin = _safe(root, source)
-        if not origin.is_file():
-            raise workspace.WorkspaceError(404, "要归档的文件不存在。")
-        if origin.resolve().is_relative_to(dest_dir.resolve()) and origin.parent.resolve() == dest_dir.resolve():
-            return {"category": item, "name": origin.name, "path": str(origin.relative_to(root))}
-        target = _unique(dest_dir / _safe_name(filename or origin.name))
-        shutil.copy2(origin, target)
-    elif content is not None:
-        import base64
-        raw = content
-        if isinstance(raw, str):
-            try:
-                raw = base64.b64decode(raw)
-            except Exception as exc:
-                raise workspace.WorkspaceError(400, "文件内容无效。") from exc
-        if not isinstance(raw, (bytes, bytearray)):
-            raise workspace.WorkspaceError(400, "文件内容无效。")
-        if len(raw) > MAX_UPLOAD:
-            raise workspace.WorkspaceError(400, "文件超过 20 MB。")
-        target = _unique(dest_dir / _safe_name(filename or "file"))
-        target.write_bytes(raw)
-    else:
-        raise workspace.WorkspaceError(400, "请提供要归档的文件。")
-    item["updatedAt"] = timestamp()
-    _save_manifest(project_id, data)
-    return {"category": item, "name": target.name, "path": str(target.relative_to(root)), "size": target.stat().st_size}
-
-
-def storage_remove_file(project_id, category_key, relative):
-    data = _load_manifest(project_id)
-    item = _category(data, category_key)
-    if not item:
-        raise workspace.WorkspaceError(404, "类别不存在。")
-    dest_dir = _storage_root(project_id) / item["id"]
-    path = _safe(dest_dir, Path(relative).name if "/" in str(relative) or str(relative).startswith("storage/") else relative)
-    # Accept either the bare filename or the project-relative storage path.
-    if not path.is_file():
-        path = _safe(root := _root(project_id), relative)
-        if not path.is_relative_to(dest_dir) or not path.is_file():
-            raise workspace.WorkspaceError(404, "文件不存在。")
-    path.unlink()
-    return {"ok": True}
-
-
 def handle(project_id, action, args):
     args = args or {}
     if action == "tools/trees":
@@ -487,16 +287,4 @@ def handle(project_id, action, args):
         return listdir(project_id, args.get("treeId") or "project", args.get("path") or "")
     if action == "tools/git":
         return git_status(project_id, args.get("treeId"))
-    if action == "tools/storage/list":
-        return storage_list(project_id)
-    if action == "tools/storage/define":
-        return storage_define(project_id, args.get("name"), args.get("keywords"), args.get("id"))
-    if action == "tools/storage/remove-category":
-        return storage_remove_category(project_id, args.get("id"))
-    if action == "tools/storage/save":
-        return storage_save(project_id, args.get("category") or args.get("id"),
-                            source=args.get("source"), filename=args.get("name") or args.get("filename"),
-                            content=args.get("content"))
-    if action == "tools/storage/remove-file":
-        return storage_remove_file(project_id, args.get("category") or args.get("id"), args.get("path"))
     return None

@@ -20,7 +20,7 @@ test('Bot assignments respect the project, update recurring work and remove only
   const assign=(scope,args)=>tools.get('labweave_bot_assign').execute({featureId:'ideas',title:'核查',instruction:'保存来源',...args},
     {scope,agent:{session:{id:'s-'+scope,header:{id:'s-'+scope}}}})
   await assert.rejects(assign('a',{projectId:'b',kind:'duty'}))
-  await assign('global',{projectId:'a',kind:'storage'})
+  await assign('global',{projectId:'a',kind:'duty'})
   await assign('a',{kind:'schedule',rrule:'FREQ=DAILY'})
   await assign('a',{kind:'schedule',rrule:'FREQ=WEEKLY'})
   await assign('b',{kind:'schedule',rrule:'FREQ=DAILY'})
@@ -35,7 +35,7 @@ test('Bot assignments respect the project, update recurring work and remove only
   assert.equal(displayAssignment(note), note)
   assert.equal((await manager.list('a', 'ideas'))[0].instruction, '保存来源')
   tasks.values().next().value.prompt='在自动化管理器中修改过的提示'
-  assert.deepEqual((await manager.list('a','ideas')).map(r=>r.kind),['schedule','storage'])
+  assert.deepEqual((await manager.list('a','ideas')).map(r=>r.kind),['schedule','duty'])
   const firstId=oldTask.id
   const edited=await manager.writeSchedule('a',{featureId:'ideas',id:firstId,title:'每周核查',instruction:'## 新要求\n\n- 先核对来源',
     rrule:'FREQ=WEEKLY',expectedUpdatedAt:null})
@@ -43,7 +43,7 @@ test('Bot assignments respect the project, update recurring work and remove only
   const index=await manager.index('a')
   assert.deepEqual(index.map(item=>item.featureId),['ideas'])
   assert.ok(index[0].tasks.some(task=>task.kind==='schedule'&&task.title==='每周核查'))
-  assert.ok(index[0].tasks.some(task=>task.kind==='storage'&&task.title==='核查'))
+  assert.ok(index[0].tasks.some(task=>task.kind==='duty'&&task.title==='核查'))
   await manager.deleteSchedule('a',{featureId:'ideas',id:firstId})
   assert.equal(tasks.size,1)
   await manager.cleanup('a','ideas')

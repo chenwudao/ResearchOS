@@ -1,13 +1,7 @@
 export function createToolPane(React, project, ui = {}) {
-  const {useEffect, useRef, useState} = React
+  const {useEffect, useState} = React
   const h = React.createElement
   const Icon = ui.Icon || (() => null)
-
-  function formatSize(bytes) {
-    if (bytes < 1024) return bytes + ' B'
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(bytes < 10240 ? 1 : 0) + ' KB'
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
-  }
 
   function ToolStyles() {
     return h('style', null, `
@@ -52,23 +46,12 @@ export function createToolPane(React, project, ui = {}) {
       .lw-wsp-code[data-tone=ok]{color:var(--dsw-alias-state-success-primary,#16a34a)}
       .lw-wsp-code[data-tone=warn]{color:var(--dsw-alias-state-warn-label,var(--dsw-alias-state-warn-primary,#ca8a04))}
       .lw-wsp-code[data-tone=err]{color:var(--dsw-alias-state-error-primary,#dc2626)}
-      .lw-wsp-kw{display:flex;flex-wrap:wrap;gap:4px;padding:2px 16px 4px}
-      .lw-wsp-kw .lw-wsp-pill{font-weight:400}
-      .lw-wsp-form{display:grid;gap:8px;padding:10px 16px 12px;border-bottom:.5px solid var(--dsw-alias-border-l3,rgba(128,128,128,.28));background:var(--dsw-alias-bg-layer-1,transparent)}
-      .lw-wsp-form-title{margin:0;font-size:var(--dsh-content-font-size-secondary,13px);font-weight:500}
-      .lw-wsp-form-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:8px}
-      .lw-wsp-field{display:grid;gap:4px;min-width:0;font-size:12px;color:var(--dsw-alias-label-secondary,GrayText)}
-      .lw-wsp-input{box-sizing:border-box;width:100%;height:32px;min-width:0;padding:0 9px;border:.5px solid var(--dsw-alias-border-l4,rgba(128,128,128,.4));border-radius:var(--dsw-radius-md,8px);background:var(--dsw-alias-bg-base,Canvas);color:var(--dsw-alias-label-primary,CanvasText);font:inherit}
-      .lw-wsp-input:focus{outline:none;border-color:var(--dsw-alias-state-business-primary,#3b82f6)}
-      .lw-wsp-input::placeholder{color:var(--dsw-alias-label-dimmed,GrayText)}
-      .lw-wsp-form-actions{display:flex;justify-content:flex-end;gap:6px}
       .lw-wsp-details{margin:4px 6px 0}
       .lw-wsp-details>summary{cursor:pointer;padding:4px 10px;border-radius:var(--dsw-radius-md,8px);color:var(--dsw-alias-label-tertiary,GrayText);font-size:12px;list-style:none}
       .lw-wsp-details>summary::-webkit-details-marker{display:none}
       .lw-wsp-details>summary::before{content:'▸';display:inline-block;width:1em;color:var(--dsw-alias-label-dimmed,GrayText)}
       .lw-wsp-details[open]>summary::before{content:'▾'}
       .lw-wsp-details>summary:hover{color:var(--dsw-alias-label-primary,CanvasText);background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.1))}
-      @media (max-width:420px){.lw-wsp-form-grid{grid-template-columns:minmax(0,1fr)}}
     `)
   }
 
@@ -148,155 +131,7 @@ export function createToolPane(React, project, ui = {}) {
     )
   }
 
-  function StorageView({row}) {
-    const [data, setData] = useState(null)
-    const [error, setError] = useState('')
-    const [busy, setBusy] = useState(false)
-    const [formOpen, setFormOpen] = useState(false)
-    const [name, setName] = useState('')
-    const [keywords, setKeywords] = useState('')
-    const fileRef = useRef(null)
-    const [uploadFor, setUploadFor] = useState(null)
-
-    async function load() {
-      setError('')
-      try { setData(await project(row.workspaceId, 'tools/storage/list')) }
-      catch (err) { setError(err.message || '无法读取存储空间。') }
-    }
-    useEffect(() => { load() }, [row.workspaceId])
-
-    async function define(event) {
-      event.preventDefault()
-      const title = name.trim()
-      if (!title) return
-      setBusy(true)
-      setError('')
-      try {
-        await project(row.workspaceId, 'tools/storage/define', {
-          name: title,
-          keywords: keywords.split(/[,，、;；]/).map(word => word.trim()).filter(Boolean),
-        })
-        setName('')
-        setKeywords('')
-        setFormOpen(false)
-        await load()
-      } catch (err) {
-        setError(err.message || '无法创建类别。')
-      } finally { setBusy(false) }
-    }
-
-    async function removeCategory(category) {
-      setBusy(true)
-      setError('')
-      try {
-        await project(row.workspaceId, 'tools/storage/remove-category', {id: category.id})
-        await load()
-      } catch (err) { setError(err.message || '无法删除类别。') }
-      finally { setBusy(false) }
-    }
-
-    async function removeFile(category, path) {
-      setBusy(true)
-      setError('')
-      try {
-        await project(row.workspaceId, 'tools/storage/remove-file', {category: category.id, path})
-        await load()
-      } catch (err) { setError(err.message || '无法移除文件。') }
-      finally { setBusy(false) }
-    }
-
-    async function upload(category, file) {
-      if (!file) return
-      setBusy(true)
-      setError('')
-      try {
-        const buffer = await file.arrayBuffer()
-        const bytes = new Uint8Array(buffer)
-        let binary = ''
-        const chunk = 0x8000
-        for (let index = 0; index < bytes.length; index += chunk) {
-          binary += String.fromCharCode(...bytes.subarray(index, index + chunk))
-        }
-        await project(row.workspaceId, 'tools/storage/save', {
-          category: category.id,
-          name: file.name,
-          content: btoa(binary),
-        })
-        await load()
-      } catch (err) {
-        setError(err.message || '无法保存文件。')
-      } finally {
-        setBusy(false)
-        setUploadFor(null)
-        if (fileRef.current) fileRef.current.value = ''
-      }
-    }
-
-    const categories = data?.categories || []
-    const fileCount = categories.reduce((total, category) => total + (category.files?.length || 0), 0)
-    const pick = category => {
-      setUploadFor(category.id)
-      fileRef.current?.click()
-    }
-
-    return h('div', {className: 'lw-wsp lw-wsp-storage'},
-      h(ToolStyles),
-      h('div', {className: 'lw-wsp-head'},
-        h('span', {className: 'lw-wsp-head-text'}, data ? categories.length + ' 个类别 · ' + fileCount + ' 个文件' : '关键词类别'),
-        IconButton({label: '新建类别', onClick: () => setFormOpen(open => !open), disabled: busy},
-          h(Icon, {name: formOpen ? 'close' : 'plus'})),
-        IconButton({label: '刷新存储空间', onClick: load, disabled: busy}, h(Icon, {name: 'refresh'}))),
-      h('div', {className: 'lw-wsp-body', 'aria-busy': busy ? 'true' : undefined},
-        error ? h('p', {className: 'lw-wsp-error', role: 'alert'}, error) : null,
-        formOpen ? h('form', {className: 'lw-wsp-form', onSubmit: define},
-          h('p', {className: 'lw-wsp-form-title'}, '新建类别'),
-          h('div', {className: 'lw-wsp-form-grid'},
-            h('label', {className: 'lw-wsp-field'}, h('span', null, '名称'),
-              h('input', {
-                className: 'lw-wsp-input', value: name, maxLength: 80, required: true, autoFocus: true,
-                placeholder: '例如：文献', onChange: event => setName(event.target.value),
-              })),
-            h('label', {className: 'lw-wsp-field'}, h('span', null, '关键词'),
-              h('input', {
-                className: 'lw-wsp-input', value: keywords, maxLength: 200,
-                placeholder: '论文, PDF, 文献', onChange: event => setKeywords(event.target.value),
-              }))),
-          h('div', {className: 'lw-wsp-form-actions'},
-            h('button', {type: 'button', className: 'lw-btn lw-btn-xs lw-btn-ghost', disabled: busy, onClick: () => setFormOpen(false)}, '取消'),
-            h('button', {type: 'submit', className: 'lw-btn lw-btn-xs lw-btn-primary', disabled: busy || !name.trim()}, '创建类别'))) : null,
-        !data && !error ? h('p', {className: 'lw-wsp-note', role: 'status'}, '正在读取存储空间…') : null,
-        data && !categories.length ? h(Empty, {icon: 'file', title: '还没有存储类别'},
-          '新建类别后，可以上传资料或让助手把项目文件归档到这里。') : null,
-        categories.map(category => h('section', {key: category.id, className: 'lw-wsp-section'},
-          h('div', {className: 'lw-wsp-section-head'},
-            h('span', {className: 'lw-wsp-section-title'},
-              h(Icon, {name: 'folder'}),
-              h('span', {className: 'lw-wsp-section-name'}, category.name),
-              h('span', {className: 'lw-wsp-pill'}, (category.files?.length || 0) + ' 个文件')),
-            h('span', {className: 'lw-wsp-actions'},
-              IconButton({label: '上传文件到 ' + category.name, onClick: () => pick(category), disabled: busy},
-                h(Icon, {name: 'upload'})),
-              IconButton({label: '删除类别 ' + category.name, onClick: () => removeCategory(category), disabled: busy},
-                h(Icon, {name: 'trash'})))),
-          category.keywords?.length ? h('div', {className: 'lw-wsp-kw'},
-            category.keywords.map(word => h('span', {key: word, className: 'lw-wsp-pill'}, word))) : null,
-          category.files?.length ? h('ul', {className: 'lw-wsp-list'}, category.files.map(file => h('li', {key: file.path, className: 'lw-wsp-row'},
-            h(Icon, {name: 'file'}),
-            h('span', {className: 'lw-wsp-row-name', title: file.name}, file.name),
-            h('span', {className: 'lw-wsp-row-meta'}, formatSize(file.size)),
-            h('span', {className: 'lw-wsp-row-actions'},
-              IconButton({label: '移除 ' + file.name, onClick: () => removeFile(category, file.path), disabled: busy},
-                h(Icon, {name: 'close'}))))))
-            : h('p', {className: 'lw-wsp-note'}, '这个类别还没有文件。'))),
-        h('input', {ref: fileRef, type: 'file', hidden: true, onChange: event => {
-          const file = event.target.files?.[0]
-          const category = categories.find(item => item.id === uploadFor)
-          if (file && category) upload(category, file)
-        }}))
-    )
-  }
-
-  return function ToolPane({row, kind}) {
-    return kind === 'git' ? h(GitView, {row}) : h(StorageView, {row})
+  return function ToolPane({row}) {
+    return h(GitView, {row})
   }
 }

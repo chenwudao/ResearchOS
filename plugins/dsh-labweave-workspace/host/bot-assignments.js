@@ -8,7 +8,7 @@ export function displayAssignment(record) {
   return { ...record, prompt: '[Weave ' + record.prompt.slice('[LabWeave '.length) }
 }
 
-// Recurring assignments live in the native scheduler; duties and storage rules live in the project DB.
+// Recurring assignments live in the native scheduler; duties live in the project DB.
 export function botAssignments(ctx, {rows, caller, registry, call, output, refresh}) {
   let pending = Promise.resolve()
   function serial(fn) {
@@ -36,7 +36,7 @@ export function botAssignments(ctx, {rows, caller, registry, call, output, refre
   }
   const local=(t,action,args)=>call('project',{workspace:t.workspace,action,args:{...args,featureId:t.bot.id}})
   function promptFor(t,instruction) {
-    return marker(t)+instruction+'\n任务归属：'+JSON.stringify({projectId:t.row.scope,featureId:t.bot.id})+'。先读取此 Bot 的分配任务，按存储要求将结果写入对应功能。'
+    return marker(t)+instruction+'\n任务归属：'+JSON.stringify({projectId:t.row.scope,featureId:t.bot.id})+'。先读取此 Bot 的分配任务，按要求完成并记录结果。'
   }
   function recurrence(rule) {
     const rrule = rule.trim()
@@ -134,9 +134,9 @@ export function botAssignments(ctx, {rows, caller, registry, call, output, refre
     const fid=args.featureId || row.features?.find(f=>f.botSessionId===exec.agent.session.header.id)?.id
     return target(scope,fid)
   }
-  const properties={featureId:{type:'string'},projectId:{type:'string'},kind:{type:'string',enum:['duty','storage','schedule']},
+  const properties={featureId:{type:'string'},projectId:{type:'string'},kind:{type:'string',enum:['duty','schedule']},
     title:{type:'string'},instruction:{type:'string'},rrule:{type:'string'}}
-  ctx.tools.register({name:'labweave_bot_assign',description:'Assign or update a real task for one project Feature Bot from conversation. Use duty for responsibilities and storage for what to collect and where to keep it; instruction is Markdown source rendered in the Bot task panel. Schedule with an RRULE for actual recurring delivery. Same kind and title updates the task. Global chat requires projectId. Resolve featureId from feature_list.',
+  ctx.tools.register({name:'labweave_bot_assign',description:'Assign or update a real task for one project Feature Bot from conversation. Use duty for responsibilities and work rules; instruction is Markdown source rendered in the Bot task panel. Schedule with an RRULE for actual recurring delivery. Same kind and title updates the task. Global chat requires projectId. Resolve featureId from feature_list.',
     parameters:{type:'object',properties,required:['kind','title','instruction'],additionalProperties:false},output,
     async execute(args,exec){return serial(async()=>{
       const t=scoped(args,exec), title=args.title.trim(), instruction=args.instruction.trim()
@@ -156,10 +156,10 @@ export function botAssignments(ctx, {rows, caller, registry, call, output, refre
       await links(t,result.id)
       return JSON.stringify({id:result.id,featureId:t.bot.id,title})
     })}})
-  ctx.tools.register({name:'labweave_bot_assignments',description:'Read the duties, storage instructions and native scheduled tasks assigned to a project Feature Bot.',
+  ctx.tools.register({name:'labweave_bot_assignments',description:'Read the duties and native scheduled tasks assigned to a project Feature Bot.',
     parameters:{type:'object',properties:{featureId:properties.featureId,projectId:properties.projectId},additionalProperties:false},output,
     execute:async(args,exec)=>JSON.stringify(await list(scoped(args,exec)))})
-  ctx.tools.register({name:'labweave_bot_assignment_index',description:'Read every Feature Bot assignment (duties, storage rules and scheduled tasks) in one project. Global chat requires an explicit projectId; project chat reads only its own project.',
+  ctx.tools.register({name:'labweave_bot_assignment_index',description:'Read every Feature Bot assignment (duties and scheduled tasks) in one project. Global chat requires an explicit projectId; project chat reads only its own project.',
     parameters:{type:'object',properties:{projectId:properties.projectId},additionalProperties:false},output,
     async execute(args,exec){
       const {row}=caller(exec)
@@ -168,7 +168,7 @@ export function botAssignments(ctx, {rows, caller, registry, call, output, refre
       if(!scope)throw Error('全局助手读取项目分工时必须显式指定 projectId。')
       return JSON.stringify(await index(scope))
     }})
-  ctx.tools.register({name:'labweave_bot_unassign',description:'Withdraw a named duty, storage instruction or scheduled task from a project Feature Bot.',
+  ctx.tools.register({name:'labweave_bot_unassign',description:'Withdraw a named duty or scheduled task from a project Feature Bot.',
     parameters:{type:'object',properties:{featureId:properties.featureId,projectId:properties.projectId,kind:properties.kind,title:properties.title},required:['kind','title'],additionalProperties:false},output,
     execute:(args,exec)=>serial(async()=>{
       const t=scoped(args,exec)

@@ -120,23 +120,21 @@ class FeatureBotsTests(unittest.TestCase):
         ctx = features.bot_context_for_session(a, "sess-bot-001")
         self.assertEqual((ctx["featureId"], ctx["label"]), (fid, "论文速报"))
 
-        # MCP feature_push writes categorized entry persisted in SQLite entities table.
-        pushed = self.mcp(a, "feature_push", {"featureId": fid, "text": "本周新增 3 篇相关论文", "category": "push"})
-        self.assertEqual(pushed["category"], "push")
+        # MCP feature_push writes timeline entry persisted in SQLite entities table.
+        pushed = self.mcp(a, "feature_push", {"featureId": fid, "text": "本周新增 3 篇相关论文"})
+        self.assertEqual(pushed["text"], "本周新增 3 篇相关论文")
         self.assertEqual(len(web.project_view(a)["rails"][fid]), 1)
 
-
-        # MCP feature_entries returns categories and entries for LLM-driven classification decisions.
+        # MCP feature_entries returns pushed entries for the Bot.
         listed = self.mcp(a, "feature_entries", {"featureId": fid})
         self.assertEqual(listed["featureId"], fid)
-        self.assertTrue(any(cat[0] == "push" for cat in listed["categories"]))
+        self.assertNotIn("categories", listed)
         self.assertEqual([entry["id"] for entry in listed["entries"]], [pushed["id"]])
 
-        # MCP feature_push with existing id recategorizes entry without duplicating it.
-        recat = self.mcp(a, "feature_push", {"featureId": fid, "id": pushed["id"], "category": "核心结论"})
-        self.assertEqual(recat["id"], pushed["id"])
-        self.assertEqual(recat["text"], "本周新增 3 篇相关论文")
-        self.assertEqual(recat["category"], "核心结论")
+        # MCP feature_push with existing id updates entry without duplicating it.
+        updated_entry = self.mcp(a, "feature_push", {"featureId": fid, "id": pushed["id"], "text": "本周新增 3 篇核心论文"})
+        self.assertEqual(updated_entry["id"], pushed["id"])
+        self.assertEqual(updated_entry["text"], "本周新增 3 篇核心论文")
         self.assertEqual(len(web.project_view(a)["rails"][fid]), 1)
 
         # Cross-project and global scopes cannot inspect custom feature entries of project a.
@@ -199,6 +197,18 @@ class FeatureBotsTests(unittest.TestCase):
                 "workspace": rec_b, "action": "bot_assignment_write",
                 "args": {"featureId": "ideas", "kind": "duty", "title": "越权", "instruction": "x", "projectId": a},
             })
+
+        # Legacy storage rows in SQLite remain readable as duty and can be updated or removed cleanly.
+        legacy_rows = web.dispatch("project", {
+            "workspace": rec_a, "action": "bot_assignment_write",
+            "args": {"featureId": "ideas", "kind": "storage", "title": "旧归档规则", "instruction": "保留出处"},
+        })
+        self.assertTrue(any(item["kind"] == "duty" and item["title"] == "旧归档规则" for item in legacy_rows))
+        after_remove = web.dispatch("project", {
+            "workspace": rec_a, "action": "bot_assignment_write",
+            "args": {"featureId": "ideas", "kind": "duty", "title": "旧归档规则", "remove": True},
+        })
+        self.assertFalse(any(item["title"] == "旧归档规则" for item in after_remove))
 
     def test_project_plus_and_chat_share_feature_profile(self):
         a,b=self.projects

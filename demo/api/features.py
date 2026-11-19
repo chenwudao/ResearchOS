@@ -24,51 +24,22 @@ FEATURE_META = {
     "chat": {
         "hint": "项目主对话空间",
         "emptyText": "",
-        "categories": [],
     },
     "feed": {
         "hint": "订阅并追踪前沿动态",
         "emptyText": "还没有收到任何动态推送",
-        "categories": [
-            ["paper", "论文"],
-            ["news", "新闻"],
-            ["repository", "仓库"],
-            ["push", "推送动态"],
-            ["file", "文件资源"],
-        ],
     },
     "ideas": {
         "hint": "把灵感转化为目标",
         "emptyText": "还没有收集任何点子",
-        "categories": [
-            ["fresh", "待验证灵感"],
-            ["converted", "已转入目标"],
-            ["review", "复盘建议"],
-            ["push", "推送点子"],
-            ["file", "文件资源"],
-        ],
     },
     "goals": {
         "hint": "追踪里程碑和实验",
         "emptyText": "还没有设定任何目标",
-        "categories": [
-            ["pending", "追踪中"],
-            ["completed", "已完成"],
-            ["workflow", "实验与证据"],
-            ["push", "推送目标"],
-            ["file", "文件资源"],
-        ],
     },
     "library": {
         "hint": "文献、仓库和产物",
         "emptyText": "还没有收录任何资源",
-        "categories": [
-            ["pdf", "论文 PDF"],
-            ["repository", "代码仓库"],
-            ["output", "实验产物"],
-            ["link", "网页链接"],
-            ["file", "文件资源"],
-        ],
     },
 }
 
@@ -202,7 +173,6 @@ def list_features(caller_scope, project_id=None):
             "deletable": False,
             "hint": "独立全局助手空间",
             "emptyText": "",
-            "categories": [],
             "botSessionId": None,
         }]
 
@@ -276,7 +246,6 @@ def list_features(caller_scope, project_id=None):
             "symbol": override.get("symbol", ""),
             "keywords": override.get("keywords", []),
             "emptyText": meta["emptyText"],
-            "categories": meta["categories"],
             "botSessionId": None if fid == "chat" else bot_map.get(fid),
         })
 
@@ -295,7 +264,6 @@ def list_features(caller_scope, project_id=None):
             "symbol": item["symbol"],
             "keywords": item["keywords"],
             "emptyText": f"还没有收到来自「{label}」的推送内容",
-            "categories": [["push", "推送消息"], ["file", "文件资源"]],
             "botSessionId": bot_map.get(fid),
         })
     return result
@@ -554,9 +522,10 @@ def assignment_map(project):
     with closing(workspace.database()) as db:
         ensure_tables(db)
         result = {}
-        for fid,kind,title,instruction in db.execute(
-                "SELECT feature,kind,title,instruction FROM labweave_bot_assignments WHERE project=? ORDER BY kind,title",(project,)):
-            result.setdefault(fid,[]).append({"kind":kind,"title":title,"instruction":instruction})
+        for fid, kind, title, instruction in db.execute(
+                "SELECT feature,kind,title,instruction FROM labweave_bot_assignments WHERE project=? ORDER BY CASE WHEN kind='storage' THEN 1 ELSE 0 END, title", (project,)):
+            normalized = "duty" if kind == "storage" else kind
+            result.setdefault(fid, []).append({"kind": normalized, "title": title, "instruction": instruction})
         return result
 
 
@@ -586,13 +555,17 @@ def assignments(project, fid, change=None):
     with closing(workspace.database()) as db, db:
         ensure_tables(db)
         if change is not None:
-            kind = change.get("kind")
-            if kind not in ("duty", "storage"):
-                raise workspace.WorkspaceError(400, "请选择职责或存储要求。")
+            raw_kind = change.get("kind")
+            if raw_kind not in ("duty", "storage"):
+                raise workspace.WorkspaceError(400, "请选择职责任务。")
+            kind = "duty"
             title = naming.display_name(change.get("title"))
             key = (project, fid, kind, title)
             if change.get("remove"):
-                db.execute("DELETE FROM labweave_bot_assignments WHERE project=? AND feature=? AND kind=? AND title=?", key)
+                db.execute(
+                    "DELETE FROM labweave_bot_assignments WHERE project=? AND feature=? AND kind IN ('duty','storage') AND title=?",
+                    (project, fid, title),
+                )
             else:
                 instruction = workspace.text(change.get("instruction"), 3000)
                 if not instruction:
@@ -601,11 +574,22 @@ def assignments(project, fid, change=None):
                 if previous is not None:
                     previous = naming.display_name(previous)
                     if previous != title:
-                        db.execute("DELETE FROM labweave_bot_assignments WHERE project=? AND feature=? AND kind=? AND title=?",
-                                   (project, fid, kind, previous))
+                        db.execute(
+                            "DELETE FROM labweave_bot_assignments WHERE project=? AND feature=? AND kind IN ('duty','storage') AND title=?",
+                            (project, fid, previous),
+                        )
+                db.execute(
+                    "DELETE FROM labweave_bot_assignments WHERE project=? AND feature=? AND kind='storage' AND title=?",
+                    (project, fid, title),
+                )
                 db.execute("INSERT OR REPLACE INTO labweave_bot_assignments VALUES(?,?,?,?,?)", (*key, instruction))
-        return [dict(zip(("kind", "title", "instruction"), r)) for r in db.execute(
-            "SELECT kind,title,instruction FROM labweave_bot_assignments WHERE project=? AND feature=? ORDER BY kind,title", (project,fid))]
+        return [
+            {"kind": "duty" if kind == "storage" else kind, "title": title, "instruction": instruction}
+            for kind, title, instruction in db.execute(
+                "SELECT kind,title,instruction FROM labweave_bot_assignments WHERE project=? AND feature=? ORDER BY CASE WHEN kind='storage' THEN 1 ELSE 0 END, title",
+                (project, fid),
+            )
+        ]
 
 
 def bind_bot_session(project_id, feature_id, session_id):
