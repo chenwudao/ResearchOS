@@ -1,7 +1,7 @@
 const titleOf = item => item.title || String(item.text || '').split('\n', 1)[0].slice(0, 80)
 const folderOf = item => item.category || ''
 
-export function createNotebook(React, { Btn, Markdown, formatDate, resourceImage, safeUrl }) {
+export function createNotebook(React, { Btn, Markdown, EntryImage, formatDate, resourceImage, safeUrl }) {
   const h = React.createElement
   const blank = folder => ({ title: '', text: '', category: folder, noteTags: '' })
   const commands = [
@@ -158,6 +158,8 @@ export function createNotebook(React, { Btn, Markdown, formatDate, resourceImage
                 active.noteTags.map(name => h('li', { key: name }, name))),
               h('div', { ref: noteText, onMouseUp: captureSelection, onKeyUp: captureSelection },
                 h(Markdown, { source: active.text, notebook: true })),
+              h(EntryImage, { src: resourceImage(active), alt: active.caption || titleOf(active),
+                className: 'lw-fbot-detail-media', illustrated: true, caption: active.caption }),
               h('div', { className: 'lw-actions' },
                 Btn({ size: 'xs', onClick: () => setEditor({ id: active.id, expectedNoteVersion: active.noteVersion || 1,
                   title: titleOf(active), text: active.text, category: folderOf(active), noteTags: (active.noteTags || []).join(', ') }) }, '编辑笔记'),

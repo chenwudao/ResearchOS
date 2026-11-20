@@ -3334,7 +3334,7 @@ window.__ModuleLoader__.load({
     const GoalPlanner = React.lazy(() => import(new URL('./labweave-goal-planner.js', document.baseURI).href)
       .then(module => ({ default: module.createGoalPlanner(React) })))
     const Notebook = React.lazy(() => import(new URL('./labweave-notebook.js', document.baseURI).href)
-      .then(module => ({ default: module.createNotebook(React, { Btn, Markdown, formatDate: fmtDateTime,
+      .then(module => ({ default: module.createNotebook(React, { Btn, Markdown, EntryImage, formatDate: fmtDateTime,
         resourceImage: entryImageSrc, safeUrl: mdSafeUrl }) })))
     const ResearchMap = React.lazy(() => import(new URL('./labweave-research-map.js', document.baseURI).href)
       .then(module => ({ default: module.createResearchMap(React, { Btn, Canvas: BotParadigmView,

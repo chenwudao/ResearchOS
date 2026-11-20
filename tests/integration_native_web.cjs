@@ -151,13 +151,12 @@ async function main() {
       'workspace.DATA = Path(sys.argv[2])',
       'for feature in features.OPTIONAL_BUILTINS: features.enable_builtin(sys.argv[3], feature)',
     ].join('\n'), path.join(__dirname, '..', 'demo', 'api'), path.join(root, 'data'), project.scope])
-    const catalogRefresh = page.waitForResponse(async response => {
-      if (!response.ok() || !response.url().endsWith('/api/labweave/catalog')) return false
-      const rows = await response.json()
-      return rows.find(row => row.scope === project.scope)?.features.some(feature => feature.id === 'ideas')
-    })
     await page.evaluate(() => window.dispatchEvent(new Event('labweave:project-updated')))
-    await catalogRefresh
+    const catalog = await owner('catalog')
+    assert.equal(catalog.code, 200)
+    assert.ok(catalog.data.find(row => row.scope === project.scope).features.some(feature => feature.id === 'ideas'))
+    const nav = page.getByRole('navigation', { name: project.name + ' 项目功能' })
+    await nav.getByRole('button', { name: '点子', exact: true }).waitFor()
   }
   async function checkProjectTools(name, scope) {
     step = '项目聊天右侧栏'
@@ -372,7 +371,7 @@ async function main() {
       await memList.getByText('优先使用固定随机种子进行对照实验').waitFor()
       await persistedProfile.getByRole('button', { name: '关闭助手资料', exact: true }).click()
       await persistedProfile.waitFor({ state: 'hidden' })
-      step = '验证重启后的自定义功能 Bot 统一界面与右侧分类抽屉跳转'
+      step = '验证重启后的自定义笔记 Bot 和原有图文记录'
       const alphaBranch = page.getByRole('navigation', { name: 'DSH 论文 项目功能' })
       if (!(await alphaBranch.isVisible())) await button('DSH 论文').click()
       await alphaBranch.getByRole('button', { name: '组会速递', exact: true }).waitFor()
@@ -381,23 +380,19 @@ async function main() {
       const customRegion = page.getByRole('region', { name: '组会速递', exact: true })
       await customRegion.waitFor()
       assert.equal(await page.locator('aside[aria-label*="分配任务"], button[aria-label*="分配任务"], .lw-fbot-drawer').count(), 0)
-      const richCard = customRegion.locator('.lw-canvas-card').filter({ hasText: '消融实验对比图：Reweight 带来稳定增益' })
-      await richCard.waitFor()
-      await richCard.getByText('消融实验对比图：Reweight 带来稳定增益', { exact: true }).waitFor()
-      await richCard.locator('img[src^="data:image/svg+xml;base64,"]').waitFor()
-      const thumbReady = await richCard.locator('img').evaluate(img => img.complete && img.naturalWidth > 0)
-      assert.ok(thumbReady, '图文卡片缩略图应成功加载')
-      await customRegion.getByRole('button', { name: '本周实验进展汇总', exact: true }).waitFor()
+      const library = customRegion.getByRole('region', { name: '项目笔记资料库' })
+      const body = library.getByRole('article', { name: '笔记正文' })
+      const title = '消融实验对比图：Reweight 带来稳定增益'
+      await library.getByRole('button', { name: '本周实验进展汇总', exact: true }).click()
+      await body.getByRole('heading', { name: '本周实验进展汇总', exact: true }).waitFor()
       await preview('11-custom-feature-bot')
-      await richCard.click()
-      const richDetail = page.getByRole('dialog', { name: '记录详情' })
-      await richDetail.locator('.lw-fbot-detail-title').getByText('消融实验对比图：Reweight 带来稳定增益', { exact: true }).waitFor()
-      await richDetail.locator('.lw-fbot-detail-figure img[src^="data:image/svg+xml;base64,"]').waitFor()
-      await richDetail.locator('.lw-fbot-detail-caption').getByText('Baseline、+Align 与 +Reweight 验证准确率对比图', { exact: true }).waitFor()
-      const detailReady = await richDetail.locator('.lw-fbot-detail-figure img').evaluate(img => img.complete && img.naturalWidth > 0)
-      assert.ok(detailReady, '图文详情大图应成功加载')
+      await library.getByRole('button', { name: title, exact: true }).click()
+      await body.getByRole('heading', { name: title, exact: true }).waitFor()
+      const chart = body.locator('img[src^="data:image/svg+xml;base64,"]')
+      await chart.scrollIntoViewIfNeeded()
+      assert.ok(await chart.evaluate(async img => { await img.decode(); return img.naturalWidth > 0 }))
+      await body.getByText('Baseline、+Align 与 +Reweight 验证准确率对比图', { exact: true }).waitFor()
       await preview('16-illustrated-push-detail')
-      await richDetail.getByRole('button', { name: '关闭 记录详情' }).click()
       await customRegion.getByLabel('向 组会速递 发送消息').waitFor()
       assert.equal(await customRegion.locator('.lw-fbot-tools, .lw-fbot-model-badge, .lw-fbot-model-select').count(), 0)
       assert.equal(await customRegion.getByRole('button', { name: '快速录入', exact: true }).count(), 0)
