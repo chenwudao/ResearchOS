@@ -21,7 +21,7 @@
 - [x] Notes workspace: folders, tags, document editor and preview, origin, revision history, attachments and backlinks. The browser integration attaches one CSV to two notes and checks that storage has one original.
 - [x] Notes AI editing: compare and accept or dismiss an assistant proposal. Verify user-controlled text, history authorship, and rejection of a proposal against an obsolete revision.
 - [x] Mind map: expandable research routes, paper and method nodes, sourced and unverified relationships, route summaries and literature chronology. Verified in the pinned browser workflow, including author edits and round-trip navigation between a paper and its captured note at narrow viewport and 115% zoom.
-- [ ] Ideas: source-backed cards, category and follow-up, saved/deferred state, requests for project-context suggestions, and user-confirmed task drafts.
+- [x] Ideas: source-backed cards, three suggestion categories, saved/deferred feedback, requests for project-context suggestions, and user-confirmed task drafts. Verified real scoped tool records, round-trip links from ideas to their draft, and explicit acceptance.
 - [ ] Engineering: project, module and file levels, source/import links and file preview; related runs, status, logs, metrics and artifacts. Verify against a real local Python fixture and label historic results as historic.
 - [ ] Shared project: real-data overview, recent activity, contextual navigation and scoped references. Verify the complete path from a map source through plans and results to the next task in a disposable project.
 - [ ] Record remaining P2 limits accurately. Verify on the pinned runtime without touching the user's real projects or publishing changes.

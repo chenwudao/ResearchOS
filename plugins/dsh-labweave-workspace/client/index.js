@@ -1412,6 +1412,42 @@ window.__ModuleLoader__.load({
       .lw-map-timeline li::before{content:"";position:absolute;inset:6px auto auto -16px;width:7px;height:7px;border-radius:50%;background:var(--lw-paradigm-accent,#8269c4)}
       @container (max-width:790px){.lw-map-shell{grid-template-columns:minmax(110px,22%) minmax(0,1fr)}.lw-map-inspector{grid-column:1/-1;max-height:none}}
       @container (max-width:480px){.lw-map-shell,.lw-map-overviews{grid-template-columns:minmax(0,1fr)}.lw-map-routes{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px}.lw-map-routes h3{flex:0 0 100%}.lw-map-routes select{width:auto;max-width:100%}}
+      .lw-idea-workspace{container-type:inline-size;display:grid;gap:14px;min-width:0}
+      .lw-idea-header,.lw-idea-heading,.lw-idea-filters,.lw-idea-filters nav,.lw-idea-badges{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
+      .lw-idea-header,.lw-idea-filters{justify-content:space-between}
+      .lw-idea-heading>span{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:color-mix(in srgb,var(--lw-paradigm-accent,#b47f3d) 19%,var(--dsw-alias-bg-base,Canvas))}
+      .lw-idea-heading>span svg{width:18px;height:18px}
+      .lw-idea-workspace :is(h2,h3,h4,p){margin:0}
+      .lw-idea-heading h2{font-size:var(--lw-ui-xl,1.24rem);letter-spacing:-.02em}
+      .lw-idea-filters{padding-block:2px 9px;border-block-end:1px solid var(--dsw-alias-border-l2,#8883)}
+      .lw-idea-filters>.lw-select{width:auto;min-width:128px;max-width:100%}
+      .lw-idea-filters button span{margin-inline-start:5px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}
+      .lw-idea-filters button[aria-pressed=true]{background:color-mix(in srgb,var(--lw-paradigm-accent,#b47f3d) 16%,transparent);font-weight:600}
+      .lw-idea-shell{display:grid;grid-template-columns:minmax(0,2fr) minmax(230px,1fr);gap:14px;align-items:start}
+      .lw-idea-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch;gap:12px}
+      .lw-idea-card,.lw-idea-inspector,.lw-idea-empty{border:1px solid var(--dsw-alias-border-l2,#8883);border-radius:12px;padding:14px;min-width:0;overflow-wrap:anywhere;background:var(--dsw-alias-bg-base,Canvas)}
+      .lw-idea-card{display:grid;align-content:start;gap:9px;text-align:start;color:inherit;font:inherit;cursor:pointer;min-height:122px;box-shadow:0 2px 7px #40260a0a}
+      .lw-idea-card:is(:hover,[aria-pressed=true]){border-color:var(--lw-paradigm-accent,#b47f3d)}
+      .lw-idea-card[aria-pressed=true]{background:color-mix(in srgb,var(--lw-paradigm-accent,#b47f3d) 9%,var(--dsw-alias-bg-base,Canvas))}
+      .lw-idea-card:focus-visible{outline:2px solid var(--dsw-focus-ring-color,#3b82f6);outline-offset:2px}
+      .lw-idea-card strong{font-size:var(--lw-ui-base);line-height:1.45}
+      .lw-idea-summary{font-size:var(--lw-ui-sm);color:var(--dsw-alias-label-secondary);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
+      .lw-idea-type{--lw-idea-type:#b78248;border-radius:5px;padding:1px 6px;font-size:var(--lw-ui-xs);background:color-mix(in srgb,var(--lw-idea-type) 20%,var(--dsw-alias-bg-base,Canvas))}
+      .lw-idea-type[data-kind=extension]{--lw-idea-type:#8c73cf}
+      .lw-idea-type[data-kind=method]{--lw-idea-type:#2aa592}
+      .lw-idea-ref-count{display:flex;align-items:center;gap:4px;color:var(--dsw-alias-label-secondary);font-size:var(--lw-ui-xs)}
+      .lw-idea-ref-count svg{width:13px;height:13px}
+      .lw-idea-inspector{display:grid;gap:10px;align-content:start;box-sizing:border-box;max-height:clamp(300px,52vh,530px);overflow:auto;scrollbar-gutter:stable}
+      .lw-idea-inspector h3{font-size:var(--lw-ui-lg,1.1rem);line-height:1.4}
+      .lw-idea-inspector a,.lw-idea-inspector .lw-md{font-size:var(--lw-ui-sm)}
+      .lw-idea-evidence,.lw-idea-form,.lw-idea-form label{display:grid;gap:8px;min-width:0;font-size:var(--lw-ui-sm)}
+      .lw-idea-form :is(input,textarea,select){box-sizing:border-box;min-width:0;width:100%}
+      .lw-idea-form textarea{resize:vertical}
+      .lw-idea-evidence section{display:grid;gap:5px;padding:8px 10px;border-inline-start:2px solid var(--dsw-alias-border-l4,#8886);border-radius:5px;background:var(--dsw-alias-bg-layer-1,#8881)}
+      .lw-idea-evidence section[data-idea-field=hypothesis]{border-inline-start-color:var(--lw-paradigm-accent,#b47f3d)}
+      .lw-idea-evidence h4{font-size:var(--lw-ui-xs);color:var(--dsw-alias-label-secondary)}
+      @container (max-width:760px){.lw-idea-shell{grid-template-columns:minmax(0,1fr)}.lw-idea-inspector{max-height:none}}
+      @container (max-width:460px){.lw-idea-grid{grid-template-columns:minmax(0,1fr)}}
       .lw-canvas-attachment{margin:0;border:1px solid var(--dsw-alias-border-l2,#8883);border-radius:8px;padding:8px 10px;justify-content:space-between;overflow-wrap:anywhere}
       .lw-canvas-detail-body{display:grid;gap:12px;min-width:0}
       .lw-record-dialog .lw-dialog-head{align-items:flex-start;margin-bottom:0}
@@ -2705,7 +2741,7 @@ window.__ModuleLoader__.load({
     const botLayoutLabels = {
       calendar: '目标日历', checklist: '目标清单', path: '目标路径', notebook: '笔记资料库', library: '资料库', timeline: '文件动态',
       'research-map': '研究知识地图',
-      graph: '关系图', lineage: '文献脉络', branches: '发散探索', reasoning: '线性推演',
+      graph: '关系图', lineage: '文献脉络', 'idea-cards': '研究点子', branches: '发散探索', reasoning: '线性推演',
       sequence: '实验流程', matrix: '并行实验',
     }
     const extensionLayouts = {
@@ -3192,6 +3228,8 @@ window.__ModuleLoader__.load({
     const ResearchMap = React.lazy(() => import(new URL('./labweave-research-map.js', document.baseURI).href)
       .then(module => ({ default: module.createResearchMap(React, { Btn, Icon, Canvas: BotParadigmView,
         Markdown, safeUrl: mdSafeUrl }) })))
+    const IdeaCards = React.lazy(() => import(new URL('./labweave-idea-cards.js', document.baseURI).href)
+      .then(module => ({ default: module.createIdeaCards(React, { Btn, Icon, Markdown, safeUrl: mdSafeUrl }) })))
     const BotExperiments = React.lazy(() => getWorkbenchViews().then(views => ({ default: views.Experiments })))
 
     function openComposerFile(input, imagesOnly) {
@@ -3564,11 +3602,13 @@ window.__ModuleLoader__.load({
       const notebook = featMeta.layout === 'notebook'
       const [mapRequest, setMapRequest] = React.useState(null)
       const researchMap = featMeta.layout === 'research-map'
+      const [ideaRequest, setIdeaRequest] = React.useState(null)
+      const ideaCards = featMeta.layout === 'idea-cards'
       const [activeReview, setActiveReview] = React.useState(null)
       const [deletingItem, setDeletingItem] = React.useState(null)
       const [browserLink, setBrowserLink] = React.useState(null)
       const [customBoardPercent, setBoardPercent] = React.useState(persisted.boardPercent)
-      const boardPercent = customBoardPercent || (researchMap ? 77 : 58)
+      const boardPercent = customBoardPercent || (researchMap || ideaCards ? 77 : 58)
       const [editingBot, setEditingBot] = React.useState(false)
       const [nodeEdit, setNodeEdit] = React.useState(null)
       const [draftText, setDraftText] = React.useState(() => persisted?.draft || '')
@@ -3599,6 +3639,7 @@ window.__ModuleLoader__.load({
           delete persisted.recordRequest
           if (notebook) setNotebookRequest(recordRequest)
           else if (researchMap) setMapRequest(recordRequest)
+          else if (ideaCards) setIdeaRequest(recordRequest)
           else setActiveItemId(recordRequest.id)
           setNotice('')
           setActiveReview(null); setReading(null); setBrowserLink(null); setEditingId(null); setDeletingItem(null)
@@ -3623,7 +3664,7 @@ window.__ModuleLoader__.load({
           setError(error.message)
         })
         return () => controller.abort()
-      }, [recordRequest, value, feature, persisted, notebook, researchMap, workspaceId])
+      }, [recordRequest, value, feature, persisted, notebook, researchMap, ideaCards, workspaceId])
       const fileInputRef = React.useRef(null)
       const textareaRef = React.useRef(null)
       const changeDraft = text => { setDraftText(text); persisted.draft = text }
@@ -3724,6 +3765,11 @@ window.__ModuleLoader__.load({
 
       const importFile = file => run(async () => {
         const data = await fileUploadData(file)
+        if (ideaCards) {
+          await action('upload', { name: file.name, data })
+          setNotice(LW('已导入项目资料库：') + file.name)
+          return
+        }
         const res = await action('upload', { name: file.name, data, featureId: feature })
         setNotice(LW('已导入文件：') + file.name)
         const targetEntry = res.linkedItem || res
@@ -3766,6 +3812,7 @@ window.__ModuleLoader__.load({
             if (ref.featureId !== feature) navigateRecord(ref)
             else if (notebook) setNotebookRequest({ id: ref.id })
             else if (researchMap) setMapRequest({ id: ref.id })
+            else if (ideaCards) setIdeaRequest({ id: ref.id })
             else openEntry((value.rails[feature] || []).find(record => record.id === ref.id))
           },
           change: (ref, remove) => run(() => changeLink(item, ref, remove)),
@@ -4038,7 +4085,28 @@ window.__ModuleLoader__.load({
                         return true
                       }),
                     })),
-                  typedLayout && !engineering && !goalPlanner && !notebook && !researchMap && h(BotParadigmView, {
+                  ideaCards && h(React.Suspense, { fallback: h('p', { className: 'lw-hint' }, LW('正在读取研究点子…')) },
+                    h(IdeaCards, {
+                      items: ordered.filter(item => !item.canvasDraft).map(item => ({ ...item, canvasRail: item.canvasRail || feature })),
+                      feature, topic: value.topic, busy: busy || bot.sending || bot.running, request: ideaRequest,
+                      goals: (value.features || []).filter(item => item.layout === 'calendar' && !item.archived),
+                      save: (payload, rail) => run(() => action('feature_push', { featureId: rail || feature, source: '用户', ...payload })),
+                      remove: deleteNode, navigate: navigateRecord, links: linksFor,
+                      changeState: (item, state) => run(() => action('ideas/state', { featureId: item.canvasRail, id: item.id, state })),
+                      draftGoal: (item, goalId) => run(() => action('ideas/goal-draft', { featureId: item.canvasRail, id: item.id, goalId })),
+                      ask: (focus, item) => run(async () => {
+                        if (item) {
+                          await bot.sendPrompt(LW('请与我讨论这个点子的依据、创新点、风险及最小验证。只讨论，保留项目目标和原点子。\n') +
+                            JSON.stringify({ featureId: item.canvasRail, id: item.id, title: item.title || item.text }))
+                        } else {
+                          await bot.sendPrompt(LW('请先读取当前项目的确认状态、笔记、文献和点子反馈。最多提出三条具体想法，用项目工具保存到当前点子 Bot。') +
+                            LW('为每条建议写明已有依据、待验证假设、最小验证和限制，用 recordRefs 关联依据。参考已收藏和暂不考虑的反馈，避免重复。') +
+                            LW('没有文献依据时说明空白。只创建研究建议，等待我决定下一步。\n\n') + focus)
+                        }
+                        return true
+                      }),
+                    })),
+                  typedLayout && !engineering && !goalPlanner && !notebook && !researchMap && !ideaCards && h(BotParadigmView, {
                     layout: botLayout, items: ordered, fields: extensionFields, activeId: activeItemId, openEntry, busy,
                     addNode, deleteNode, emptyTitle,
                     toggleGoal: effectiveParadigm === 'goals' ? item => run(() =>

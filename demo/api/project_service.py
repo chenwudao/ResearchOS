@@ -343,6 +343,19 @@ def _apply_record_references(args, entry, rail, rails):
 NOTE_FIELDS = ("title", "text", "category", "noteTags")
 MAP_KINDS = ("topic", "route", "method", "paper", "metric", "file")
 MAP_RELATIONS = ("cites", "builds_on", "compares", "related")
+IDEA_KINDS = ("direction", "extension", "method")
+
+
+def _idea_record(args, entry, assistant):
+    if entry.get("kind", "direction") not in IDEA_KINDS:
+        raise workspace.WorkspaceError(400, "请选择新方向、思路延伸或研究方案。")
+    if "url" in args and args["url"]:
+        url = workspace.safe_link(workspace.text(args["url"], 2000))
+        if not url:
+            raise workspace.WorkspaceError(400, "请输入 HTTP 或 HTTPS 来源。")
+        entry["url"] = url
+    if assistant:
+        entry["ideaOrigin"] = "assistant"
 
 
 def _map_record(args, entry, records):
@@ -435,6 +448,8 @@ def create_entry(project_id, rail, args, *, planning_draft=False, assistant=Fals
         if entry.get("kind") == "note-folder" and not entry.get("category"):
             raise workspace.WorkspaceError(400, "请输入目录名称。")
         entry.update(noteVersion=1, noteOrigin="assistant" if assistant else "user")
+    if bot.get("layout") == "idea-cards":
+        _idea_record(args, entry, assistant)
     def operation(item):
         records = item["rails"].setdefault(rail, [])
         if notebook and entry.get("kind") == "note-folder" and any(
@@ -464,6 +479,7 @@ def update_entry(project_id, rail, args, *, draft_only=False, assistant=False):
     extension = bot.get("extension")
     notebook = bot.get("layout") == "notebook"
     research_map = bot.get("layout") == "research-map"
+    idea_cards = bot.get("layout") == "idea-cards"
     is_goal = rail == "goals" or bot.get("paradigm") == "goals" or bool(extension and extension["base"] == "goals")
 
     def operation(item):
@@ -475,6 +491,8 @@ def update_entry(project_id, rail, args, *, draft_only=False, assistant=False):
         if entry.get("planningDraft") and "done" in args:
             raise workspace.WorkspaceError(409, "请先确认排期，再更新完成状态。")
         previous_note = _note_version(entry) if notebook else None
+        if idea_cards and assistant:
+            raise workspace.WorkspaceError(409, "请另建一条 AI 建议，现有点子的正文和反馈由用户维护。")
         if notebook and assistant and entry.get("noteOrigin") != "assistant" and any(field in args for field in NOTE_FIELDS):
             raise workspace.WorkspaceError(409, "修改用户笔记请提交 AI 整理草稿，由用户确认。")
         if notebook and "expectedNoteVersion" in args and (
@@ -505,6 +523,8 @@ def update_entry(project_id, rail, args, *, draft_only=False, assistant=False):
         _apply_record_references(args, entry, rail, item["rails"])
         if research_map:
             _map_record(args, entry, records)
+        if idea_cards:
+            _idea_record(args, entry, assistant=False)
         if "parentId" in args and (is_goal or rail.startswith("feat_")):
             parent = args["parentId"]
             if parent is None:
@@ -713,6 +733,44 @@ def save_map_note(project_id, args):
                 "noteVersion": 1, "noteOrigin": "user", "capturedFrom": source_ref, "recordRefs": refs}
         notes.append(note)
         return {"featureId": destination, "id": note["id"], "created": True}
+    return mutate(project_id, operation)
+
+
+def change_idea(project_id, args, *, draft_goal=False):
+    import features
+    origin, entry_id = args.get("featureId"), args.get("id")
+    if not isinstance(origin, str) or not isinstance(entry_id, str):
+        raise workspace.WorkspaceError(400, "请选择研究点子。")
+    layouts = {bot["id"]: bot.get("layout") for bot in features.list_features(project_id, project_id)
+               if not bot.get("archived")}
+    if layouts.get(origin) != "idea-cards":
+        raise workspace.WorkspaceError(400, "请选择当前项目的点子 Bot。")
+    state, destination = args.get("state"), args.get("goalId")
+    if draft_goal:
+        if not isinstance(destination, str) or layouts.get(destination) != "calendar":
+            raise workspace.WorkspaceError(400, "请选择当前项目的目标日历。")
+    elif state not in ("active", "saved", "deferred"):
+        raise workspace.WorkspaceError(400, "无效的点子状态。")
+
+    def operation(item):
+        rails = item["rails"]
+        idea = next((entry for entry in rails.get(origin, []) if entry["id"] == entry_id), None)
+        if not idea:
+            raise workspace.WorkspaceError(404, "点子不存在。")
+        now = timestamp()
+        if not draft_goal:
+            idea.update(ideaState=state, updatedAt=now)
+            return idea
+        reference = {"featureId": origin, "id": entry_id}
+        goals = rails.setdefault(destination, [])
+        goal = next((entry for entry in goals if entry.get("proposedFrom") == reference), None)
+        if goal is None:
+            title = idea.get("title") or workspace.text(idea["text"].splitlines()[0], 240)
+            goal = {"id": "n_" + uuid4().hex, "title": title, "text": idea.get("validation") or idea["text"],
+                    "source": "点子", "planningDraft": True, "ts": now, "proposedFrom": reference,
+                    "recordRefs": [reference]}
+            goals.append(goal)
+        return {"featureId": destination, "id": goal["id"], "planningDraft": bool(goal.get("planningDraft"))}
     return mutate(project_id, operation)
 
 

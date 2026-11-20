@@ -19,7 +19,7 @@ BOT_LAYOUTS = {
     "goals": ("checklist", "path", "calendar"),
     "notes": ("library", "timeline", "notebook"),
     "mindmap": ("graph", "lineage", "research-map"),
-    "ideas": ("branches", "reasoning"),
+    "ideas": ("branches", "reasoning", "idea-cards"),
     "engineering": ("sequence", "matrix"),
 }
 FIELD_TYPES = ("text", "number", "date", "boolean", "url", "reference")
@@ -34,6 +34,7 @@ BOT_RECORD_TEXT_FIELDS = {
     "hypothesis": ("假设", 1000), "validation": ("最小验证", 1000), "result": ("结果", 1000),
     "routeQuestion": ("研究问题", 800), "routeMethods": ("代表方法", 800),
     "routeOpenQuestions": ("待探索问题", 800), "paperAuthors": ("作者", 400), "paperVenue": ("发表来源", 200),
+    "ideaEvidence": ("已有依据", 1400), "ideaTradeoffs": ("可行性与限制", 1000),
 }
 BUILTIN_PARADIGMS = {"goals": ("goals", "checklist"), "library": ("notes", "library"),
                      "feed": ("notes", "timeline"), "ideas": ("ideas", "branches")}
@@ -555,7 +556,7 @@ def create_feature(caller_scope, label, hint="", project_id=None, *, symbol=None
     if not layouts:
         raise workspace.WorkspaceError(400, "当前项目没有这个范式。")
     if layout is None:
-        layout = {"goals": "calendar", "notes": "notebook", "mindmap": "research-map"}.get(paradigm, layouts[0])
+        layout = {"goals": "calendar", "notes": "notebook", "mindmap": "research-map", "ideas": "idea-cards"}.get(paradigm, layouts[0])
     if layout not in layouts:
         raise workspace.WorkspaceError(400, "当前范式不支持这个排布。")
     symbol = "" if symbol is None else _clean_symbol(symbol, allow_empty=True)

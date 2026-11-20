@@ -36,6 +36,12 @@ def main():
             paper, = (item for item in view["rails"]["library"] if item.get("kind") == "paper")
             assert {"featureId": "library", "id": paper["id"]} in note["recordRefs"]
             assert paper["url"] == "https://example.test/benchmark"
+            idea_bot = next(row for row in view["features"] if row["label"] == "研究点子")
+            saved_idea, = (row for row in view["rails"][idea_bot["id"]] if row.get("ideaState") == "saved")
+            calendar = next(row for row in view["features"] if row["label"] == "实验排期")
+            accepted, = (row for row in view["rails"][calendar["id"]] if row.get("proposedFrom"))
+            assert accepted["proposedFrom"] == {"featureId": idea_bot["id"], "id": saved_idea["id"]}
+            assert not accepted.get("planningDraft")
             files = list((project_service.folder(scope) / "resources").iterdir())
             assert len(files) == 1 and files[0].read_text(encoding="utf-8") == "stage,score\nR2,65.29\n"
     finally:
@@ -101,6 +107,29 @@ def publish_test_map(data):
     publish("metric", "未编辑区域变化", "检查编辑是否影响背景物体。", parentId=edits)
 
 
+def publish_test_ideas(data):
+    launcher.workspace.DATA = Path(data)
+    scope = next(row["scope"] for row in native_web.catalog() if row["name"] == "排期验收")
+    view = native_web.project_view(scope)
+    bot = next(row for row in view["features"] if row["label"] == "研究点子")
+    notes = next(row for row in view["features"] if row["label"] == "实验日志")
+    note = next(item for item in view["rails"][notes["id"]] if item.get("capturedFrom"))
+    for kind, title, hypothesis in [
+        ("method", "固定机位能降低照明变化引入的评分噪声吗？", "固定机位后，结构分和外观分可能更容易区分。"),
+        ("extension", "局部编辑会误伤背景吗？", "越大的编辑区域，越可能带来无关物体变化。"),
+        ("direction", "关注被遮挡物体的结构保留", "仅比较单视角可能漏掉隐藏结构的变化。"),
+    ]:
+        response = research_mcp.dispatch({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+            "name": "feature_push", "arguments": {
+                "featureId": bot["id"], "kind": kind, "title": title, "text": hypothesis, "hypothesis": hypothesis,
+                "ideaEvidence": "测试资料记录了机位设置，尚未做独立验证。", "validation": "固定光照，小样本对照两种机位。",
+                "ideaTradeoffs": "需要分别观察结构和外观分。",
+                "recordRefs": [{"featureId": notes["id"], "id": note["id"]}],
+            },
+        }}, scope)["result"]
+        assert not response.get("isError"), response
+
+
 if __name__ == "__main__":
     if len(sys.argv) == 4 and sys.argv[1] == "--suggest":
         publish_test_suggestions(*sys.argv[2:])
@@ -108,5 +137,7 @@ if __name__ == "__main__":
         publish_test_note_suggestion(sys.argv[2])
     elif len(sys.argv) == 3 and sys.argv[1] == "--seed-map":
         publish_test_map(sys.argv[2])
+    elif len(sys.argv) == 3 and sys.argv[1] == "--seed-ideas":
+        publish_test_ideas(sys.argv[2])
     else:
         main()

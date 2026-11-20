@@ -213,6 +213,8 @@ def project_action(scope, data):
         return projects.decide_note_edit(scope, args)
     if action == "map/save-source":
         return projects.save_map_note(scope, args)
+    if action in ("ideas/state", "ideas/goal-draft"):
+        return projects.change_idea(scope, args, draft_goal=action == "ideas/goal-draft")
     if action == "rename":
         return {"name": projects.call("project_update", {"name": naming.display_name(args.get("name"))}, scope)["name"]}
     if action == "description":

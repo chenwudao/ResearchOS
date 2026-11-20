@@ -164,6 +164,32 @@ class FeatureBotsTests(unittest.TestCase):
         self.assertIn({"featureId": "library", "id": resource["id"]}, note["recordRefs"])
         self.assertIn("作者甲", note["text"])
 
+    def test_idea_feedback_and_conversion_keep_goals_pending(self):
+        a, b = self.projects
+        bot = features.create_feature(a, "研究点子", paradigm="ideas")["feature"]
+        self.assertEqual(bot["layout"], "idea-cards")
+        calendar = features.create_feature(a, "后续安排", paradigm="goals")["feature"]["id"]
+        foreign = features.create_feature(b, "其他安排", paradigm="goals")["feature"]["id"]
+        idea = self.mcp(a, "feature_push", {"featureId": bot["id"], "kind": "method", "text": "比较机位",
+                                            "validation": "固定其余条件后验证"})
+        self.assertEqual(idea["ideaOrigin"], "assistant")
+        target = {"featureId": bot["id"], "id": idea["id"]}
+        self.assertTrue(self.mcp(a, "feature_push", {**target, "text": "覆盖反馈"})["isError"])
+
+        def act(name, args):
+            return web.dispatch("project", {"workspace": self.records[a], "action": name, "args": {**target, **args}})
+
+        self.assertEqual(act("ideas/state", {"state": "saved"})["ideaState"], "saved")
+        with self.assertRaises(workspace.WorkspaceError):
+            act("ideas/goal-draft", {"goalId": foreign})
+        draft = act("ideas/goal-draft", {"goalId": calendar})
+        self.assertTrue(draft["planningDraft"])
+        self.assertEqual(act("ideas/goal-draft", {"goalId": calendar}), draft)
+        [task] = web.project_view(a)["rails"][calendar]
+        self.assertEqual(task["recordRefs"], [target])
+        self.assertEqual(task["text"], idea["validation"])
+        self.assertNotIn("plannedDate", task)
+
     def test_global_stays_chat_only_and_scopes_create_rename_delete(self):
         a, b = self.projects
         global_list = self.mcp("global", "feature_list", {})

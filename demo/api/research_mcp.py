@@ -16,7 +16,7 @@ TOOLS = {
     "assistant_rename": ("Change the global assistant's display name when requested in the conversation.", {"name": {"type": "string"}}),
     "feature_labels": ("Read active feature IDs and their current display names for this conversation scope. A global conversation may optionally specify projectId.", {}),
     "feature_list": ("List active Feature Bots in the project. clusterParent identifies grouped members. Use includeArchived to find completed temporary Bots and their preserved results.", {"includeArchived":{"type":"boolean"}}),
-    "feature_create": ("Create a Bot with one paradigm and one compatible layout. Use goals: calendar/checklist/path, notes: notebook/library/timeline, mindmap: research-map/graph/lineage, ideas: branches/reasoning or engineering: sequence/matrix. For a project extension, use its ext_ ID and fixed layout from project_get_context. Global chat must specify the project explicitly.", {
+    "feature_create": ("Create a Bot with one paradigm and one compatible layout. Use goals: calendar/checklist/path, notes: notebook/library/timeline, mindmap: research-map/graph/lineage, ideas: idea-cards/branches/reasoning or engineering: sequence/matrix. For a project extension, use its ext_ ID and fixed layout from project_get_context. Global chat must specify the project explicitly.", {
         "label":{"type":"string"}, "paradigm":{"type":"string"},
         "layout":{"type":"string","enum":[layout for layouts in features.BOT_LAYOUTS.values() for layout in layouts]},
         "hint":{"type":"string"}, "temporary":{"type":"boolean","description":"Use only for a one-time assignment without a suitable existing Bot. Successful archived deliveries retire it automatically."}}),
@@ -40,6 +40,7 @@ TOOLS = {
         "or pass id to update an existing entry. In a calendar Bot, new entries are planning drafts and only the user can confirm or edit the confirmed schedule. "
         "For a milestone set kind to milestone. For edits to a user-authored notebook entry, use note_suggest_edit instead. "
         "For a research map set kind to topic, route, method, paper, or metric. Save parent nodes first. Cite original sources, use mapLinks for cross-links, and omit a relation source if it is an inference. "
+        "In idea-cards, create a new idea as direction, extension, or method. Use ideaEvidence for cited findings, hypothesis for conjectures, validation for a small first check, and recordRefs for the exact project records. "
         "Decide based on the Bot's purpose and message intent "
         "whether to include a figure/diagram (imagePath in project folder, inline imageSvg diagram/chart, imageData, "
         "or imageUrl) plus title and caption, or concise text only. For sourced pushes, include the original "
