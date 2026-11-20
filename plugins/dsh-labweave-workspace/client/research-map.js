@@ -4,9 +4,8 @@ export const nodeKinds = {
 const relationKinds = { cites: '引用', builds_on: '方法继承', compares: '对比', related: '主题关联' }
 const titleOf = record => record.title || String(record.text || '').split('\n', 1)[0]
 
-export function createResearchMap(React, { Btn, Icon, Canvas, Markdown, safeUrl }) {
+export function createResearchMap(React, { Btn, Canvas, Markdown, safeUrl }) {
   const h = React.createElement
-  const icon = name => h(Icon, { name })
   const options = (values, label) => Object.entries(values).map(([value, name]) =>
     h('option', { key: value, value }, label ? label(name) : name))
   const routeFields = [['研究问题', 'routeQuestion'], ['代表方法', 'routeMethods'], ['待探索问题', 'routeOpenQuestions']]
@@ -24,6 +23,7 @@ export function createResearchMap(React, { Btn, Icon, Canvas, Markdown, safeUrl 
     const editing = Boolean(editor)
     const byId = new Map(items.map(record => [record.id, record]))
     const routes = items.filter(record => record.kind === 'route')
+    const parents = new Set(items.map(record => record.parentId).filter(id => byId.has(id)))
     const root = items.find(record => record.kind === 'topic' && !record.parentId)
     const active = byId.get(selected) || root || items[0]
     const activeRoute = byId.get(route)
@@ -36,13 +36,21 @@ export function createResearchMap(React, { Btn, Icon, Canvas, Markdown, safeUrl 
       for (let parent = record.parentId; byId.has(parent) && !ids.has(parent); parent = byId.get(parent).parentId) ids.add(parent)
       return ids
     }
+    const related = new Set()
+    if (activeRoute && !parents.has(activeRoute.id)) {
+      related.add(root?.id)
+      for (const link of activeRoute.mapLinks || []) related.add(link.id)
+      for (const record of items) {
+        if (record.mapLinks?.some(link => link.id === activeRoute.id)) related.add(record.id)
+      }
+    }
     const lanes = items.filter(record => {
       const ancestry = trace(record)
-      return (!activeRoute || ancestry.has(activeRoute.id) || trace(activeRoute).has(record.id)) &&
+      return (!activeRoute || ancestry.has(activeRoute.id) || trace(activeRoute).has(record.id) || related.has(record.id)) &&
         !collapsed.some(id => id !== record.id && ancestry.has(id)) &&
         (!kind || record.kind === kind || record.kind === 'topic' || record.kind === 'route')
     })
-    const inRoute = items.filter(record => !activeRoute || trace(record).has(activeRoute.id))
+    const inRoute = items.filter(record => !activeRoute || trace(record).has(activeRoute.id) || related.has(record.id))
     const papers = inRoute.filter(record => record.kind === 'paper')
     const dated = papers.filter(record => record.eventDate).sort((a, b) => a.eventDate.localeCompare(b.eventDate))
     const undated = papers.filter(record => !record.eventDate)
@@ -87,9 +95,9 @@ export function createResearchMap(React, { Btn, Icon, Canvas, Markdown, safeUrl 
     const recordLink = record => Btn({ variant: 'ghost', size: 'xs', onClick: () => {
       setRoute(''); setKind(''); setCollapsed([]); select(record)
     } }, titleOf(record))
-    function sourceLink(value, label) {
+    function sourceLink(value, label, accessibleName) {
       const url = safeUrl(value)
-      return url && h('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, label)
+      return url && h('a', { href: url, target: '_blank', rel: 'noopener noreferrer', 'aria-label': accessibleName }, label)
     }
     function inspector() {
       if (editor) return h('form', { className: 'lw-map-form', onSubmit: commit },
@@ -127,7 +135,7 @@ export function createResearchMap(React, { Btn, Icon, Canvas, Markdown, safeUrl 
         h('div', { className: 'lw-actions' },
           Btn({ variant: 'primary', type: 'submit', size: 'xs', disabled: busy || !editor.title.trim() }, '保存节点'),
           Btn({ variant: 'ghost', size: 'xs', onClick: () => setEditor(null) }, '取消')))
-      if (!active) return h('p', { className: 'lw-hint' }, '选择节点查看出处和相关资料。')
+      if (!active) return null
       const connections = [...(active.mapLinks || []).map(link => ({ ...link, direction: '至', record: byId.get(link.id) })),
         ...items.flatMap(record => (record.mapLinks || []).filter(link => link.id === active.id)
           .map(link => ({ ...link, direction: '来自', record })))]
@@ -135,10 +143,10 @@ export function createResearchMap(React, { Btn, Icon, Canvas, Markdown, safeUrl 
         h('span', { className: 'lw-map-kind', 'data-kind': active.kind }, nodeKinds[active.kind] || '记录'),
         h('h3', null, titleOf(active)),
         active.canvasDraft && h('p', { className: 'lw-hint' }, 'Bot 草稿 · 待核验'),
-        h(Markdown, { source: active.text }),
+        active.text !== titleOf(active) && h(Markdown, { source: active.text }),
         (active.kind === 'paper' ? [active.paperAuthors, active.paperVenue, active.eventDate].filter(Boolean).length > 0 &&
           h('p', { className: 'lw-hint' }, [active.paperAuthors, active.paperVenue, active.eventDate].filter(Boolean).join(' · ')) : null),
-        sourceLink(active.url, '查看原始来源'),
+        sourceLink(active.url, '原文', '查看原始来源'),
         connections.length > 0 && h('section', { 'aria-label': '研究关系', className: 'lw-map-relations' },
           h('h4', null, '研究关系'),
           connections.map((link, index) => h('div', { key: index },
@@ -159,15 +167,9 @@ export function createResearchMap(React, { Btn, Icon, Canvas, Markdown, safeUrl 
           } }, savedNote ? '打开笔记' : active.kind === 'paper' ? '收藏到笔记' : '保存主线到笔记')) :
             h('p', { className: 'lw-hint' }, '创建一个笔记 Bot 后即可收藏。')),
         !active.canvasDraft && h('details', { className: 'lw-map-record-links' },
-          h('summary', null, '项目记录关联'), links(active)))
+          h('summary', null, '关联记录'), links(active)))
     }
     return h('section', { className: 'lw-research-map', 'aria-label': '研究知识地图' },
-      h('header', { className: 'lw-map-heading' },
-        h('div', null, h('span', { className: 'lw-map-heading-icon' }, icon('mindmap')),
-          h('h2', null, activeRoute || root ? titleOf(activeRoute || root) : '研究知识地图')),
-        h('div', { className: 'lw-actions' },
-          Btn({ variant: 'ghost', size: 'xs', onClick: () => setDraftTopic(draftTopic === null ? '' : null) }, '请 AI 梳理'),
-          Btn({ size: 'xs', onClick: () => start(null) }, '添加节点'))),
       draftTopic !== null && h('form', { className: 'lw-map-request', onSubmit: async event => {
         event.preventDefault()
         if (draftTopic.trim() && await ask(draftTopic.trim())) setDraftTopic(null)
@@ -177,11 +179,10 @@ export function createResearchMap(React, { Btn, Icon, Canvas, Markdown, safeUrl 
         Btn({ variant: 'primary', type: 'submit', size: 'xs', disabled: busy || !draftTopic.trim() }, '整理研究地图')),
       h('div', { className: 'lw-map-shell' },
         h('nav', { className: 'lw-map-routes', 'aria-label': '研究主线' },
-          h('h3', null, '研究主线'),
-          Btn({ variant: 'ghost', size: 'xs', 'aria-current': activeRoute ? undefined : 'page',
-            onClick: () => { setRoute(''); setKind(''); setCollapsed([]) } }, '完整地图'),
+          Btn({ variant: 'ghost', size: 'xs', 'aria-current': activeRoute ? undefined : 'page', 'aria-label': '完整地图',
+            onClick: () => { setRoute(''); setKind(''); setCollapsed([]) } }, '全部主线'),
           routes.map(record => h('div', { className: 'lw-map-route-row', key: record.id },
-            Btn({ variant: 'ghost', size: 'xs', 'aria-expanded': !collapsed.includes(record.id),
+            parents.has(record.id) && Btn({ variant: 'ghost', size: 'xs', 'aria-expanded': !collapsed.includes(record.id),
               'aria-label': (collapsed.includes(record.id) ? '展开 ' : '收起 ') + titleOf(record),
               onClick: () => toggleBranch(record) }, collapsed.includes(record.id) ? '+' : '−'),
             Btn({ variant: 'ghost', size: 'xs', 'aria-current': route === record.id ? 'page' : undefined,
@@ -190,16 +191,20 @@ export function createResearchMap(React, { Btn, Icon, Canvas, Markdown, safeUrl 
             h('option', { value: '' }, '全部类型'), options(nodeKinds))),
         h('div', { className: 'lw-map-canvas' },
           h(Canvas, { layout: 'graph', items: lanes, activeId: active?.id, openEntry: select, busy, nodeKinds,
-            label: '文献与方法关系图', emptyTitle: '先添加研究主题或请 AI 梳理。' })),
-        h('aside', { ref: inspectorRef, className: 'lw-map-inspector', 'aria-label': '节点详情' }, inspector())),
+            label: '文献与方法关系图', emptyTitle: items.length ? '没有匹配节点' : '暂无节点',
+            toolbarActions: h('div', { className: 'lw-actions' },
+              Btn({ variant: 'ghost', size: 'xs', 'aria-expanded': draftTopic !== null,
+                onClick: () => setDraftTopic(draftTopic === null ? '' : null) }, 'AI 梳理'),
+              Btn({ size: 'xs', onClick: () => start(null) }, '添加节点')) })),
+        (active || editor) && h('aside', { ref: inspectorRef, className: 'lw-map-inspector', 'aria-label': '节点详情' }, inspector())),
       (routes.length > 0 || papers.length > 0) && h('div', { className: 'lw-map-overviews' },
-        routes.length > 0 && h('details', { open: true }, h('summary', null, '研究路线概览'),
+        routes.length > 0 && h('details', null, h('summary', null, '路线概览'),
           h('div', { className: 'lw-map-overview-grid' }, (activeRoute ? [activeRoute] : routes).map(record =>
             h('article', { key: record.id },
               Btn({ variant: 'ghost', size: 'xs', onClick: () => focus(record) }, titleOf(record)),
               h('dl', null, routeFields.filter(([, key]) => record[key]).map(([label, key]) =>
                 h('div', { key }, h('dt', null, label), h('dd', null, record[key])))))))),
-        papers.length > 0 && h('details', { open: true }, h('summary', null, '文献发展时间线'),
+        papers.length > 0 && h('details', null, h('summary', null, '文献时间线'),
           h('ol', { className: 'lw-map-timeline' }, [...dated, ...undated].map(record => h('li', { key: record.id },
             h('span', { className: 'lw-hint' }, record.eventDate || '发表日期待确认'), recordLink(record)))))))
   }

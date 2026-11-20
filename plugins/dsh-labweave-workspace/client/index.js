@@ -634,6 +634,8 @@ window.__ModuleLoader__.load({
       .lw-goal-calendar,.lw-goal-agenda,.lw-goal-board>section{min-width:0;border:1px solid var(--lw-border,#8884);border-radius:8px;padding:8px}
       .lw-goal-agenda,.lw-goal-board,.lw-goal-form{display:grid;gap:7px}
       .lw-goal-form{padding-top:8px;border-top:1px solid var(--lw-border,#8884)}
+      .lw-goal-quick-add{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px}
+      .lw-goal-options{display:grid;gap:7px;padding-block:6px 2px}
       .lw-goal-form input{max-width:100%}
       .lw-goal-form button[type=submit]{border:1px solid var(--lw-border,#8884)}
       .lw-goal-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;margin-top:6px}
@@ -660,6 +662,7 @@ window.__ModuleLoader__.load({
       @container (max-width:640px){.lw-goal-columns{grid-template-columns:minmax(0,1fr)}}
       .lw-notebook{container-type:inline-size;display:grid;gap:10px;min-width:0}
       .lw-notebook-toolbar,.lw-notebook-metadata{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+      .lw-notebook-actions{justify-content:flex-end}
       .lw-notebook-body{display:grid;grid-template-columns:minmax(140px,20%) minmax(0,1fr) minmax(190px,24%);gap:12px;align-items:start}
       .lw-notebook[data-wide=true] .lw-notebook-body{grid-template-columns:minmax(0,1fr)}
       .lw-notebook :is(.lw-notebook-tree,.lw-notebook-document,.lw-notebook-context){display:grid;gap:9px;min-width:0;border:1px solid var(--dsw-alias-border-l4,#8886);border-radius:9px;padding:10px}
@@ -1356,14 +1359,10 @@ window.__ModuleLoader__.load({
       .lw-canvas-edges path{fill:none;stroke:currentColor;stroke-width:1.35}
       .lw-canvas-edges circle{fill:currentColor}
       .lw-research-map{container-type:inline-size;display:grid;gap:14px;min-width:0;--lw-map-height:clamp(295px,45vh,465px);color:var(--dsw-alias-label-primary)}
-      .lw-map-heading,.lw-map-heading>div,.lw-map-request{display:flex;align-items:center;gap:10px;min-width:0}
-      .lw-map-heading{justify-content:space-between;flex-wrap:wrap;padding:2px 0}
-      .lw-map-heading h2{margin:0;font-size:var(--lw-ui-xl,1.24rem);line-height:1.25;letter-spacing:-.02em;overflow-wrap:anywhere}
-      .lw-map-heading-icon{display:grid;place-items:center;flex:none;width:34px;height:34px;border-radius:10px;color:var(--dsw-alias-label-primary);background:color-mix(in srgb,var(--lw-paradigm-accent,#8269c4) 22%,var(--dsw-alias-bg-base,Canvas))}
-      .lw-map-heading-icon svg{width:17px;height:17px}
-      .lw-map-request{flex-wrap:wrap}
+      .lw-map-request{display:flex;align-items:center;gap:10px;min-width:0;flex-wrap:wrap}
       .lw-map-request input{flex:1 1 210px}
       .lw-map-shell{display:grid;grid-template-columns:minmax(118px,16%) minmax(0,1fr) minmax(176px,23%);gap:12px;align-items:start}
+      .lw-map-shell:not(:has(.lw-map-inspector)){grid-template-columns:minmax(110px,16%) minmax(0,1fr)}
       .lw-map-routes,.lw-map-inspector,.lw-map-overviews>details{border:1px solid var(--dsw-alias-border-l2,#8883);border-radius:12px;background:var(--dsw-alias-bg-base,Canvas);min-width:0}
       .lw-map-routes,.lw-map-inspector{display:grid;align-content:start;gap:10px;padding:12px;overflow-wrap:anywhere}
       .lw-map-inspector{box-sizing:border-box;max-height:var(--lw-map-height);overflow:auto;scrollbar-gutter:stable}
@@ -1371,7 +1370,8 @@ window.__ModuleLoader__.load({
       .lw-map-inspector h3{font-size:var(--lw-ui-lg,1.1rem);line-height:1.4}
       .lw-map-routes h3,.lw-map-inspector h4{font-size:var(--lw-ui-sm);color:var(--dsw-alias-label-secondary);font-weight:600}
       .lw-map-route-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px;align-items:start}
-      .lw-map-route-row button:first-child{justify-content:center;min-width:24px;padding-inline:4px}
+      .lw-map-route-row:has(>button:only-child){grid-template-columns:minmax(0,1fr)}
+      .lw-map-route-row button[aria-expanded]{justify-content:center;min-width:24px;padding-inline:4px}
       .lw-map-routes button,.lw-map-relations button,.lw-map-overviews button{justify-content:flex-start;text-align:start;max-width:100%;white-space:normal;overflow-wrap:anywhere}
       .lw-map-routes button[aria-current=page]{background:color-mix(in srgb,var(--lw-paradigm-accent,#8269c4) 17%,transparent);color:var(--dsw-alias-label-primary);font-weight:600}
       .lw-map-inspector a{font-size:var(--lw-ui-sm);width:fit-content;max-width:100%}
@@ -1391,6 +1391,7 @@ window.__ModuleLoader__.load({
       .lw-map-kind[data-kind=file]{--lw-node-color:#818b9d}
       .lw-map-canvas{min-width:0}
       .lw-bot-board .lw-map-canvas .lw-bot-canvas{height:var(--lw-map-height);border-radius:12px}
+      .lw-bot-canvas[data-research=true] .lw-canvas-toolbar{flex-wrap:wrap}
       .lw-bot-canvas[data-research=true] .lw-canvas-viewport{background-image:radial-gradient(var(--dsw-alias-border-l3,#8885) .85px,transparent .85px);background-size:15px 15px}
       .lw-bot-canvas[data-research=true] .lw-canvas-stage{grid-auto-columns:clamp(154px,17vw,188px);gap:28px;padding:14px 16px}
       .lw-bot-canvas[data-research=true] .lw-canvas-lane{gap:10px}
@@ -1417,32 +1418,27 @@ window.__ModuleLoader__.load({
       .lw-map-timeline li{position:relative;display:grid;gap:1px;justify-items:start}
       .lw-map-timeline li::before{content:"";position:absolute;inset:6px auto auto -16px;width:7px;height:7px;border-radius:50%;background:var(--lw-paradigm-accent,#8269c4)}
       @container (max-width:790px){.lw-map-shell{grid-template-columns:minmax(110px,22%) minmax(0,1fr)}.lw-map-inspector{grid-column:1/-1;max-height:none}}
-      @container (max-width:480px){.lw-map-shell,.lw-map-overviews{grid-template-columns:minmax(0,1fr)}.lw-map-routes{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px}.lw-map-routes h3{flex:0 0 100%}.lw-map-routes select{width:auto;max-width:100%}}
+      @container (max-width:480px){.lw-map-shell,.lw-map-shell:not(:has(.lw-map-inspector)),.lw-map-overviews{grid-template-columns:minmax(0,1fr)}.lw-map-routes{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px}.lw-map-routes select{width:auto;max-width:100%}}
       .lw-idea-workspace{container-type:inline-size;display:grid;gap:14px;min-width:0}
-      .lw-idea-header,.lw-idea-heading,.lw-idea-filters,.lw-idea-filters nav,.lw-idea-badges{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
-      .lw-idea-header,.lw-idea-filters{justify-content:space-between}
-      .lw-idea-heading>span{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:color-mix(in srgb,var(--lw-paradigm-accent,#b47f3d) 19%,var(--dsw-alias-bg-base,Canvas))}
-      .lw-idea-heading>span svg{width:18px;height:18px}
-      .lw-idea-workspace :is(h2,h3,h4,p){margin:0}
-      .lw-idea-heading h2{font-size:var(--lw-ui-xl,1.24rem);letter-spacing:-.02em}
-      .lw-idea-filters{padding-block:2px 9px;border-block-end:1px solid var(--dsw-alias-border-l2,#8883)}
-      .lw-idea-filters>.lw-select{width:auto;min-width:128px;max-width:100%}
+      .lw-idea-filters,.lw-idea-filters nav,.lw-idea-badges{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
+      .lw-idea-workspace :is(h3,h4,p){margin:0}
+      .lw-idea-filters{justify-content:space-between;padding-block:2px 9px;border-block-end:1px solid var(--dsw-alias-border-l2,#8883)}
+      .lw-idea-filters .lw-select{width:auto;max-width:100%}
       .lw-idea-filters button span{margin-inline-start:5px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}
       .lw-idea-filters button[aria-pressed=true]{background:color-mix(in srgb,var(--lw-paradigm-accent,#b47f3d) 16%,transparent);font-weight:600}
       .lw-idea-shell{display:grid;grid-template-columns:minmax(0,2fr) minmax(230px,1fr);gap:14px;align-items:start}
+      .lw-idea-shell:not(:has(.lw-idea-inspector)){grid-template-columns:minmax(0,1fr)}
       .lw-idea-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch;gap:12px}
       .lw-idea-card,.lw-idea-inspector,.lw-idea-empty{border:1px solid var(--dsw-alias-border-l2,#8883);border-radius:12px;padding:14px;min-width:0;overflow-wrap:anywhere;background:var(--dsw-alias-bg-base,Canvas)}
-      .lw-idea-card{display:grid;align-content:start;gap:9px;text-align:start;color:inherit;font:inherit;cursor:pointer;min-height:122px;box-shadow:0 2px 7px #40260a0a}
+      .lw-idea-card{display:grid;align-content:start;gap:7px;text-align:start;color:inherit;font:inherit;cursor:pointer;min-height:96px;box-shadow:0 2px 7px #40260a0a}
       .lw-idea-card:is(:hover,[aria-pressed=true]){border-color:var(--lw-paradigm-accent,#b47f3d)}
       .lw-idea-card[aria-pressed=true]{background:color-mix(in srgb,var(--lw-paradigm-accent,#b47f3d) 9%,var(--dsw-alias-bg-base,Canvas))}
       .lw-idea-card:focus-visible{outline:2px solid var(--dsw-focus-ring-color,#3b82f6);outline-offset:2px}
       .lw-idea-card strong{font-size:var(--lw-ui-base);line-height:1.45}
-      .lw-idea-summary{font-size:var(--lw-ui-sm);color:var(--dsw-alias-label-secondary);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
+      .lw-idea-summary{font-size:var(--lw-ui-sm);color:var(--dsw-alias-label-secondary);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
       .lw-idea-type{--lw-idea-type:#b78248;border-radius:5px;padding:1px 6px;font-size:var(--lw-ui-xs);background:color-mix(in srgb,var(--lw-idea-type) 20%,var(--dsw-alias-bg-base,Canvas))}
       .lw-idea-type[data-kind=extension]{--lw-idea-type:#8c73cf}
       .lw-idea-type[data-kind=method]{--lw-idea-type:#2aa592}
-      .lw-idea-ref-count{display:flex;align-items:center;gap:4px;color:var(--dsw-alias-label-secondary);font-size:var(--lw-ui-xs)}
-      .lw-idea-ref-count svg{width:13px;height:13px}
       .lw-idea-inspector{display:grid;gap:10px;align-content:start;box-sizing:border-box;max-height:clamp(300px,52vh,530px);overflow:auto;scrollbar-gutter:stable}
       .lw-idea-inspector h3{font-size:var(--lw-ui-lg,1.1rem);line-height:1.4}
       .lw-idea-inspector a,.lw-idea-inspector .lw-md{font-size:var(--lw-ui-sm)}
@@ -1455,14 +1451,11 @@ window.__ModuleLoader__.load({
       @container (max-width:760px){.lw-idea-shell{grid-template-columns:minmax(0,1fr)}.lw-idea-inspector{max-height:none}}
       @container (max-width:460px){.lw-idea-grid{grid-template-columns:minmax(0,1fr)}}
       .lw-code-workbench{container-type:inline-size;display:grid;gap:12px;min-width:0;--lw-code-height:clamp(280px,49vh,490px)}
-      .lw-code-header,.lw-code-heading,.lw-code-toolbar,.lw-code-tabs,.lw-code-breadcrumb,.lw-code-preview-head,.lw-code-save-result{display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-width:0}
-      .lw-code-header,.lw-code-toolbar,.lw-code-preview-head,.lw-code-save-result{justify-content:space-between}
-      .lw-code-workbench :is(h2,h3,h4,p){margin:0}
-      .lw-code-heading h2{font-size:var(--lw-ui-xl,1.24rem);letter-spacing:-.02em}
-      .lw-code-heading>span{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:color-mix(in srgb,var(--lw-paradigm-accent,#558fa7) 20%,var(--dsw-alias-bg-base,Canvas))}
-      .lw-code-heading svg{width:17px;height:17px}
-      .lw-code-toolbar{padding:8px 0;border-block-end:1px solid var(--dsw-alias-border-l2,#8883)}
-      .lw-code-toolbar .lw-select,.lw-code-save-result .lw-select{width:auto;max-width:100%}
+      .lw-code-header,.lw-code-tabs,.lw-code-breadcrumb,.lw-code-preview-head,.lw-code-save-result{display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-width:0}
+      .lw-code-header,.lw-code-preview-head,.lw-code-save-result{justify-content:space-between}
+      .lw-code-workbench :is(h3,h4,p){margin:0}
+      .lw-code-header{padding-block-end:8px;border-block-end:1px solid var(--dsw-alias-border-l2,#8883)}
+      .lw-code-header .lw-select,.lw-code-save-result .lw-select{width:auto;max-width:100%}
       .lw-code-tabs button[aria-pressed=true],.lw-code-tree button[aria-current=page],.lw-code-outline button[aria-pressed=true]{background:color-mix(in srgb,var(--lw-paradigm-accent,#558fa7) 17%,transparent);font-weight:600}
       .lw-code-breadcrumb{overflow-wrap:anywhere;font-size:var(--lw-ui-sm);color:var(--dsw-alias-label-secondary)}
       .lw-code-body{display:grid;grid-template-columns:minmax(115px,18%) minmax(0,1fr);gap:12px;align-items:start}
@@ -1517,9 +1510,8 @@ window.__ModuleLoader__.load({
       .lw-overview-metric svg{width:19px;height:19px;color:var(--dsw-alias-label-secondary)}
       .lw-overview-metric span{font-size:var(--lw-ui-sm);color:var(--dsw-alias-label-secondary)}
       .lw-overview-next{display:grid;gap:5px}
-      .lw-overview-body{display:grid;grid-template-columns:minmax(0,2fr) minmax(205px,1fr);gap:16px;align-items:start}
-      .lw-overview-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-      .lw-overview-card,.lw-overview-activity{display:grid;gap:9px;overflow-wrap:anywhere}
+      .lw-overview-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,270px),1fr));gap:12px}
+      .lw-overview-card{display:grid;gap:9px;overflow-wrap:anywhere}
       .lw-overview-card{grid-template-rows:auto 1fr auto;align-content:start}
       .lw-project-overview h2{font-size:var(--lw-ui-base);font-weight:650}
       .lw-overview-card header>span{display:grid;place-items:center;width:30px;height:30px;flex:none;border-radius:8px;background:color-mix(in srgb,var(--lw-overview-accent,#786ac4) 18%,var(--dsw-alias-bg-base,Canvas))}
@@ -1528,6 +1520,7 @@ window.__ModuleLoader__.load({
       .lw-overview-card[data-area=ideas],.lw-overview-activity [data-area=ideas]{--lw-overview-accent:#b47f3d}
       .lw-overview-card[data-area=engineering],.lw-overview-activity [data-area=engineering]{--lw-overview-accent:#558fa7}
       .lw-overview-card header svg{width:15px;height:15px}
+      .lw-overview-card .lw-overview-jump{margin-inline-start:auto}
       .lw-overview-card ul,.lw-overview-activity ol{display:grid;gap:6px;padding:0;list-style:none}
       .lw-overview-card li,.lw-overview-activity li{min-width:0;display:grid;gap:2px;align-content:start;justify-items:start}
       .lw-overview-card li button,.lw-overview-activity li button{justify-content:flex-start;text-align:start;padding-inline:0;max-width:100%;white-space:normal;overflow-wrap:anywhere}
@@ -1535,7 +1528,8 @@ window.__ModuleLoader__.load({
       .lw-overview-activity ol{padding-inline-start:13px;border-inline-start:1px solid var(--dsw-alias-border-l2,#8883);gap:12px}
       .lw-overview-activity li{position:relative}
       .lw-overview-activity li::before{content:"";position:absolute;inset:6px auto auto -17px;width:7px;height:7px;border-radius:50%;background:var(--lw-overview-accent,#786ac4)}
-      @container lwpage (max-width:790px){.lw-overview-body{grid-template-columns:minmax(0,1fr)}}
+      .lw-overview-activity>summary{cursor:pointer;font-weight:600}
+      .lw-overview-activity[open]>summary{margin-block-end:10px}
       @container lwpage (max-width:490px){.lw-overview-grid{grid-template-columns:minmax(0,1fr)}.lw-overview-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.lw-overview-progress{grid-column:1/-1}}
       .lw-canvas-attachment{margin:0;border:1px solid var(--dsw-alias-border-l2,#8883);border-radius:8px;padding:8px 10px;justify-content:space-between;overflow-wrap:anywhere}
       .lw-canvas-detail-body{display:grid;gap:12px;min-width:0}
@@ -1558,7 +1552,9 @@ window.__ModuleLoader__.load({
       .lw-record-content .lw-fbot-detail-figure{margin:0}
       .lw-record-content .lw-push-source{margin:0;padding-block:12px 0}
       .lw-record-links{display:grid;gap:8px;padding-top:10px;border-top:1px solid var(--dsw-alias-border-l4,#8886);min-width:0}
-      .lw-record-links h3,.lw-record-links h4{margin:0;font-size:inherit}
+      .lw-record-links h4{margin:0;font-size:inherit}
+      .lw-record-picker>summary{width:fit-content;max-width:100%;cursor:pointer;color:var(--dsw-alias-label-secondary);font-size:var(--lw-ui-sm)}
+      .lw-record-picker[open]>summary{margin-block-end:5px}
       .lw-record-links ul{display:grid;gap:4px;margin:0;padding:0;list-style:none}
       .lw-record-links li,.lw-record-link-form{display:flex;align-items:center;gap:7px;flex-wrap:wrap;min-width:0}
       .lw-record-links li button{max-width:100%;white-space:normal;overflow-wrap:anywhere;text-align:left}
@@ -3315,10 +3311,10 @@ window.__ModuleLoader__.load({
       .then(module => ({ default: module.createNotebook(React, { Btn, Markdown, formatDate: fmtDateTime,
         resourceImage: entryImageSrc, safeUrl: mdSafeUrl }) })))
     const ResearchMap = React.lazy(() => import(new URL('./labweave-research-map.js', document.baseURI).href)
-      .then(module => ({ default: module.createResearchMap(React, { Btn, Icon, Canvas: BotParadigmView,
+      .then(module => ({ default: module.createResearchMap(React, { Btn, Canvas: BotParadigmView,
         Markdown, safeUrl: mdSafeUrl }) })))
     const IdeaCards = React.lazy(() => import(new URL('./labweave-idea-cards.js', document.baseURI).href)
-      .then(module => ({ default: module.createIdeaCards(React, { Btn, Icon, Markdown, safeUrl: mdSafeUrl }) })))
+      .then(module => ({ default: module.createIdeaCards(React, { Btn, Markdown, safeUrl: mdSafeUrl }) })))
     const BotExperiments = React.lazy(() => getWorkbenchViews().then(views => ({ default: views.Experiments })))
     const CodeWorkbench = React.lazy(() => Promise.all([
       import(new URL('./labweave-code-workbench.js', document.baseURI).href), getWorkbenchViews(),
@@ -3409,7 +3405,8 @@ window.__ModuleLoader__.load({
       }
     }
 
-    function BotParadigmView({ layout, items, fields = [], activeId, openEntry, toggleGoal, addNode, deleteNode, busy, emptyTitle, nodeKinds, label = LW('内容画布') }) {
+    function BotParadigmView({ layout, items, fields = [], activeId, openEntry, toggleGoal, addNode, deleteNode, busy, emptyTitle,
+      nodeKinds, toolbarActions, label = LW('内容画布') }) {
       const [category, setCategory] = React.useState(null)
       const [paths, setPaths] = React.useState([])
       const [camera, setCamera] = React.useState({ zoom: 100, x: 0, y: 0 })
@@ -3471,6 +3468,7 @@ window.__ModuleLoader__.load({
       const dated = layout === 'timeline' || layout === 'lineage'
       const sequential = dated || layout === 'reasoning'
       const graph = layout === 'graph' || layout === 'path'
+      const researchMap = Boolean(nodeKinds?.topic)
       const lanes = new Map()
       const append = (key, row) => {
         if (!lanes.has(key)) lanes.set(key, [])
@@ -3487,9 +3485,11 @@ window.__ModuleLoader__.load({
           .sort((a, b) => (successors.get(b.id) || 0) - (successors.get(a.id) || 0))
         for (const item of orderGoalPath(nodes)) {
           const parents = incoming.get(item.id).filter(id => depth.has(id))
-          const level = parents.length ? Math.min(10, 1 + Math.max(...parents.map(id => depth.get(id)))) : 0
+          const row = byRecord.get(item.id)
+          const mapColumn = researchMap && !hierarchy.length ? ({ topic: 0, route: 1 }[row.item.kind] ?? 2) : 0
+          const level = parents.length ? Math.min(10, 1 + Math.max(...parents.map(id => depth.get(id)))) : mapColumn
           depth.set(item.id, level)
-          append(level, byRecord.get(item.id))
+          append(level, row)
         }
       } else if (sequential) {
         const direction = layout === 'timeline' ? -1 : 1
@@ -3558,7 +3558,7 @@ window.__ModuleLoader__.load({
             ...(openEntry && { type: 'button', 'aria-label': row.title, onClick: () => openEntry(item),
               ...(nodeKinds && { 'aria-pressed': activeId === item.id }) }) },
             h('span', { className: 'lw-canvas-card-meta' },
-              h(Icon, { name: file ? 'file' : row.source ? 'link' : graph ? 'mindmap' : 'list' }),
+              !researchMap && h(Icon, { name: file ? 'file' : row.source ? 'link' : graph ? 'mindmap' : 'list' }),
               nodeKinds?.[item.kind] && h('span', { className: 'lw-map-kind', 'data-kind': item.kind }, nodeKinds[item.kind]),
               dated && h('span', null, date || LW('日期待确认')),
               item.due && h('span', null, LW('截止 ') + item.due),
@@ -3568,7 +3568,7 @@ window.__ModuleLoader__.load({
               status && h('span', null, status),
               item.relationLabel && h('span', null, item.relationLabel)),
             h('strong', null, row.title),
-            row.summary && row.summary !== row.title && h('span', { className: 'lw-paradigm-preview' }, row.summary),
+            !researchMap && row.summary && row.summary !== row.title && h('span', { className: 'lw-paradigm-preview' }, row.summary),
             thumbnail && h('img', { className: 'lw-canvas-thumb', src: thumbnail, alt: '', loading: 'lazy',
               onError: event => { event.currentTarget.hidden = true } })),
           toggleGoal && editable && h('label', { className: 'lw-canvas-card-meta', style: {padding:'0 10px 8px', alignItems:'center'} },
@@ -3583,6 +3583,7 @@ window.__ModuleLoader__.load({
 
       const canvas = h('section', { className: 'lw-bot-canvas', 'data-layout': layout, 'data-research': Boolean(nodeKinds), 'aria-label': label },
         h('div', { className: 'lw-canvas-toolbar' },
+          toolbarActions,
           addNode && Btn({ variant: 'ghost', size: 'xs', disabled: busy, onClick: () => addNode(null) }, LW('添加节点')),
           relationships.length > 0 && h('div', { className: 'lw-map-legend', 'aria-label': LW('连线说明') },
             relationships.some(link => link.evidence === 'source') && h('span', null, LW('附来源')),
@@ -3662,25 +3663,27 @@ window.__ModuleLoader__.load({
           : h('small', { className: 'lw-hint' }, LW('原记录已移除或不可访问'))
       }
       return h('section', { className: 'lw-record-links', 'aria-label': LW('关联项目记录') },
-        h('h3', null, LW('关联记录')),
         outgoing.size > 0 && h('ul', null, [...outgoing].map(([key, ref]) => h('li', { key },
           open(index.get(key)), change && Btn({ variant: 'ghost', size: 'xs', disabled: busy,
             'aria-label': LW('移除关联 ') + (index.get(key)?.title || LW('不可访问的记录')), onClick: () => change(ref, true) }, LW('移除'))))),
         incoming.length > 0 && h(React.Fragment, null,
           h('h4', null, LW('被这些记录引用')),
           h('ul', null, incoming.map(record => h('li', { key: refKey(record) }, open(record))))),
-        change && available.length > 0 && h('div', { className: 'lw-record-link-form' },
-          h('select', { className: 'lw-select', value: chosen ? choice : '', 'aria-label': LW('选择项目记录'),
-            onChange: event => setChoice(event.target.value) },
-            h('option', { value: '' }, LW('选择项目记录')),
-            featureList.map(row => {
-              const options = available.filter(record => record.featureId === row.id)
-              return options.length > 0 && h('optgroup', { key: row.id, label: row.label },
-                options.map(record => h('option', { key: refKey(record), value: refKey(record) }, record.title)))
-            })),
-          Btn({ size: 'xs', disabled: busy || !chosen, onClick: async () => {
-            if (await change(chosen, false)) setChoice('')
-          } }, LW('添加关联'))))
+        change && available.length > 0 && h('details', { className: 'lw-record-picker' },
+          h('summary', null, LW('关联其他记录')),
+          h('div', { className: 'lw-record-link-form' },
+            h('select', { className: 'lw-select', value: chosen ? choice : '', 'aria-label': LW('选择项目记录'),
+              onChange: event => setChoice(event.target.value) },
+              h('option', { value: '' }, LW('选择记录')),
+              featureList.map(row => {
+                const options = available.filter(record => record.featureId === row.id)
+                return options.length > 0 && h('optgroup', { key: row.id, label: row.label },
+                  options.map(record => h('option', { key: refKey(record), value: refKey(record) }, record.title)))
+              })),
+            Btn({ size: 'xs', disabled: busy || !chosen, onClick: async event => {
+              const picker = event.currentTarget.closest('details')
+              if (await change(chosen, false)) { setChoice(''); if (picker) picker.open = false }
+            } }, LW('添加关联')))))
     }
 
     function Panel({

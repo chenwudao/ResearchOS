@@ -115,8 +115,7 @@ export function createCodeWorkbench(React, project, { Btn, Icon, Canvas, Experim
     }
     function outline() {
       return h('aside', { className: 'lw-code-outline', 'aria-label': '代码结构' },
-        h('h3', null, '代码结构'),
-        !selected?.symbols.length && !selected?.imports.length && h('p', { className: 'lw-hint' }, '本文件没有识别到函数、类或静态导入。'),
+        !selected?.symbols.length && !selected?.imports.length && h('p', { className: 'lw-hint' }, '暂无结构可显示'),
         selected?.symbols.length > 0 && h('section', null, h('h4', null, '函数与类'),
           selected.symbols.map(symbol => {
             const key = 'symbol-' + symbol.line
@@ -134,34 +133,33 @@ export function createCodeWorkbench(React, project, { Btn, Icon, Canvas, Experim
                 onClick: () => jump(entry.line, entry.line, key) }, target),
               entry.target && Btn({ size: 'xs', variant: 'ghost', 'aria-label': '打开依赖 ' + shortName(entry.target),
                 onClick: () => toFile(entry.target) }, '打开'),
-              !entry.target && h('small', { className: 'lw-hint' }, '来源索引内未解析'))
+              !entry.target && h('small', { className: 'lw-hint', title: '当前代码索引内无匹配项' }, '未解析'))
           })))
     }
     return h('section', { className: 'lw-code-workbench', 'aria-label': '代码工作区' },
       h('header', { className: 'lw-code-header' },
-        h('div', { className: 'lw-code-heading' }, h('span', null, h(Icon, { name: 'activity' })), h('h2', null, '工程工作区')),
         h('div', { className: 'lw-code-tabs', 'aria-label': '工程视图', role: 'group' },
           [['code', '代码关系'], ['runs', '运行记录']].map(([value, label]) => Btn({
             key: value, size: 'xs', variant: 'ghost', 'aria-pressed': tab === value, onClick: () => setTab(value),
-          }, label)))),
+          }, label))),
+        tab === 'code' && h('div', { className: 'lw-actions' },
+          h('select', { className: 'lw-select', 'aria-label': '代码来源', value: sourceId, onChange: event => toSource(event.target.value) },
+            (sources.length ? sources : [{ id: 'project', name: '项目内代码', available: true }]).map(item =>
+              h('option', { key: item.id, value: item.id, disabled: !item.available }, item.name))),
+          Btn({ size: 'xs', variant: 'ghost', 'aria-label': '刷新索引', title: '刷新索引', onClick: rescan }, h(Icon, { name: 'refresh' })),
+          settings && Btn({ size: 'xs', variant: 'ghost', 'aria-label': '管理来源', onClick: () => settings(rescan) }, '管理来源'))),
       tab === 'runs' ? h(Experiments, { ...experimentProps, layout: 'sequence', runRequest: request }) :
         h(React.Fragment, null,
-          h('div', { className: 'lw-code-toolbar' },
+          group !== null &&
             h('nav', { 'aria-label': '代码位置', className: 'lw-code-breadcrumb' },
-              Btn({ size: 'xs', variant: 'ghost', onClick: () => toModule(null), 'aria-current': group === null ? 'page' : undefined }, '项目'),
-              group !== null && h(React.Fragment, null, h('span', { 'aria-hidden': true }, '/'),
-                Btn({ size: 'xs', variant: 'ghost', onClick: () => toModule(group), 'aria-current': !path ? 'page' : undefined }, moduleLabel(group))),
+              Btn({ size: 'xs', variant: 'ghost', onClick: () => toModule(null) }, '项目'),
+              h('span', { 'aria-hidden': true }, '/'),
+              Btn({ size: 'xs', variant: 'ghost', onClick: () => toModule(group), 'aria-current': !path ? 'page' : undefined }, moduleLabel(group)),
               path && h(React.Fragment, null, h('span', { 'aria-hidden': true }, '/'), h('span', { 'aria-current': 'page' }, shortName(path)))),
-            h('div', { className: 'lw-actions' },
-              h('select', { className: 'lw-select', 'aria-label': '代码来源', value: sourceId, onChange: event => toSource(event.target.value) },
-                (sources.length ? sources : [{ id: 'project', name: '项目内代码', available: true }]).map(item =>
-                  h('option', { key: item.id, value: item.id, disabled: !item.available }, item.name))),
-              Btn({ size: 'xs', variant: 'ghost', onClick: rescan }, '刷新索引'),
-              settings && Btn({ size: 'xs', variant: 'ghost', onClick: () => settings(rescan) }, '管理来源'))),
           error && h('p', { role: 'alert', className: 'lw-error' }, error),
           !scan && !error && h('p', { className: 'lw-hint' }, '正在建立 Python 索引…'),
-          scan?.truncated && h('p', { className: 'lw-hint' }, '索引只显示前 150 个 Python 文件或扫描范围内的文件。'),
-          scan && !records.length && !error && h('p', { className: 'lw-code-empty lw-hint' }, '此来源没有 Python 文件。可以切换到项目关联的代码目录。'),
+          scan?.truncated && h('p', { className: 'lw-hint' }, '索引已截断，最多显示 150 个文件'),
+          scan && !records.length && !error && h('p', { className: 'lw-code-empty lw-hint' }, '此来源暂无 Python 文件'),
           records.length > 0 && h('div', { className: 'lw-code-body', 'data-file': Boolean(path) },
             h('nav', { className: 'lw-code-tree', 'aria-label': '代码目录' },
               h('h3', null, group === null ? '项目模块' : '模块文件'),
@@ -169,10 +167,10 @@ export function createCodeWorkbench(React, project, { Btn, Icon, Canvas, Experim
                 onClick: () => group === null ? toModule(entry.id) : toFile(entry.id) }, entry.title))),
             path ? viewSource() : h('div', { className: 'lw-code-graph' },
               h('p', { className: 'lw-code-graph-label lw-hint' },
-                (group === null ? records.length : peers.length) + ' 个 Python 文件 · 静态导入关系'),
+                (group === null ? records.length : peers.length) + ' 个文件 · 静态导入'),
               h(Canvas, { layout: 'graph', nodeKinds: {}, items: group === null ? groupGraph : fileGraph,
                 openEntry: entry => group === null ? toModule(entry.id) : toFile(entry.id), label: group === null ? '项目模块关系' : '模块文件关系',
-                emptyTitle: '此模块没有索引中的文件。' })),
+                emptyTitle: '暂无文件' })),
             path && outline())))
   }
 }

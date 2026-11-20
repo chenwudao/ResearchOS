@@ -106,11 +106,9 @@ export function createNotebook(React, { Btn, Markdown, formatDate, resourceImage
       remove && Btn({ variant: 'ghost', size: 'xs', disabled: busy, 'aria-label': '解除附件 ' + titleOf(item), onClick: remove }, '解除'))
 
     return h('section', { className: 'lw-notebook', 'aria-label': '项目笔记资料库', 'data-wide': wide },
-      h('header', { className: 'lw-notebook-toolbar' },
-        h('strong', null, '笔记与资料'),
-        h('div', { className: 'lw-actions' },
-          Btn({ size: 'xs', disabled: Boolean(editor), onClick: () => { setSelected(''); setHistory(null); setEditor(blank(folder)) } }, '新建笔记'),
-          toggle(wide ? '退出宽屏' : '宽屏编辑', wide, () => setWide(!wide)))),
+      h('div', { className: 'lw-actions lw-notebook-actions' },
+        toggle(wide ? '退出宽屏' : '宽屏编辑', wide, () => setWide(!wide)),
+        Btn({ size: 'xs', disabled: Boolean(editor), onClick: () => { setSelected(''); setHistory(null); setEditor(blank(folder)) } }, '新建笔记')),
       h('div', { className: 'lw-notebook-body' },
         !wide && h('aside', { className: 'lw-notebook-tree', 'aria-label': '笔记目录' },
           h('input', { type: 'search', className: 'lw-input', 'aria-label': '搜索笔记', placeholder: '搜索笔记', value: query,
@@ -132,8 +130,8 @@ export function createNotebook(React, { Btn, Markdown, formatDate, resourceImage
             visible.length ? visible.map(item => h('div', { key: item.id },
               Btn({ variant: 'ghost', size: 'xs', disabled: Boolean(editor), 'aria-current': selected === item.id ? 'page' : undefined,
                 onClick: () => open(item.id) }, titleOf(item)))) : h('p', { className: 'lw-hint' }, '暂无匹配笔记')),
-          h('details', null, h('summary', null, '项目资料库'),
-            resources.length ? h('ul', null, resources.map(item => resourceRow(item))) : h('p', { className: 'lw-hint' }, '暂无导入资料'))),
+          resources.length > 0 && h('details', null, h('summary', null, '资料库'),
+            h('ul', null, resources.map(item => resourceRow(item))))),
         h('article', { className: 'lw-notebook-document', 'aria-label': '笔记正文' },
           editor ? h('form', { className: 'lw-notebook-form', onSubmit: commit },
             field('笔记标题', 'title', { required: true, maxLength: 240 }),
@@ -151,7 +149,7 @@ export function createNotebook(React, { Btn, Markdown, formatDate, resourceImage
               Btn({ variant: 'ghost', size: 'xs', onClick: () => { setEditor(null); setPreview(false); if (editor.id) setSelected(editor.id) } }, '取消编辑'))) :
             active ? h(React.Fragment, null,
               h('h2', null, titleOf(active)),
-              h('p', { className: 'lw-hint' }, [folderOf(active), active.noteOrigin === 'assistant' ? 'AI 写入' : active.source,
+              h('p', { className: 'lw-hint' }, [active.noteOrigin === 'assistant' ? 'AI 写入' : active.source,
                 formatDate(active.noteEditedAt || active.ts)].filter(Boolean).join(' · ')),
               active.noteTags?.length > 0 && h('ul', { className: 'lw-notebook-tags', 'aria-label': '笔记标签' },
                 active.noteTags.map(name => h('li', { key: name }, name))),
@@ -178,7 +176,7 @@ export function createNotebook(React, { Btn, Markdown, formatDate, resourceImage
                     onClick: async () => { if (await decideSuggestion(active, proposal, true)) setHistory(null) } }, '采纳整理'),
                   Btn({ variant: 'ghost', size: 'xs', disabled: busy,
                     onClick: () => decideSuggestion(active, proposal, false) }, '忽略草稿')))) :
-            h('p', { className: 'lw-hint' }, '从左侧选择一篇笔记，或新建笔记。'),
+            h('p', { className: 'lw-hint' }, documents.length ? '选择一篇笔记' : '暂无笔记'),
           image && h('figure', { className: 'lw-notebook-attachment-preview' },
             h('figcaption', null, image.name, Btn({ variant: 'ghost', size: 'xs', onClick: () => setImage(null) }, '关闭预览')),
             h('img', { src: image.src, alt: image.name }))),
@@ -187,14 +185,16 @@ export function createNotebook(React, { Btn, Markdown, formatDate, resourceImage
           h('ul', null, resources.filter(item => attached.has(item.id)).map(item =>
             resourceRow(item, () => changeLink(active, { featureId: 'library', id: item.id }, true)))),
           h('div', { className: 'lw-notebook-form' },
-            h('select', { className: 'lw-select', 'aria-label': '选择项目资料', value: attachment, onChange: event => setAttachment(event.target.value) },
-              h('option', { value: '' }, '选择已有资料'),
-              resources.filter(item => !attached.has(item.id)).map(item => h('option', { value: item.id, key: item.id }, titleOf(item)))),
-            h('div', { className: 'lw-actions' },
-              Btn({ size: 'xs', disabled: !attachment || busy, onClick: async () => {
-                if (await changeLink(active, { featureId: 'library', id: attachment }, false)) setAttachment('')
-              } }, '关联附件'),
-              Btn({ variant: 'ghost', size: 'xs', disabled: busy, onClick: () => input.current?.click() }, '上传附件')),
+            resources.some(item => !attached.has(item.id)) && h('details', { className: 'lw-record-picker', key: active.id },
+              h('summary', null, '关联已有资料'),
+              h('div', { className: 'lw-record-link-form' },
+                h('select', { className: 'lw-select', 'aria-label': '选择项目资料', value: attachment, onChange: event => setAttachment(event.target.value) },
+                  h('option', { value: '' }, '选择资料'),
+                  resources.filter(item => !attached.has(item.id)).map(item => h('option', { value: item.id, key: item.id }, titleOf(item)))),
+                Btn({ size: 'xs', disabled: !attachment || busy, onClick: async () => {
+                  if (await changeLink(active, { featureId: 'library', id: attachment }, false)) setAttachment('')
+                } }, '关联附件'))),
+            Btn({ variant: 'ghost', size: 'xs', disabled: busy, onClick: () => input.current?.click() }, '上传附件'),
             h('input', { type: 'file', 'aria-label': '笔记附件文件', ref: input, hidden: true, onChange: event => {
               const file = event.target.files?.[0]
               event.target.value = ''
