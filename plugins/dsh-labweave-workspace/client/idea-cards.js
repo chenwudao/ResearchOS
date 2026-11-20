@@ -1,12 +1,12 @@
 const types = { direction: '新方向', extension: '思路延伸', method: '研究方案' }
-const states = { active: '待探索', saved: '已收藏', deferred: '暂不考虑' }
+const states = { active: '待探索', saved: '已收藏', deferred: '暂缓' }
 const titleOf = entry => entry.title || entry.text.split('\n')[0]
 const sections = [
   ['ideaEvidence', '已有依据'], ['hypothesis', '待验证假设'],
-  ['validation', '可以先做什么'], ['ideaTradeoffs', '可行性与限制'],
+  ['validation', '最小验证'], ['ideaTradeoffs', '可行性与限制'],
 ]
 
-export function createIdeaCards(React, { Btn, Markdown, safeUrl }) {
+export function createIdeaCards(React, { Btn, Icon, Markdown, safeUrl }) {
   const h = React.createElement
   return function IdeaCards({ items, topic, request, feature, goals, busy, save, changeState, draftGoal, remove, navigate, links, ask }) {
     const [filter, setFilter] = React.useState('active')
@@ -17,14 +17,12 @@ export function createIdeaCards(React, { Btn, Markdown, safeUrl }) {
     const [targetGoal, setTargetGoal] = React.useState('')
     const [feedback, setFeedback] = React.useState(null)
     const appliedRequest = React.useRef(null)
-    const byState = state => items.filter(item => (item.ideaState || 'active') === state)
-    const visible = byState(filter).filter(item => !type || (item.kind || 'direction') === type)
+    const kinds = new Set(items.map(item => item.kind || 'direction'))
+    const effectiveType = kinds.size > 1 && kinds.has(type) ? type : ''
+    const visible = items.filter(item => (item.ideaState || 'active') === filter &&
+      (!effectiveType || (item.kind || 'direction') === effectiveType))
     const current = visible.find(item => item.id === selected) || visible[0]
     const calendar = goals.find(item => item.id === targetGoal) || goals[0]
-    const detail = React.useRef(null)
-    React.useLayoutEffect(() => {
-      if (detail.current) detail.current.scrollTop = 0
-    }, [current?.id, Boolean(editor)])
     React.useEffect(() => {
       if (!request || appliedRequest.current === request) return
       const target = items.find(item => item.id === request.id)
@@ -37,7 +35,6 @@ export function createIdeaCards(React, { Btn, Markdown, safeUrl }) {
         setFilter(feedback.state); select(feedback.id); setFeedback(null)
       }
     }, [feedback, items])
-    const badge = (item) => h('span', { className: 'lw-idea-type', 'data-kind': item.kind }, types[item.kind] || types.direction)
     const setStatus = async (item, state) => {
       if (!await changeState(item, state)) return
       setFeedback({ id: item.id, state })
@@ -69,52 +66,69 @@ export function createIdeaCards(React, { Btn, Markdown, safeUrl }) {
         formField('title', '研究问题', { maxLength: 240, required: true }),
         h('label', null, '类型', h('select', { className: 'lw-select', value: editor.kind, onChange: e => edit({ ...editor, kind: e.target.value }) },
           Object.entries(types).map(([value, label]) => h('option', { key: value, value }, label)))),
-        formField('text', '简述', { multiline: true, rows: 3, maxLength: 16000 }),
-        sections.map(([key, label]) => formField(key, label, { multiline: true, rows: 2, maxLength: key === 'ideaEvidence' ? 1400 : 1000 })),
-        formField('url', '文献 URL', { type: 'url', maxLength: 2000 }),
+        formField('hypothesis', '待验证假设', { multiline: true, rows: 2, maxLength: 1000 }),
+        formField('validation', '最小验证', { multiline: true, rows: 2, maxLength: 1000 }),
+        h('details', { className: 'lw-idea-disclosure' }, h('summary', null, '补充信息'),
+          h('div', { className: 'lw-idea-form' },
+            formField('text', '简述', { multiline: true, rows: 3, maxLength: 16000 }),
+            formField('ideaEvidence', '已有依据', { multiline: true, rows: 2, maxLength: 1400 }),
+            formField('ideaTradeoffs', '可行性与限制', { multiline: true, rows: 2, maxLength: 1000 }),
+            formField('url', '文献 URL', { type: 'url', maxLength: 2000 }))),
         h('div', { className: 'lw-actions' },
           Btn({ variant: 'primary', size: 'xs', type: 'submit', disabled: busy || !editor.title.trim() }, '保存点子'),
           Btn({ variant: 'ghost', size: 'xs', onClick: () => edit(null) }, '取消')))
       if (!current) return null
       const url = safeUrl(current.url)
+      const content = (key, label) => current[key] && h('section', { key, 'data-idea-field': key },
+        h('h4', null, label), h(Markdown, { source: current[key] }))
+      const intro = current.text && ![titleOf(current), ...sections.map(([key]) => current[key])].includes(current.text)
       return h(React.Fragment, null,
-        h('div', { className: 'lw-idea-badges' }, badge(current), current.ideaOrigin === 'assistant' && h('span', { className: 'lw-hint' }, 'AI 建议')),
-        h('h3', null, titleOf(current)),
-        ![titleOf(current), current.hypothesis].includes(current.text) && h(Markdown, { source: current.text }),
-        h('div', { className: 'lw-idea-evidence' }, sections.map(([key, label]) => (current[key] || key === 'ideaEvidence') &&
-          h('section', { key, 'data-idea-field': key },
-            h('h4', null, label),
-            current[key] ? h(Markdown, { source: current[key] }) : h('p', { className: 'lw-hint' }, '尚无实证依据。'),
-            key === 'ideaEvidence' && url && h('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, '打开原始文献')))),
-        h('div', { className: 'lw-actions' },
-          Btn({ size: 'xs', onClick: async () => ask('', current) }, '讨论这个点子'),
-          Btn({ size: 'xs', variant: 'ghost', disabled: busy || !!feedback, onClick: () => setStatus(current, filter === 'saved' ? 'active' : 'saved') },
-            filter === 'saved' ? '取消收藏' : '收藏点子'),
-          Btn({ size: 'xs', variant: 'ghost', disabled: busy || !!feedback, onClick: () => setStatus(current, filter === 'deferred' ? 'active' : 'deferred') },
-            filter === 'deferred' ? '恢复探索' : '暂不考虑')),
-        calendar && h('div', { className: 'lw-idea-form' },
+        h('header', { className: 'lw-idea-detail-head' },
+          h('p', { className: 'lw-idea-meta' }, [types[current.kind] || types.direction,
+            current.ideaOrigin === 'assistant' && 'AI 建议'].filter(Boolean).join(' · ')),
+          h('h3', null, titleOf(current)),
+          intro && h(Markdown, { source: current.text })),
+        h('div', { className: 'lw-actions lw-idea-tools' },
           goals.length > 1 && h('select', { className: 'lw-select', 'aria-label': '目标日历', value: calendar.id, onChange: e => setTargetGoal(e.target.value) },
             goals.map(item => h('option', { key: item.id, value: item.id }, item.label))),
-          Btn({ variant: 'primary', size: 'xs', disabled: busy, onClick: async () => {
+          calendar && Btn({ variant: 'primary', size: 'xs', disabled: busy, 'aria-label': '转为待办草稿', onClick: async () => {
             const reference = await draftGoal(current, calendar.id)
             if (reference?.id) navigate(reference)
-          } }, '转为待办草稿')),
-        h('details', { className: 'lw-map-record-links', open: Boolean(current.recordRefs?.length) }, h('summary', null, '项目依据与关联'), links(current)),
-        h('div', { className: 'lw-actions' },
-          Btn({ size: 'xs', variant: 'ghost', onClick: () => start(current) }, '编辑点子'),
-          Btn({ size: 'xs', variant: 'ghost', onClick: () => remove(current) }, '删除点子')))
+          } }, '转为待办'),
+          Btn({ size: 'xs', variant: 'ghost', disabled: busy, 'aria-label': '讨论这个点子', onClick: () => ask('', current) }, '讨论'),
+          Btn({ size: 'xs', variant: 'ghost', disabled: busy || !!feedback, 'aria-label': filter === 'saved' ? '取消收藏' : '收藏点子',
+            onClick: () => setStatus(current, filter === 'saved' ? 'active' : 'saved') }, filter === 'saved' ? '取消收藏' : '收藏'),
+          h('details', { className: 'lw-idea-more', key: current.id + ':' + filter },
+            h('summary', null, '更多'),
+            h('div', { className: 'lw-idea-menu' },
+              Btn({ size: 'xs', variant: 'ghost', onClick: () => start(current) }, '编辑点子'),
+              Btn({ size: 'xs', variant: 'ghost', disabled: busy || !!feedback, onClick: () =>
+                setStatus(current, filter === 'deferred' ? 'active' : 'deferred') }, filter === 'deferred' ? '恢复探索' : '暂不考虑'),
+              Btn({ size: 'xs', variant: 'ghost', className: 'lw-idea-delete', onClick: () => remove(current) }, '删除点子')))),
+        (current.hypothesis || current.validation) && h('div', { className: 'lw-idea-main' },
+          content('hypothesis', '待验证假设'),
+          content('validation', '最小验证')),
+        h('details', { className: 'lw-idea-disclosure', key: current.id }, h('summary', null, '依据与关联'),
+          h('div', { className: 'lw-idea-support' },
+            h('section', null, h('h4', null, '已有依据'),
+              current.ideaEvidence && h(Markdown, { source: current.ideaEvidence }),
+              url && h('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, '原文'),
+              !current.ideaEvidence && !url && h('p', { className: 'lw-hint' }, '暂无依据')),
+            content('ideaTradeoffs', '可行性与限制'),
+            links(current))))
     }
     return h('section', { className: 'lw-idea-workspace', 'aria-label': '研究点子卡片' },
       h('header', { className: 'lw-idea-filters' },
         h('nav', { 'aria-label': '点子状态' }, Object.entries(states).map(([state, label]) =>
           Btn({ key: state, size: 'xs', variant: 'ghost', 'aria-pressed': filter === state,
-            onClick: () => { setFilter(state); edit(null) } }, label, h('span', null, byState(state).length)))),
+            'aria-label': state === 'deferred' ? '暂不考虑' : undefined, onClick: () => { setFilter(state); edit(null) } }, label))),
         h('div', { className: 'lw-actions' },
-          h('select', { className: 'lw-select', value: type, 'aria-label': '筛选点子类型', onChange: e => setType(e.target.value) },
-            h('option', { value: '' }, '全部类型'), Object.entries(types).map(([value, label]) => h('option', { key: value, value }, label))),
+          kinds.size > 1 && h('select', { className: 'lw-select', value: effectiveType, 'aria-label': '筛选点子类型', onChange: e => setType(e.target.value) },
+            h('option', { value: '' }, '全部类型'), Object.entries(types).filter(([value]) => kinds.has(value))
+              .map(([value, label]) => h('option', { key: value, value }, label))),
           Btn({ variant: 'ghost', size: 'xs', 'aria-expanded': prompt !== null,
             onClick: () => setPrompt(prompt === null ? '' : null) }, 'AI 建议'),
-          Btn({ size: 'xs', onClick: () => start() }, '新建点子'))),
+          Btn({ size: 'xs', onClick: () => start(), 'aria-label': '新建点子' }, h(Icon, { name: 'plus' }), '新建'))),
       prompt !== null && h('form', { className: 'lw-map-request', onSubmit: async event => {
         event.preventDefault()
         if (await ask(prompt.trim())) setPrompt(null)
@@ -123,13 +137,11 @@ export function createIdeaCards(React, { Btn, Markdown, safeUrl }) {
           placeholder: topic || '本次关注的问题（可留空）', onChange: e => setPrompt(e.target.value) }),
         Btn({ variant: 'primary', type: 'submit', size: 'xs', disabled: busy }, '生成研究建议')),
       h('div', { className: 'lw-idea-shell' },
-        visible.length ? h('div', { className: 'lw-idea-grid' }, visible.map(item =>
-          h('button', { key: item.id, type: 'button', className: 'lw-idea-card', 'aria-pressed': item.id === current?.id,
-            'aria-label': titleOf(item), onClick: () => { select(item.id); edit(null) } },
-            h('span', { className: 'lw-idea-badges' }, badge(item), item.ideaOrigin === 'assistant' && h('span', { className: 'lw-hint' }, 'AI 建议')),
-            h('strong', null, titleOf(item)),
-            h('span', { className: 'lw-idea-summary' }, item.hypothesis || (item.text === titleOf(item) ? item.validation : item.text)))))
-          : h('p', { className: 'lw-idea-empty lw-hint' }, filter === 'active' && !type ? '暂无点子' : '没有匹配点子'),
-        (current || editor) && h('aside', { ref: detail, className: 'lw-idea-inspector', 'aria-label': '点子详情' }, inspector())))
+        visible.length ? h('nav', { className: 'lw-idea-list', 'aria-label': '点子列表' }, visible.map(item =>
+          h('button', { key: item.id, type: 'button', className: 'lw-idea-item', 'aria-pressed': item.id === current?.id,
+            onClick: () => { select(item.id); edit(null) } },
+            h('span', null, titleOf(item)), h(Icon, { name: 'right' }))))
+          : h('p', { className: 'lw-idea-empty lw-hint' }, filter === 'active' && !effectiveType ? '暂无点子' : '没有匹配点子'),
+        (current || editor) && h('aside', { className: 'lw-idea-inspector', 'aria-label': '点子详情' }, inspector())))
   }
 }
