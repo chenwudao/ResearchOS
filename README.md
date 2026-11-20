@@ -4,6 +4,12 @@ Weave 是开源、本地优先的通用项目工作区。你可以和助手讨�
 
 工作区的主要功能和使用流程见 [Weave 项目介绍与功能说明](docs/Weave项目介绍与功能说明.md)。
 
+## 演示与讨论
+
+运行下方启动命令后，从项目总览进入研究图谱和笔记，把选中的方向排进日历，再从点子和工程台查看验证方案与运行记录。
+
+[仓库内讨论原文](docs/demo-chatgpt-share.md) · [ChatGPT 分享原页](https://chatgpt.com/s/t_6b0040d758b08191946b0940a0f638ac)
+
 ## 从项目根目录启动
 
 Windows 运行 `.\start.ps1`，Linux 运行 `bash start.sh`。首次启动需要 Python 3.12 和网络，启动器会在项目的 `.venv` 中安装运行环境。详细安装日志保存在 `.venv/weave-install.log`。
