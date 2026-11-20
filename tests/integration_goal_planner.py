@@ -109,6 +109,7 @@ def publish_test_map(data):
     publish("method", "固定机位对照", "固定相机和光照，再单独检查结构。", parentId=scene,
             mapLinks=[{"id": edits, "type": "compares", "source": "https://example.test/method"}])
     publish("metric", "未编辑区域变化", "检查编辑是否影响背景物体。", parentId=edits)
+    publish("paper", "补充文献", "这一条暂时未指定上级节点。")
 
 
 def publish_test_ideas(data):

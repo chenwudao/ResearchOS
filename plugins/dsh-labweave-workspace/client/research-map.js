@@ -4,6 +4,23 @@ export const nodeKinds = {
 const relationKinds = { cites: '引用', builds_on: '方法继承', compares: '对比', related: '主题关联' }
 const titleOf = record => record.title || String(record.text || '').split('\n', 1)[0]
 
+function literatureTree(records, root) {
+  if (!records.length) return []
+  const ids = new Set(records.map(record => record.id))
+  const trunk = root && ids.has(root.id) ? root : { id: 'tree:root', title: '研究图谱', treeGroup: true }
+  const groups = new Map()
+  const labels = { paper: '参考文献', method: '研究方法', metric: '评测指标', file: '资料' }
+  const branches = records.filter(record => record.id !== trunk.id).map(record => {
+    if (ids.has(record.parentId)) return { ...record, treeParentId: record.parentId }
+    const label = labels[record.kind]
+    if (!label) return { ...record, treeParentId: trunk.id, treeGrouping: true }
+    const id = 'tree:' + record.kind
+    if (!groups.has(id)) groups.set(id, { id, title: label, treeParentId: trunk.id, treeGroup: true, treeGrouping: true })
+    return { ...record, treeParentId: id, treeGrouping: true }
+  })
+  return [trunk, ...branches, ...groups.values()]
+}
+
 export function createResearchMap(React, { Btn, Canvas, Markdown, safeUrl }) {
   const h = React.createElement
   const options = (values, label) => Object.entries(values).map(([value, name]) =>
@@ -52,6 +69,9 @@ export function createResearchMap(React, { Btn, Canvas, Markdown, safeUrl }) {
     })
     const inRoute = items.filter(record => !activeRoute || trace(record).has(activeRoute.id) || related.has(record.id))
     const papers = inRoute.filter(record => record.kind === 'paper')
+    const steps = [['topic', '研究问题'], ['route', '研究路线'], ['paper', '参考文献'], ['metric', '评测指标']]
+      .map(([type, label]) => ({ type, label, record: type === 'topic' ? root : items.find(item => item.kind === type) }))
+      .filter(step => step.record)
     const dated = papers.filter(record => record.eventDate).sort((a, b) => a.eventDate.localeCompare(b.eventDate))
     const undated = papers.filter(record => !record.eventDate)
     const select = record => { setSelected(record.id); setEditor(null) }
@@ -68,6 +88,12 @@ export function createResearchMap(React, { Btn, Canvas, Markdown, safeUrl }) {
       select(record)
       setRoute(record.id)
       setCollapsed(ids => ids.filter(id => !trace(record).has(id)))
+    }
+    function openStep({ type, record }) {
+      select(record)
+      setRoute('')
+      setCollapsed([])
+      setKind(type === 'topic' ? '' : type)
     }
     function toggleBranch(record) {
       setCollapsed(ids => ids.includes(record.id) ? ids.filter(id => id !== record.id) : [...ids, record.id])
@@ -170,6 +196,11 @@ export function createResearchMap(React, { Btn, Canvas, Markdown, safeUrl }) {
           h('summary', null, '关联记录'), links(active)))
     }
     return h('section', { className: 'lw-research-map', 'aria-label': '研究知识地图' },
+      steps.length > 0 && h('nav', { className: 'lw-map-path', 'aria-label': '主要科研路径' },
+        h('strong', null, '主要科研路径'),
+        h('ol', null, steps.map(step => h('li', { key: step.type },
+          Btn({ variant: 'ghost', size: 'xs', 'aria-pressed': !route && (kind || 'topic') === step.type,
+            onClick: () => openStep(step) }, step.label))))),
       draftTopic !== null && h('form', { className: 'lw-map-request', onSubmit: async event => {
         event.preventDefault()
         if (draftTopic.trim() && await ask(draftTopic.trim())) setDraftTopic(null)
@@ -190,7 +221,7 @@ export function createResearchMap(React, { Btn, Canvas, Markdown, safeUrl }) {
           h('select', { className: 'lw-select', value: kind, 'aria-label': '筛选节点类型', onChange: e => setKind(e.target.value) },
             h('option', { value: '' }, '全部类型'), options(nodeKinds))),
         h('div', { className: 'lw-map-canvas' },
-          h(Canvas, { layout: 'graph', items: lanes, activeId: active?.id, openEntry: select, busy, nodeKinds,
+          h(Canvas, { layout: 'graph', tree: true, items: literatureTree(lanes, root), activeId: active?.id, openEntry: select, busy, nodeKinds,
             label: '文献与方法关系图', emptyTitle: items.length ? '没有匹配节点' : '暂无节点',
             toolbarActions: h('div', { className: 'lw-actions' },
               Btn({ variant: 'ghost', size: 'xs', 'aria-expanded': draftTopic !== null,

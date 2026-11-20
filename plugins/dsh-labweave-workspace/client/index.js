@@ -1389,22 +1389,35 @@ window.__ModuleLoader__.load({
       .lw-map-kind[data-kind=paper]{--lw-node-color:#5189da}
       .lw-map-kind[data-kind=metric]{--lw-node-color:#c38a40}
       .lw-map-kind[data-kind=file]{--lw-node-color:#818b9d}
-      .lw-map-canvas{min-width:0}
+      .lw-map-canvas{min-width:0;container-type:inline-size}
+      .lw-map-path,.lw-map-path ol,.lw-map-path li{display:flex;align-items:center;gap:7px;min-width:0}
+      .lw-map-path{flex-wrap:wrap;column-gap:14px;padding:6px 10px;border:1px solid var(--dsw-alias-border-l2,#8883);border-radius:10px}
+      .lw-map-path strong{font-size:var(--lw-ui-sm)}
+      .lw-map-path ol{list-style:none;margin:0;padding:0;flex-wrap:wrap}
+      .lw-map-path li+li::before{content:"";width:5px;height:5px;border-block-start:1px solid currentColor;border-inline-end:1px solid currentColor;transform:rotate(45deg);color:var(--dsw-alias-label-secondary)}
+      .lw-map-path button[aria-pressed=true]{background:color-mix(in srgb,var(--lw-paradigm-accent,#8269c4) 17%,transparent);font-weight:600}
       .lw-bot-board .lw-map-canvas .lw-bot-canvas{height:var(--lw-map-height);border-radius:12px}
       .lw-bot-canvas[data-research=true] .lw-canvas-toolbar{flex-wrap:wrap}
       .lw-bot-canvas[data-research=true] .lw-canvas-viewport{background-image:radial-gradient(var(--dsw-alias-border-l3,#8885) .85px,transparent .85px);background-size:15px 15px}
       .lw-bot-canvas[data-research=true] .lw-canvas-stage{grid-auto-columns:clamp(154px,17vw,188px);gap:28px;padding:14px 16px}
       .lw-bot-canvas[data-research=true] .lw-canvas-lane{gap:10px}
+      .lw-bot-canvas[data-tree=true] .lw-canvas-stage{grid-auto-flow:row;grid-template-columns:minmax(0,1fr);grid-auto-columns:auto;align-content:start;min-inline-size:calc(100cqw - 2px);gap:29px;padding:16px}
+      .lw-bot-canvas[data-tree=true] .lw-canvas-lane{display:flex;justify-content:center;align-items:center;gap:12px}
+      .lw-bot-canvas[data-tree=true] .lw-canvas-card{width:clamp(124px,21cqw,158px)}
+      .lw-bot-canvas[data-tree=true] .lw-canvas-card[data-tree-group=true]{width:clamp(104px,17cqw,136px);border-style:solid;background:var(--dsw-alias-bg-layer-1,Canvas);box-shadow:none}
+      .lw-bot-canvas[data-tree=true] .lw-canvas-card[data-tree-group=true] .lw-canvas-card-body{text-align:center}
       .lw-bot-canvas[data-research=true] .lw-canvas-card{box-shadow:0 2px 6px #120e2412}
       .lw-bot-canvas[data-research=true] .lw-canvas-card[data-kind=topic]{background:color-mix(in srgb,#8c73cf 10%,var(--dsw-alias-bg-base,Canvas))}
       .lw-bot-canvas[data-research=true] .lw-canvas-card[data-current=true]{border-color:var(--lw-paradigm-accent,#8269c4);box-shadow:0 0 0 2px color-mix(in srgb,#8c73cf 21%,transparent)}
       .lw-bot-canvas[data-research=true] .lw-canvas-edges{color:color-mix(in srgb,#8c73cf 56%,var(--dsw-alias-border-l4,#8887))}
       .lw-bot-canvas[data-research=true] .lw-canvas-edges [data-evidence=source]{color:#3b9b8d}
+      .lw-bot-canvas[data-tree=true] .lw-canvas-edges [data-evidence=group]{color:var(--dsw-alias-border-l4,#8888)}
       .lw-bot-canvas[data-research=true] .lw-canvas-edges [data-evidence=inferred] path{stroke-dasharray:4 4}
       .lw-map-legend{display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:var(--lw-ui-xs);color:var(--dsw-alias-label-secondary)}
       .lw-map-legend span{display:inline-flex;align-items:center;gap:4px}
       .lw-map-legend span::before{content:"";width:11px;border-block-start:2px solid #3b9b8d}
       .lw-map-legend span[data-evidence=inferred]::before{border-color:#9473c1;border-block-start-style:dashed}
+      .lw-map-legend span[data-evidence=group]::before{border-color:var(--dsw-alias-border-l4,#8888)}
       .lw-bot-canvas[data-research=true] .lw-canvas-card .lw-paradigm-preview{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
       .lw-map-overviews{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:12px}
       .lw-map-overviews>details{padding:12px}
@@ -3406,7 +3419,7 @@ window.__ModuleLoader__.load({
     }
 
     function BotParadigmView({ layout, items, fields = [], activeId, openEntry, toggleGoal, addNode, deleteNode, busy, emptyTitle,
-      nodeKinds, toolbarActions, label = LW('内容画布') }) {
+      nodeKinds, toolbarActions, tree = false, label = LW('内容画布') }) {
       const [category, setCategory] = React.useState(null)
       const [paths, setPaths] = React.useState([])
       const [camera, setCamera] = React.useState({ zoom: 100, x: 0, y: 0 })
@@ -3459,8 +3472,10 @@ window.__ModuleLoader__.load({
       const visible = rows.filter(row => !selected || (row.item.canvasGroup || row.group || LW('未分类')) === selected)
       const ids = new Set(visible.map(row => row.item.id))
       const hierarchy = visible.flatMap(row => [...new Set([
-        row.relation, ...(Array.isArray(row.item.dependsOn) ? row.item.dependsOn : []),
-      ])].filter(id => ids.has(id) && id !== row.item.id).map(id => ({ from: id, to: row.item.id })))
+        tree ? row.item.treeParentId : row.relation, ...(Array.isArray(row.item.dependsOn) ? row.item.dependsOn : []),
+      ])].filter(id => ids.has(id) && id !== row.item.id).map(id => ({
+        from: id, to: row.item.id, ...(tree && row.item.treeGrouping && { evidence: 'group' }),
+      })))
       const relationships = nodeKinds ? visible.flatMap(({ item }) => (item.mapLinks || [])
         .filter(link => ids.has(link.id)).map(link => ({ from: item.id, to: link.id, evidence: link.source ? 'source' : 'inferred' }))) : []
       const edges = [...hierarchy, ...new Map(relationships.map(edge =>
@@ -3486,10 +3501,16 @@ window.__ModuleLoader__.load({
         for (const item of orderGoalPath(nodes)) {
           const parents = incoming.get(item.id).filter(id => depth.has(id))
           const row = byRecord.get(item.id)
-          const mapColumn = researchMap && !hierarchy.length ? ({ topic: 0, route: 1 }[row.item.kind] ?? 2) : 0
-          const level = parents.length ? Math.min(10, 1 + Math.max(...parents.map(id => depth.get(id)))) : mapColumn
+          const level = parents.length ? Math.min(10, 1 + Math.max(...parents.map(id => depth.get(id)))) : 0
           depth.set(item.id, level)
           append(level, row)
+        }
+        if (tree) {
+          const position = new Map()
+          for (const [, entries] of [...lanes].sort(([a], [b]) => a - b)) {
+            entries.sort((a, b) => (position.get(a.item.treeParentId) ?? 0) - (position.get(b.item.treeParentId) ?? 0))
+            entries.forEach((row, index) => position.set(row.item.id, index))
+          }
         }
       } else if (sequential) {
         const direction = layout === 'timeline' ? -1 : 1
@@ -3524,7 +3545,8 @@ window.__ModuleLoader__.load({
             if (!nodes.has(from) || !nodes.has(to)) return []
             const source = nodes.get(from).getBoundingClientRect()
             const target = nodes.get(to).getBoundingClientRect()
-            const across = Math.abs(source.left - target.left) / scale > 12
+            const branch = tree && (evidence === 'group' || !evidence)
+            const across = !branch && Math.abs(source.left - target.left) / scale > 12
             const forward = across ? source.left < target.left : source.top < target.top
             const x = (across ? (forward ? source.right : source.left) : source.left + source.width / 2) - origin.left
             const y = (across ? source.top + source.height / 2 : (forward ? source.bottom : source.top)) - origin.top
@@ -3542,7 +3564,7 @@ window.__ModuleLoader__.load({
         observer.observe(stage)
         for (const node of nodes.values()) observer.observe(node)
         return () => observer.disconnect()
-      }, [edgeKey, visibleKey, layout, fullscreen])
+      }, [edgeKey, visibleKey, layout, fullscreen, tree])
 
       function card(row) {
         const item = row.item
@@ -3552,12 +3574,13 @@ window.__ModuleLoader__.load({
         const blocked = toggleGoal && !item.done && item.dependsOn?.some?.(id => byId.has(id) && !byId.get(id).done)
         const status = item.canvasStatus || row.status || item.relationStatus || (blocked && LW('等待前置目标'))
         const editable = !item.canvasDraft && !item.experiment?.kind
+        const inspect = openEntry && !item.treeGroup
         return h('article', { key: item.id, className: 'lw-canvas-card', 'data-canvas-node': item.id, 'data-current': activeId === item.id,
-          'data-draft': Boolean(item.canvasDraft), 'data-kind': nodeKinds ? item.kind : undefined },
-          h(openEntry ? 'button' : 'div', { className: 'lw-canvas-card-body',
-            ...(openEntry && { type: 'button', 'aria-label': row.title, onClick: () => openEntry(item),
+          'data-draft': Boolean(item.canvasDraft), 'data-kind': nodeKinds ? item.kind : undefined, 'data-tree-group': item.treeGroup },
+          h(inspect ? 'button' : 'div', { className: 'lw-canvas-card-body',
+            ...(inspect && { type: 'button', 'aria-label': row.title, onClick: () => openEntry(item),
               ...(nodeKinds && { 'aria-pressed': activeId === item.id }) }) },
-            h('span', { className: 'lw-canvas-card-meta' },
+            !item.treeGroup && h('span', { className: 'lw-canvas-card-meta' },
               !researchMap && h(Icon, { name: file ? 'file' : row.source ? 'link' : graph ? 'mindmap' : 'list' }),
               nodeKinds?.[item.kind] && h('span', { className: 'lw-map-kind', 'data-kind': item.kind }, nodeKinds[item.kind]),
               dated && h('span', null, date || LW('日期待确认')),
@@ -3581,11 +3604,12 @@ window.__ModuleLoader__.load({
               'aria-label': LW('删除节点 ') + row.title, onClick: () => deleteNode(item) }, '−')))
       }
 
-      const canvas = h('section', { className: 'lw-bot-canvas', 'data-layout': layout, 'data-research': Boolean(nodeKinds), 'aria-label': label },
+      const canvas = h('section', { className: 'lw-bot-canvas', 'data-layout': layout, 'data-research': Boolean(nodeKinds), 'data-tree': tree, 'aria-label': label },
         h('div', { className: 'lw-canvas-toolbar' },
           toolbarActions,
           addNode && Btn({ variant: 'ghost', size: 'xs', disabled: busy, onClick: () => addNode(null) }, LW('添加节点')),
-          relationships.length > 0 && h('div', { className: 'lw-map-legend', 'aria-label': LW('连线说明') },
+          (relationships.length > 0 || hierarchy.some(link => link.evidence === 'group')) && h('div', { className: 'lw-map-legend', 'aria-label': LW('连线说明') },
+            hierarchy.some(link => link.evidence === 'group') && h('span', { 'data-evidence': 'group' }, LW('分组')),
             relationships.some(link => link.evidence === 'source') && h('span', null, LW('附来源')),
             relationships.some(link => link.evidence === 'inferred') && h('span', { 'data-evidence': 'inferred' }, LW('待核验'))),
           !nodeKinds && categories.length > 1 && h('div', { className: 'lw-canvas-categories', role: 'group', 'aria-label': LW('内容类别') },
