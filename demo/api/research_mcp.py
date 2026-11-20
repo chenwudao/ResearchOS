@@ -16,7 +16,7 @@ TOOLS = {
     "assistant_rename": ("Change the global assistant's display name when requested in the conversation.", {"name": {"type": "string"}}),
     "feature_labels": ("Read active feature IDs and their current display names for this conversation scope. A global conversation may optionally specify projectId.", {}),
     "feature_list": ("List active Feature Bots in the project. clusterParent identifies grouped members. Use includeArchived to find completed temporary Bots and their preserved results.", {"includeArchived":{"type":"boolean"}}),
-    "feature_create": ("Create a Bot with one paradigm and one compatible layout. Use goals: calendar/checklist/path, notes: notebook/library/timeline, mindmap: graph/lineage, ideas: branches/reasoning or engineering: sequence/matrix. For a project extension, use its ext_ ID and fixed layout from project_get_context. Global chat must specify the project explicitly.", {
+    "feature_create": ("Create a Bot with one paradigm and one compatible layout. Use goals: calendar/checklist/path, notes: notebook/library/timeline, mindmap: research-map/graph/lineage, ideas: branches/reasoning or engineering: sequence/matrix. For a project extension, use its ext_ ID and fixed layout from project_get_context. Global chat must specify the project explicitly.", {
         "label":{"type":"string"}, "paradigm":{"type":"string"},
         "layout":{"type":"string","enum":[layout for layouts in features.BOT_LAYOUTS.values() for layout in layouts]},
         "hint":{"type":"string"}, "temporary":{"type":"boolean","description":"Use only for a one-time assignment without a suitable existing Bot. Successful archived deliveries retire it automatically."}}),
@@ -39,6 +39,7 @@ TOOLS = {
         "Save a record in a project Bot's assigned layout. Use category for resource folders or goal priorities, parentId for a related record in the same Bot, and dependsOn for goal prerequisites. "
         "or pass id to update an existing entry. In a calendar Bot, new entries are planning drafts and only the user can confirm or edit the confirmed schedule. "
         "For a milestone set kind to milestone. For edits to a user-authored notebook entry, use note_suggest_edit instead. "
+        "For a research map set kind to topic, route, method, paper, or metric. Save parent nodes first. Cite original sources, use mapLinks for cross-links, and omit a relation source if it is an inference. "
         "Decide based on the Bot's purpose and message intent "
         "whether to include a figure/diagram (imagePath in project folder, inline imageSvg diagram/chart, imageData, "
         "or imageUrl) plus title and caption, or concise text only. For sourced pushes, include the original "
@@ -63,6 +64,10 @@ TOOLS = {
                            "items": {"type": "object", "required": ["featureId", "id"],
                                      "properties": {"featureId": {"type": "string"}, "id": {"type": "string"}}}},
             "noteTags": {"type": "array", "items": {"type": "string"}, "description": "Tags for a notebook entry. Use slash-separated category for its folder."},
+            "mapLinks": {"type": "array", "description": "Relations to other nodes in the same research map.",
+                         "items": {"type": "object", "required": ["id", "type"], "properties": {
+                             "id": {"type": "string"}, "type": {"type": "string", "enum": list(project_service.MAP_RELATIONS)},
+                             "source": {"type": "string", "description": "Original URL substantiating this relation, if known."}}}},
             "dependsOn": {"type": "array", "items": {"type": "string"}},
             "eventDate": {"type": "string", "description": "Known publication or event date in YYYY-MM-DD."},
             **{name: {"type": "string", "description": label}

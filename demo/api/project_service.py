@@ -341,6 +341,40 @@ def _apply_record_references(args, entry, rail, rails):
 
 
 NOTE_FIELDS = ("title", "text", "category", "noteTags")
+MAP_KINDS = ("topic", "route", "method", "paper", "metric", "file")
+MAP_RELATIONS = ("cites", "builds_on", "compares", "related")
+
+
+def _map_record(args, entry, records):
+    if "kind" in args and args["kind"] not in MAP_KINDS:
+        raise workspace.WorkspaceError(400, "请选择研究主题、主线、方法、论文、评测或资料。")
+    if "url" in args:
+        url = workspace.safe_link(workspace.text(args["url"], 2000))
+        if args["url"] and not url:
+            raise workspace.WorkspaceError(400, "请输入 HTTP 或 HTTPS 来源。")
+        if url:
+            entry["url"] = url
+        else:
+            entry.pop("url", None)
+    if "mapLinks" not in args:
+        return
+    values = args["mapLinks"]
+    if not isinstance(values, list) or len(values) > 24:
+        raise workspace.WorkspaceError(400, "一条导图记录最多可设置 24 条关系。")
+    ids = {record["id"] for record in records}
+    links = []
+    for value in values:
+        if not isinstance(value, dict) or not isinstance(value.get("id"), str) or value["id"] not in ids or value["id"] == entry["id"]:
+            raise workspace.WorkspaceError(400, "关系目标必须在同一张导图内。")
+        if value.get("type") not in MAP_RELATIONS:
+            raise workspace.WorkspaceError(400, "关系类型无效。")
+        source = workspace.safe_link(workspace.text(value.get("source"), 2000))
+        if value.get("source") and not source:
+            raise workspace.WorkspaceError(400, "请输入关系的 HTTP 或 HTTPS 来源。")
+        link = {"id": value["id"], "type": value["type"], **({"source": source} if source else {})}
+        if link not in links:
+            links.append(link)
+    entry["mapLinks"] = links
 
 
 def _note_payload(args, entry):
@@ -379,6 +413,7 @@ def create_entry(project_id, rail, args, *, planning_draft=False, assistant=Fals
     bot = next((feature for feature in features.list_features(project_id, project_id) if feature["id"] == rail), {}) if rail.startswith("feat_") else {}
     extension = bot.get("extension")
     notebook = bot.get("layout") == "notebook"
+    research_map = bot.get("layout") == "research-map"
     text = workspace.text(args.get("text"), 16000)
     if not text and extension and isinstance(args["elements"], dict):
         display = {field["role"]: args["elements"].get(field["name"]) for field in extension["fields"]}
@@ -407,6 +442,8 @@ def create_entry(project_id, rail, args, *, planning_draft=False, assistant=Fals
             raise workspace.WorkspaceError(409, "该目录已存在。")
         _entry_elements(args, entry, extension, records)
         _apply_record_references(args, entry, rail, item["rails"])
+        if research_map:
+            _map_record(args, entry, records)
         if rail == "goals" or rail.startswith("feat_") or "parentId" in entry:
             ids = {record["id"] for record in records}
             dependencies = entry.get("dependsOn", [])
@@ -426,6 +463,7 @@ def update_entry(project_id, rail, args, *, draft_only=False, assistant=False):
     bot = next((feature for feature in features.list_features(project_id, project_id) if feature["id"] == rail), {}) if rail.startswith("feat_") else {}
     extension = bot.get("extension")
     notebook = bot.get("layout") == "notebook"
+    research_map = bot.get("layout") == "research-map"
     is_goal = rail == "goals" or bot.get("paradigm") == "goals" or bool(extension and extension["base"] == "goals")
 
     def operation(item):
@@ -465,6 +503,8 @@ def update_entry(project_id, rail, args, *, draft_only=False, assistant=False):
         records = item["rails"].get(rail, [])
         _entry_elements(args, entry, extension, records)
         _apply_record_references(args, entry, rail, item["rails"])
+        if research_map:
+            _map_record(args, entry, records)
         if "parentId" in args and (is_goal or rail.startswith("feat_")):
             parent = args["parentId"]
             if parent is None:
@@ -625,6 +665,57 @@ def decide_note_edit(project_id, args):
     return mutate(project_id, operation)
 
 
+def save_map_note(project_id, args):
+    import features
+    origin, destination, entry_id = (args.get(key) for key in ("featureId", "notebookId", "id"))
+    if not all(isinstance(value, str) and value for value in (origin, destination, entry_id)):
+        raise workspace.WorkspaceError(400, "请选择导图记录和笔记 Bot。")
+    layouts = {bot["id"]: bot.get("layout") for bot in features.list_features(project_id, project_id)
+               if not bot.get("archived")}
+    if layouts.get(origin) != "research-map" or layouts.get(destination) != "notebook":
+        raise workspace.WorkspaceError(400, "导图和笔记必须在当前项目内。")
+
+    def operation(item):
+        rails = item["rails"]
+        source = next((entry for entry in rails.get(origin, []) if entry["id"] == entry_id), None)
+        if not source or source.get("kind") not in ("paper", "route"):
+            raise workspace.WorkspaceError(404, "未找到可收藏的论文或研究主线。")
+        source_ref = {"featureId": origin, "id": entry_id}
+        notes = rails.setdefault(destination, [])
+        previous = next((entry for entry in notes if entry.get("capturedFrom") == source_ref), None)
+        if previous:
+            return {"featureId": destination, "id": previous["id"], "created": False}
+        now = timestamp()
+        title = source.get("title") or workspace.text(source["text"].splitlines()[0], 240)
+        refs = [source_ref]
+        if source["kind"] == "paper":
+            resources = rails.setdefault("library", [])
+            linked = {ref["id"] for ref in source.get("recordRefs", []) if ref.get("featureId") == "library"}
+            if source.get("libraryId"):
+                linked.add(source["libraryId"])
+            resource = next((entry for entry in resources if entry["id"] in linked), None)
+            url = workspace.safe_link(source.get("url") or "")
+            if resource is None and url:
+                resource = next((entry for entry in resources if entry.get("url") == url), None)
+                if resource is None:
+                    resource = {"id": "n_" + uuid4().hex, "text": title, "url": url, "kind": "paper",
+                                "source": "思维导图", "ts": now}
+                    resources.append(resource)
+            if resource is not None:
+                refs.append({"featureId": "library", "id": resource["id"]})
+        detail = [source["text"]]
+        for label, key in (("研究问题", "routeQuestion"), ("代表方法", "routeMethods"), ("待探索问题", "routeOpenQuestions"),
+                           ("作者", "paperAuthors"), ("发表来源", "paperVenue"), ("发表日期", "eventDate")):
+            if source.get(key):
+                detail.append(f"**{label}：** {source[key]}")
+        note = {"id": "n_" + uuid4().hex, "title": title, "text": "\n\n".join(detail)[:16000], "ts": now,
+                "source": "思维导图", "kind": "note", "category": "文献" if source["kind"] == "paper" else "研究路线",
+                "noteVersion": 1, "noteOrigin": "user", "capturedFrom": source_ref, "recordRefs": refs}
+        notes.append(note)
+        return {"featureId": destination, "id": note["id"], "created": True}
+    return mutate(project_id, operation)
+
+
 def delete_entry(project_id, rail, entry_id):
     import features
     if not features.is_valid_rail(project_id, rail) or not isinstance(entry_id, str) or not entry_id:
@@ -645,6 +736,8 @@ def delete_entry(project_id, rail, entry_id):
             dependencies = entry.get("dependsOn")
             if isinstance(dependencies, list) and entry_id in dependencies:
                 entry["dependsOn"] = [dep for dep in dependencies if dep != entry_id]
+            if entry.get("mapLinks"):
+                entry["mapLinks"] = [link for link in entry["mapLinks"] if link.get("id") != entry_id]
             elements = entry.get("elements") or {}
             for name in reference_fields:
                 if elements.get(name) == entry_id:

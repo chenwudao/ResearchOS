@@ -18,7 +18,7 @@ PROTECTED_FEATURES = frozenset({"chat"})
 BOT_LAYOUTS = {
     "goals": ("checklist", "path", "calendar"),
     "notes": ("library", "timeline", "notebook"),
-    "mindmap": ("graph", "lineage"),
+    "mindmap": ("graph", "lineage", "research-map"),
     "ideas": ("branches", "reasoning"),
     "engineering": ("sequence", "matrix"),
 }
@@ -32,6 +32,8 @@ BOT_RECORD_TEXT_FIELDS = {
     "priority": ("优先级", 80), "completionCriteria": ("完成条件", 1000),
     "relationLabel": ("关系类型", 80), "relationStatus": ("关系核查状态", 80),
     "hypothesis": ("假设", 1000), "validation": ("最小验证", 1000), "result": ("结果", 1000),
+    "routeQuestion": ("研究问题", 800), "routeMethods": ("代表方法", 800),
+    "routeOpenQuestions": ("待探索问题", 800), "paperAuthors": ("作者", 400), "paperVenue": ("发表来源", 200),
 }
 BUILTIN_PARADIGMS = {"goals": ("goals", "checklist"), "library": ("notes", "library"),
                      "feed": ("notes", "timeline"), "ideas": ("ideas", "branches")}
@@ -553,7 +555,7 @@ def create_feature(caller_scope, label, hint="", project_id=None, *, symbol=None
     if not layouts:
         raise workspace.WorkspaceError(400, "当前项目没有这个范式。")
     if layout is None:
-        layout = {"goals": "calendar", "notes": "notebook"}.get(paradigm, layouts[0])
+        layout = {"goals": "calendar", "notes": "notebook", "mindmap": "research-map"}.get(paradigm, layouts[0])
     if layout not in layouts:
         raise workspace.WorkspaceError(400, "当前范式不支持这个排布。")
     symbol = "" if symbol is None else _clean_symbol(symbol, allow_empty=True)

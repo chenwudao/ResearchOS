@@ -211,6 +211,8 @@ def project_action(scope, data):
         return projects.note_history(scope, args.get("featureId"), args.get("id"))
     if action == "note/decision":
         return projects.decide_note_edit(scope, args)
+    if action == "map/save-source":
+        return projects.save_map_note(scope, args)
     if action == "rename":
         return {"name": projects.call("project_update", {"name": naming.display_name(args.get("name"))}, scope)["name"]}
     if action == "description":

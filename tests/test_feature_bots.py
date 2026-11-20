@@ -129,6 +129,41 @@ class FeatureBotsTests(unittest.TestCase):
         self.assertEqual([(v["version"], v["author"], v["text"]) for v in history],
                          [(3, "assistant", "整理后的正文"), (2, "user", "人工补充"), (1, "user", "原始正文")])
 
+    def test_map_links_and_paper_capture_stay_in_project(self):
+        a, b = self.projects
+        map_feature = features.create_feature(a, "研究地图", paradigm="mindmap")["feature"]
+        self.assertEqual(map_feature["layout"], "research-map")
+        origin = {"featureId": map_feature["id"]}
+        notebook = features.create_feature(a, "文献笔记", paradigm="notes")["feature"]["id"]
+        foreign_notebook = features.create_feature(b, "其他笔记", paradigm="notes")["feature"]["id"]
+        route = self.mcp(a, "feature_push", {**origin, "kind": "route", "text": "局部编辑"})
+        foreign_map = features.create_feature(b, "其他导图", paradigm="mindmap")["feature"]["id"]
+        foreign = self.mcp(b, "feature_push", {"featureId": foreign_map, "kind": "topic", "text": "其他领域"})
+        paper = {**origin, "kind": "paper", "text": "同场景对照研究", "parentId": route["id"],
+                 "url": "https://example.test/article", "paperAuthors": "作者甲"}
+        self.assertTrue(self.mcp(a, "feature_push", {**paper, "mapLinks": [{"id": foreign["id"], "type": "related"}]})["isError"])
+        record = self.mcp(a, "feature_push", {**paper, "mapLinks": [{"id": route["id"], "type": "related"}]})
+        self.assertEqual(record["mapLinks"], [{"id": route["id"], "type": "related"}])
+        request = {"workspace": self.records[a], "action": "map/save-source", "args": {
+            **origin, "id": record["id"], "notebookId": foreign_notebook,
+        }}
+        with self.assertRaises(workspace.WorkspaceError):
+            web.dispatch("project", request)
+        request["args"]["notebookId"] = notebook
+        saved = web.dispatch("project", request)
+        self.assertTrue(saved["created"])
+        self.assertEqual(web.dispatch("project", request), {**saved, "created": False})
+        duplicate = self.mcp(a, "feature_push", paper)
+        request["args"]["id"] = duplicate["id"]
+        web.dispatch("project", request)
+        view = web.project_view(a)
+        resource, = view["rails"]["library"]
+        self.assertEqual(resource["url"], paper["url"])
+        note = next(item for item in view["rails"][notebook] if item["id"] == saved["id"])
+        self.assertEqual(note["capturedFrom"], {**origin, "id": record["id"]})
+        self.assertIn({"featureId": "library", "id": resource["id"]}, note["recordRefs"])
+        self.assertIn("作者甲", note["text"])
+
     def test_global_stays_chat_only_and_scopes_create_rename_delete(self):
         a, b = self.projects
         global_list = self.mcp("global", "feature_list", {})

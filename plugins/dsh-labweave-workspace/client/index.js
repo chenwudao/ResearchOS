@@ -1349,6 +1349,69 @@ window.__ModuleLoader__.load({
       .lw-canvas-edges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;color:color-mix(in srgb,var(--lw-paradigm-accent,#7891ba) 74%,var(--dsw-alias-label-secondary))}
       .lw-canvas-edges path{fill:none;stroke:currentColor;stroke-width:1.35}
       .lw-canvas-edges circle{fill:currentColor}
+      .lw-research-map{container-type:inline-size;display:grid;gap:14px;min-width:0;--lw-map-height:clamp(295px,45vh,465px);color:var(--dsw-alias-label-primary)}
+      .lw-map-heading,.lw-map-heading>div,.lw-map-request{display:flex;align-items:center;gap:10px;min-width:0}
+      .lw-map-heading{justify-content:space-between;flex-wrap:wrap;padding:2px 0}
+      .lw-map-heading h2{margin:0;font-size:var(--lw-ui-xl,1.24rem);line-height:1.25;letter-spacing:-.02em;overflow-wrap:anywhere}
+      .lw-map-heading-icon{display:grid;place-items:center;flex:none;width:34px;height:34px;border-radius:10px;color:var(--dsw-alias-label-primary);background:color-mix(in srgb,var(--lw-paradigm-accent,#8269c4) 22%,var(--dsw-alias-bg-base,Canvas))}
+      .lw-map-heading-icon svg{width:17px;height:17px}
+      .lw-map-request{flex-wrap:wrap}
+      .lw-map-request input{flex:1 1 210px}
+      .lw-map-shell{display:grid;grid-template-columns:minmax(118px,16%) minmax(0,1fr) minmax(176px,23%);gap:12px;align-items:start}
+      .lw-map-routes,.lw-map-inspector,.lw-map-overviews>details{border:1px solid var(--dsw-alias-border-l2,#8883);border-radius:12px;background:var(--dsw-alias-bg-base,Canvas);min-width:0}
+      .lw-map-routes,.lw-map-inspector{display:grid;align-content:start;gap:10px;padding:12px;overflow-wrap:anywhere}
+      .lw-map-inspector{box-sizing:border-box;max-height:var(--lw-map-height);overflow:auto;scrollbar-gutter:stable}
+      .lw-map-routes h3,.lw-map-inspector :is(h3,h4,p){margin:0}
+      .lw-map-inspector h3{font-size:var(--lw-ui-lg,1.1rem);line-height:1.4}
+      .lw-map-routes h3,.lw-map-inspector h4{font-size:var(--lw-ui-sm);color:var(--dsw-alias-label-secondary);font-weight:600}
+      .lw-map-route-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px;align-items:start}
+      .lw-map-route-row button:first-child{justify-content:center;min-width:24px;padding-inline:4px}
+      .lw-map-routes button,.lw-map-relations button,.lw-map-overviews button{justify-content:flex-start;text-align:start;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+      .lw-map-routes button[aria-current=page]{background:color-mix(in srgb,var(--lw-paradigm-accent,#8269c4) 17%,transparent);color:var(--dsw-alias-label-primary);font-weight:600}
+      .lw-map-inspector a{font-size:var(--lw-ui-sm);width:fit-content;max-width:100%}
+      .lw-map-inspector .lw-md{font-size:var(--lw-ui-sm)}
+      .lw-map-form,.lw-map-form label,.lw-map-form-links,.lw-map-relations{display:grid;gap:7px;min-width:0;font-size:var(--lw-ui-sm)}
+      .lw-map-form :is(input,select,textarea),.lw-map-routes select{box-sizing:border-box;min-width:0;width:100%}
+      .lw-map-form textarea{resize:vertical}
+      .lw-map-form-links>div{padding:8px 0;border-block-end:1px solid var(--dsw-alias-border-l2,#8883)}
+      .lw-map-relations{padding-block:9px;border-block:1px solid var(--dsw-alias-border-l2,#8883)}
+      .lw-map-relations>div{display:grid;gap:3px}
+      .lw-map-record-links>summary{cursor:pointer;font-size:var(--lw-ui-sm);color:var(--dsw-alias-label-secondary)}
+      .lw-map-evidence{font-size:var(--lw-ui-xs);color:var(--dsw-alias-label-secondary)}
+      .lw-map-kind{--lw-node-color:#8c73cf;display:inline-flex;align-items:center;width:fit-content;padding:1px 6px;border-radius:5px;color:var(--dsw-alias-label-primary);background:color-mix(in srgb,var(--lw-node-color) 19%,var(--dsw-alias-bg-base,Canvas));font-size:var(--lw-ui-xs);line-height:1.5}
+      .lw-map-kind[data-kind=method]{--lw-node-color:#2aa592}
+      .lw-map-kind[data-kind=paper]{--lw-node-color:#5189da}
+      .lw-map-kind[data-kind=metric]{--lw-node-color:#c38a40}
+      .lw-map-kind[data-kind=file]{--lw-node-color:#818b9d}
+      .lw-map-canvas{min-width:0}
+      .lw-bot-board .lw-map-canvas .lw-bot-canvas{height:var(--lw-map-height);border-radius:12px}
+      .lw-bot-canvas[data-research=true] .lw-canvas-viewport{background-image:radial-gradient(var(--dsw-alias-border-l3,#8885) .85px,transparent .85px);background-size:15px 15px}
+      .lw-bot-canvas[data-research=true] .lw-canvas-stage{grid-auto-columns:clamp(154px,17vw,188px);gap:28px;padding:14px 16px}
+      .lw-bot-canvas[data-research=true] .lw-canvas-lane{gap:10px}
+      .lw-bot-canvas[data-research=true] .lw-canvas-card{box-shadow:0 2px 6px #120e2412}
+      .lw-bot-canvas[data-research=true] .lw-canvas-card[data-kind=topic]{background:color-mix(in srgb,#8c73cf 10%,var(--dsw-alias-bg-base,Canvas))}
+      .lw-bot-canvas[data-research=true] .lw-canvas-card[data-current=true]{border-color:var(--lw-paradigm-accent,#8269c4);box-shadow:0 0 0 2px color-mix(in srgb,#8c73cf 21%,transparent)}
+      .lw-bot-canvas[data-research=true] .lw-canvas-edges{color:color-mix(in srgb,#8c73cf 56%,var(--dsw-alias-border-l4,#8887))}
+      .lw-bot-canvas[data-research=true] .lw-canvas-edges [data-evidence=source]{color:#3b9b8d}
+      .lw-bot-canvas[data-research=true] .lw-canvas-edges [data-evidence=inferred] path{stroke-dasharray:4 4}
+      .lw-map-legend{display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:var(--lw-ui-xs);color:var(--dsw-alias-label-secondary)}
+      .lw-map-legend span{display:inline-flex;align-items:center;gap:4px}
+      .lw-map-legend span::before{content:"";width:11px;border-block-start:2px solid #3b9b8d}
+      .lw-map-legend span[data-evidence=inferred]::before{border-color:#9473c1;border-block-start-style:dashed}
+      .lw-bot-canvas[data-research=true] .lw-canvas-card .lw-paradigm-preview{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+      .lw-map-overviews{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:12px}
+      .lw-map-overviews>details{padding:12px}
+      .lw-map-overviews summary{cursor:pointer;font-weight:600;font-size:var(--lw-ui-sm)}
+      .lw-map-overview-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:8px;margin-top:10px}
+      .lw-map-overview-grid article{min-width:0;padding:8px;border-radius:8px;background:var(--dsw-alias-bg-layer-1,#8881);overflow-wrap:anywhere}
+      .lw-map-overview-grid dl{display:grid;gap:8px;margin:3px 6px;font-size:var(--lw-ui-sm)}
+      .lw-map-overview-grid :is(dt,dd){margin:0}
+      .lw-map-overview-grid dt{font-size:var(--lw-ui-xs);color:var(--dsw-alias-label-secondary)}
+      .lw-map-timeline{list-style:none;display:grid;gap:8px;margin:12px 0 0 4px;padding:0 0 0 12px;border-inline-start:1px solid var(--dsw-alias-border-l4,#8886)}
+      .lw-map-timeline li{position:relative;display:grid;gap:1px;justify-items:start}
+      .lw-map-timeline li::before{content:"";position:absolute;inset:6px auto auto -16px;width:7px;height:7px;border-radius:50%;background:var(--lw-paradigm-accent,#8269c4)}
+      @container (max-width:790px){.lw-map-shell{grid-template-columns:minmax(110px,22%) minmax(0,1fr)}.lw-map-inspector{grid-column:1/-1;max-height:none}}
+      @container (max-width:480px){.lw-map-shell,.lw-map-overviews{grid-template-columns:minmax(0,1fr)}.lw-map-routes{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px}.lw-map-routes h3{flex:0 0 100%}.lw-map-routes select{width:auto;max-width:100%}}
       .lw-canvas-attachment{margin:0;border:1px solid var(--dsw-alias-border-l2,#8883);border-radius:8px;padding:8px 10px;justify-content:space-between;overflow-wrap:anywhere}
       .lw-canvas-detail-body{display:grid;gap:12px;min-width:0}
       .lw-record-dialog .lw-dialog-head{align-items:flex-start;margin-bottom:0}
@@ -2641,6 +2704,7 @@ window.__ModuleLoader__.load({
     }
     const botLayoutLabels = {
       calendar: '目标日历', checklist: '目标清单', path: '目标路径', notebook: '笔记资料库', library: '资料库', timeline: '文件动态',
+      'research-map': '研究知识地图',
       graph: '关系图', lineage: '文献脉络', branches: '发散探索', reasoning: '线性推演',
       sequence: '实验流程', matrix: '并行实验',
     }
@@ -2757,7 +2821,7 @@ window.__ModuleLoader__.load({
                 placeholder: LW('描述要展示的内容、何时记录、如何组织。例如按更新时间追踪数据集版本及授权变化。'),
                 onChange: e => setDescription(e.target.value) })),
               h('label', null, LW('展示排布'), h(Select, { value: extensionLayout, ariaLabel: LW('展示排布'), onChange: setExtensionLayout,
-                options: Object.entries(botLayoutLabels).map(([key, title]) => ({ value: key, label: title })) })),
+                options: Object.values(extensionLayouts).flat().map(key => ({ value: key, label: botLayoutLabels[key] })) })),
               h('div', { className: 'lw-paradigm-preview-row' },
                 h('span', { className: 'lw-paradigm-preview-badge', style: { '--lw-paradigm-accent': botParadigms[extensionBase]?.accent || '#638fd5' }, 'aria-hidden': true },
                   h(Icon, { name: previewExtensionSymbol })),
@@ -3125,6 +3189,9 @@ window.__ModuleLoader__.load({
     const Notebook = React.lazy(() => import(new URL('./labweave-notebook.js', document.baseURI).href)
       .then(module => ({ default: module.createNotebook(React, { Btn, Markdown, formatDate: fmtDateTime,
         resourceImage: entryImageSrc, safeUrl: mdSafeUrl }) })))
+    const ResearchMap = React.lazy(() => import(new URL('./labweave-research-map.js', document.baseURI).href)
+      .then(module => ({ default: module.createResearchMap(React, { Btn, Icon, Canvas: BotParadigmView,
+        Markdown, safeUrl: mdSafeUrl }) })))
     const BotExperiments = React.lazy(() => getWorkbenchViews().then(views => ({ default: views.Experiments })))
 
     function openComposerFile(input, imagesOnly) {
@@ -3209,7 +3276,7 @@ window.__ModuleLoader__.load({
       }
     }
 
-    function BotParadigmView({ layout, items, fields = [], activeId, openEntry, toggleGoal, addNode, deleteNode, busy, emptyTitle, label = LW('内容画布') }) {
+    function BotParadigmView({ layout, items, fields = [], activeId, openEntry, toggleGoal, addNode, deleteNode, busy, emptyTitle, nodeKinds, label = LW('内容画布') }) {
       const [category, setCategory] = React.useState(null)
       const [paths, setPaths] = React.useState([])
       const [camera, setCamera] = React.useState({ zoom: 100, x: 0, y: 0 })
@@ -3261,9 +3328,13 @@ window.__ModuleLoader__.load({
       const selected = categories.includes(category) ? category : null
       const visible = rows.filter(row => !selected || (row.item.canvasGroup || row.group || LW('未分类')) === selected)
       const ids = new Set(visible.map(row => row.item.id))
-      const edges = visible.flatMap(row => [...new Set([
+      const hierarchy = visible.flatMap(row => [...new Set([
         row.relation, ...(Array.isArray(row.item.dependsOn) ? row.item.dependsOn : []),
       ])].filter(id => ids.has(id) && id !== row.item.id).map(id => ({ from: id, to: row.item.id })))
+      const relationships = nodeKinds ? visible.flatMap(({ item }) => (item.mapLinks || [])
+        .filter(link => ids.has(link.id)).map(link => ({ from: item.id, to: link.id, evidence: link.source ? 'source' : 'inferred' }))) : []
+      const edges = [...hierarchy, ...new Map(relationships.map(edge =>
+        [JSON.stringify([edge.from, edge.to, edge.evidence]), edge])).values()]
       const dated = layout === 'timeline' || layout === 'lineage'
       const sequential = dated || layout === 'reasoning'
       const graph = layout === 'graph' || layout === 'path'
@@ -3276,9 +3347,9 @@ window.__ModuleLoader__.load({
         const depth = new Map()
         const byRecord = new Map(visible.map(row => [row.item.id, row]))
         const incoming = new Map(visible.map(row => [row.item.id, []]))
-        for (const edge of edges) incoming.get(edge.to).push(edge.from)
+        for (const edge of hierarchy) incoming.get(edge.to).push(edge.from)
         const successors = new Map()
-        for (const { from } of edges) successors.set(from, (successors.get(from) || 0) + 1)
+        for (const { from } of hierarchy) successors.set(from, (successors.get(from) || 0) + 1)
         const nodes = visible.map(row => ({ id: row.item.id, dependsOn: incoming.get(row.item.id) }))
           .sort((a, b) => (successors.get(b.id) || 0) - (successors.get(a.id) || 0))
         for (const item of orderGoalPath(nodes)) {
@@ -3316,7 +3387,7 @@ window.__ModuleLoader__.load({
           setSize(current => current.width === width && current.height === height ? current : { width, height })
           const origin = stage.getBoundingClientRect()
           const scale = origin.width / stage.offsetWidth || 1
-          const next = links.flatMap(({ from, to }) => {
+          const next = links.flatMap(({ from, to, evidence }) => {
             if (!nodes.has(from) || !nodes.has(to)) return []
             const source = nodes.get(from).getBoundingClientRect()
             const target = nodes.get(to).getBoundingClientRect()
@@ -3329,7 +3400,7 @@ window.__ModuleLoader__.load({
             const start = [x / scale, y / scale], end = [endX / scale, endY / scale]
             const middle = across ? (start[0] + end[0]) / 2 : (start[1] + end[1]) / 2
             const via = across ? [middle, start[1], middle, end[1]] : [start[0], middle, end[0], middle]
-            return [{ from, to, end, d: 'M' + start.join(' ') + ' C' + via.join(' ') + ' ' + end.join(' ') }]
+            return [{ from, to, evidence, end, d: 'M' + start.join(' ') + ' C' + via.join(' ') + ' ' + end.join(' ') }]
           })
           setPaths(next)
         }
@@ -3349,11 +3420,13 @@ window.__ModuleLoader__.load({
         const status = item.canvasStatus || row.status || item.relationStatus || (blocked && LW('等待前置目标'))
         const editable = !item.canvasDraft && !item.experiment?.kind
         return h('article', { key: item.id, className: 'lw-canvas-card', 'data-canvas-node': item.id, 'data-current': activeId === item.id,
-          'data-draft': Boolean(item.canvasDraft) },
+          'data-draft': Boolean(item.canvasDraft), 'data-kind': nodeKinds ? item.kind : undefined },
           h(openEntry ? 'button' : 'div', { className: 'lw-canvas-card-body',
-            ...(openEntry && { type: 'button', 'aria-label': row.title, onClick: () => openEntry(item) }) },
+            ...(openEntry && { type: 'button', 'aria-label': row.title, onClick: () => openEntry(item),
+              ...(nodeKinds && { 'aria-pressed': activeId === item.id }) }) },
             h('span', { className: 'lw-canvas-card-meta' },
               h(Icon, { name: file ? 'file' : row.source ? 'link' : graph ? 'mindmap' : 'list' }),
+              nodeKinds?.[item.kind] && h('span', { className: 'lw-map-kind', 'data-kind': item.kind }, nodeKinds[item.kind]),
               dated && h('span', null, date || LW('日期待确认')),
               item.due && h('span', null, LW('截止 ') + item.due),
               item.canvasDraft && h('span', null, LW('草稿 · 待核验')),
@@ -3375,10 +3448,13 @@ window.__ModuleLoader__.load({
               'aria-label': LW('删除节点 ') + row.title, onClick: () => deleteNode(item) }, '−')))
       }
 
-      const canvas = h('section', { className: 'lw-bot-canvas', 'data-layout': layout, 'aria-label': label },
+      const canvas = h('section', { className: 'lw-bot-canvas', 'data-layout': layout, 'data-research': Boolean(nodeKinds), 'aria-label': label },
         h('div', { className: 'lw-canvas-toolbar' },
           addNode && Btn({ variant: 'ghost', size: 'xs', disabled: busy, onClick: () => addNode(null) }, LW('添加节点')),
-          categories.length > 1 && h('div', { className: 'lw-canvas-categories', role: 'group', 'aria-label': LW('内容类别') },
+          relationships.length > 0 && h('div', { className: 'lw-map-legend', 'aria-label': LW('连线说明') },
+            relationships.some(link => link.evidence === 'source') && h('span', null, LW('附来源')),
+            relationships.some(link => link.evidence === 'inferred') && h('span', { 'data-evidence': 'inferred' }, LW('待核验'))),
+          !nodeKinds && categories.length > 1 && h('div', { className: 'lw-canvas-categories', role: 'group', 'aria-label': LW('内容类别') },
             [null, ...categories].map(name => h('button', { key: name === null ? 'all' : 'category:' + name,
               type: 'button', 'aria-pressed': selected === name, onClick: () => setCategory(name) }, name ?? LW('全部')))),
           h('div', { className: 'lw-canvas-controls', role: 'group', 'aria-label': LW('画布视图') },
@@ -3398,7 +3474,8 @@ window.__ModuleLoader__.load({
           h('div', { ref: stageRef, className: 'lw-canvas-stage',
             style: { transform: 'translate(' + camera.x + 'px,' + camera.y + 'px) scale(' + zoom + ')' } },
             h('svg', { className: 'lw-canvas-edges', 'aria-hidden': true },
-              paths.map(link => h('g', { key: link.from + ':' + link.to, 'data-from': link.from, 'data-to': link.to },
+              paths.map(link => h('g', { key: JSON.stringify([link.from, link.to, link.evidence]),
+                'data-from': link.from, 'data-to': link.to, 'data-evidence': link.evidence },
                 h('path', { d: link.d }), h('circle', { cx: link.end[0], cy: link.end[1], r: 2.5 })))),
             [...lanes.entries()].sort(([a], [b]) => graph ? a - b : 0).map(([label, entries]) =>
               h('div', { key: label, className: 'lw-canvas-lane' },
@@ -3485,10 +3562,13 @@ window.__ModuleLoader__.load({
       const [activeItemId, setActiveItemId] = React.useState(null)
       const [notebookRequest, setNotebookRequest] = React.useState(null)
       const notebook = featMeta.layout === 'notebook'
+      const [mapRequest, setMapRequest] = React.useState(null)
+      const researchMap = featMeta.layout === 'research-map'
       const [activeReview, setActiveReview] = React.useState(null)
       const [deletingItem, setDeletingItem] = React.useState(null)
       const [browserLink, setBrowserLink] = React.useState(null)
-      const [boardPercent, setBoardPercent] = React.useState(persisted.boardPercent || 58)
+      const [customBoardPercent, setBoardPercent] = React.useState(persisted.boardPercent)
+      const boardPercent = customBoardPercent || (researchMap ? 77 : 58)
       const [editingBot, setEditingBot] = React.useState(false)
       const [nodeEdit, setNodeEdit] = React.useState(null)
       const [draftText, setDraftText] = React.useState(() => persisted?.draft || '')
@@ -3513,15 +3593,37 @@ window.__ModuleLoader__.load({
       }, [bot.messages.length])
       React.useEffect(() => {
         if (!recordRequest || !value?.rails || persisted.recordRequest !== recordRequest) return
-        delete persisted.recordRequest
-        if ((value.rails[feature] || []).some(item => item.id === recordRequest.id)) {
+        const containsRecord = view => (view.rails[feature] || []).some(item => item.id === recordRequest.id)
+        function openRecord() {
+          if (persisted.recordRequest !== recordRequest) return
+          delete persisted.recordRequest
           if (notebook) setNotebookRequest(recordRequest)
+          else if (researchMap) setMapRequest(recordRequest)
           else setActiveItemId(recordRequest.id)
+          setNotice('')
           setActiveReview(null); setReading(null); setBrowserLink(null); setEditingId(null); setDeletingItem(null)
-        } else {
-          setNotice(LW('关联记录已移除或不可访问。'))
         }
-      }, [recordRequest, value, feature, persisted, notebook])
+        if (containsRecord(value)) {
+          openRecord()
+          return
+        }
+        const controller = new AbortController()
+        project(workspaceId, 'view', {}, controller.signal).then(view => {
+          if (controller.signal.aborted || persisted.recordRequest !== recordRequest) return
+          if (containsRecord(view)) {
+            openRecord()
+            window.dispatchEvent(new Event(updated))
+          } else {
+            delete persisted.recordRequest
+            setNotice(LW('关联记录已移除或不可访问。'))
+          }
+        }).catch(error => {
+          if (controller.signal.aborted || persisted.recordRequest !== recordRequest) return
+          delete persisted.recordRequest
+          setError(error.message)
+        })
+        return () => controller.abort()
+      }, [recordRequest, value, feature, persisted, notebook, researchMap, workspaceId])
       const fileInputRef = React.useRef(null)
       const textareaRef = React.useRef(null)
       const changeDraft = text => { setDraftText(text); persisted.draft = text }
@@ -3663,6 +3765,7 @@ window.__ModuleLoader__.load({
           navigate: ref => {
             if (ref.featureId !== feature) navigateRecord(ref)
             else if (notebook) setNotebookRequest({ id: ref.id })
+            else if (researchMap) setMapRequest({ id: ref.id })
             else openEntry((value.rails[feature] || []).find(record => record.id === ref.id))
           },
           change: (ref, remove) => run(() => changeLink(item, ref, remove)),
@@ -3920,7 +4023,22 @@ window.__ModuleLoader__.load({
                         featureId: item.canvasRail || feature, id: item.id, suggestionId: suggestion.id, accept,
                       })),
                       links: item => linksFor(item, false) })),
-                  typedLayout && !engineering && !goalPlanner && !notebook && h(BotParadigmView, {
+                  researchMap && h(React.Suspense, { fallback: h('p', { className: 'lw-hint' }, LW('正在读取研究地图…')) },
+                    h(ResearchMap, {
+                      items: ordered.map(item => ({ ...item, canvasRail: item.canvasRail || feature })),
+                      feature, rails: value.rails, busy, request: mapRequest,
+                      notebooks: (value.features || []).filter(item => item.layout === 'notebook' && !item.archived && !item.clusterParent),
+                      save: (payload, rail) => run(() => action('feature_push', { featureId: rail || feature, source: '用户', ...payload })),
+                      remove: deleteNode, navigate: navigateRecord, links: linksFor,
+                      capture: (item, notebookId) => run(() => action('map/save-source', { featureId: item.canvasRail, id: item.id, notebookId })),
+                      ask: request => run(async () => {
+                        await bot.sendPrompt(LW('请在当前思维导图 Bot 梳理这个主题，先查找可靠文献，再通过项目工具添加研究主题、主线、代表论文与方法。') +
+                          LW('用 parentId 组织层级，填写主线问题、代表方法、待探索问题和论文出处。只有能给出处的关系才填写 mapLinks.source。') +
+                          LW('避免重复现有记录。如有检索限制，请在对话中说明，不编造来源。\n\n') + request)
+                        return true
+                      }),
+                    })),
+                  typedLayout && !engineering && !goalPlanner && !notebook && !researchMap && h(BotParadigmView, {
                     layout: botLayout, items: ordered, fields: extensionFields, activeId: activeItemId, openEntry, busy,
                     addNode, deleteNode, emptyTitle,
                     toggleGoal: effectiveParadigm === 'goals' ? item => run(() =>
