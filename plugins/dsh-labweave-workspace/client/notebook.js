@@ -11,7 +11,7 @@ export function createNotebook(React, { Btn, Markdown, formatDate, resourceImage
     ['公式', '$', '$', 'x^2 + y^2 = z^2'],
   ]
   return function Notebook({ items, resources, requested, busy, save, upload, previewFile, changeLink, links,
-    readHistory, askAssistant, decideSuggestion }) {
+    readHistory, askAssistant, decideSuggestion, calendars, draftGoal }) {
     const [folder, setFolder] = React.useState('')
     const [selected, setSelected] = React.useState('')
     const [tag, setTag] = React.useState('')
@@ -25,6 +25,8 @@ export function createNotebook(React, { Btn, Markdown, formatDate, resourceImage
     const [history, setHistory] = React.useState(null)
     const [aiRequest, setAiRequest] = React.useState('')
     const [excerpt, setExcerpt] = React.useState('')
+    const [calendarId, setCalendarId] = React.useState('')
+    const calendar = calendars.find(item => item.id === calendarId) || calendars[0]
     const textarea = React.useRef(null)
     const noteText = React.useRef(null)
     const input = React.useRef(null)
@@ -199,6 +201,10 @@ export function createNotebook(React, { Btn, Markdown, formatDate, resourceImage
               if (file) upload(active, file)
             } })),
           links(active),
+          calendar && h('div', { className: 'lw-notebook-form' },
+            calendars.length > 1 && h('select', { className: 'lw-select', 'aria-label': '目标日历', value: calendar.id,
+              onChange: event => setCalendarId(event.target.value) }, calendars.map(item => h('option', { key: item.id, value: item.id }, item.label))),
+            Btn({ size: 'xs', disabled: busy || Boolean(editor), onClick: () => draftGoal(active, calendar.id) }, '转为待办草稿')),
           h('details', { className: 'lw-notebook-ai' },
             h('summary', null, 'AI 辅助整理'),
             h('form', { className: 'lw-notebook-form', onSubmit: suggest },

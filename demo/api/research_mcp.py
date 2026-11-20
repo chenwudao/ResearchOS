@@ -16,7 +16,7 @@ TOOLS = {
     "assistant_rename": ("Change the global assistant's display name when requested in the conversation.", {"name": {"type": "string"}}),
     "feature_labels": ("Read active feature IDs and their current display names for this conversation scope. A global conversation may optionally specify projectId.", {}),
     "feature_list": ("List active Feature Bots in the project. clusterParent identifies grouped members. Use includeArchived to find completed temporary Bots and their preserved results.", {"includeArchived":{"type":"boolean"}}),
-    "feature_create": ("Create a Bot with one paradigm and one compatible layout. Use goals: calendar/checklist/path, notes: notebook/library/timeline, mindmap: research-map/graph/lineage, ideas: idea-cards/branches/reasoning or engineering: sequence/matrix. For a project extension, use its ext_ ID and fixed layout from project_get_context. Global chat must specify the project explicitly.", {
+    "feature_create": ("Create a Bot with one paradigm and one compatible layout. Use goals: calendar/checklist/path, notes: notebook/library/timeline, mindmap: research-map/graph/lineage, ideas: idea-cards/branches/reasoning or engineering: code-map/sequence/matrix. For a project extension, use its ext_ ID and fixed layout from project_get_context. Global chat must specify the project explicitly.", {
         "label":{"type":"string"}, "paradigm":{"type":"string"},
         "layout":{"type":"string","enum":[layout for layouts in features.BOT_LAYOUTS.values() for layout in layouts]},
         "hint":{"type":"string"}, "temporary":{"type":"boolean","description":"Use only for a one-time assignment without a suitable existing Bot. Successful archived deliveries retire it automatically."}}),

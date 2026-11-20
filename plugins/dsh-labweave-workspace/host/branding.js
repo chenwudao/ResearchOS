@@ -80,6 +80,10 @@ export function registerBranding(ctx) {
     readFileSync(new URL('../client/research-map.js', import.meta.url)))
   serve(['/labweave-idea-cards.js'], 'text/javascript; charset=utf-8',
     readFileSync(new URL('../client/idea-cards.js', import.meta.url)))
+  serve(['/labweave-code-workbench.js'], 'text/javascript; charset=utf-8',
+    readFileSync(new URL('../client/code-workbench.js', import.meta.url)))
+  serve(['/labweave-project-overview.js'], 'text/javascript; charset=utf-8',
+    readFileSync(new URL('../client/project-overview.js', import.meta.url)))
   serve(['/icon-192.png', '/apple-touch-icon.png'], 'image/png', asset('orbit-192.png'))
   serve(['/icon-512.png'], 'image/png', asset('orbit-512.png'))
   serve(['/icon-maskable-512.png'], 'image/png', asset('orbit-maskable-512.png'))

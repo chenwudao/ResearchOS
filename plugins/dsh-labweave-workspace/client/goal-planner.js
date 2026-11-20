@@ -163,7 +163,7 @@ export function createGoalPlanner(React) {
           drafts.length > 0 && h('section', { className: 'lw-goal-drafts', 'aria-label': '待确认排期' },
             h('h3', null, '待确认排期'),
             drafts.map(item => h('article', { key: item.id, className: 'lw-goal-draft' },
-              h('small', null, item.proposedFrom ? '来自研究点子' : 'AI 建议'),
+              h('small', null, item.proposedFrom ? (item.source === '笔记' ? '来自项目笔记' : '来自研究点子') : 'AI 建议'),
               btn(itemTitle(item), { onClick: () => openEntry(item) }),
               planned(item) && h('small', null, '建议日期 ' + planned(item)),
               h('div', null,

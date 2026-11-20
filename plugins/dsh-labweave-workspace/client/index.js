@@ -63,6 +63,7 @@ window.__ModuleLoader__.load({
       'read-only': LW('仅可查看'), 'workspace-write': LW('工作区内修改'), 'danger-full-access': LW('完全权限'),
     }
     const updated = 'labweave:project-updated'
+    const openSourceSettings = 'labweave:open-source-settings'
     const manage = 'labweave:manage-plugins'
     const nameChanged = 'labweave:assistant-name-changed'
     const openProfileEvent = 'labweave:open-assistant-profile'
@@ -1312,6 +1313,11 @@ window.__ModuleLoader__.load({
       .lw-bot-divider:is(:hover,:focus-visible)::after{border-color:var(--dsw-alias-border-l4,#8888)}
       .lw-bot-conversation-log{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:4px var(--lw-bot-gutter) 8px}
       .lw-bot-conversation-log-inner{max-width:var(--dsh-composer-card-max-width,740px);margin:0 auto}
+      .lw-fbot-main[data-chat-minimized=true] .lw-fbot-scroll{flex:1 1 0}
+      .lw-fbot-main[data-chat-minimized=true] :is(.lw-bot-divider,.lw-bot-conversation-log){display:none}
+      .lw-fbot-main[data-chat-minimized=true] .lw-bot-conversation{flex:0 0 auto;border-block-start:1px solid var(--dsw-alias-border-l2,#8883)}
+      .lw-bot-chat-toggle{flex:none;min-width:25px;padding:4px}
+      .lw-bot-chat-toggle svg{width:15px;height:15px}
       .lw-bot-conversation .lw-bot-turns{margin:0}
       .lw-bot-conversation .lw-bot-msg[data-role=assistant]{padding-inline:0;background:none;border:0}
       .lw-bot-conversation .lw-bot-msg[data-role=user]{border-radius:var(--dsw-radius-lg,14px)}
@@ -1448,6 +1454,89 @@ window.__ModuleLoader__.load({
       .lw-idea-evidence h4{font-size:var(--lw-ui-xs);color:var(--dsw-alias-label-secondary)}
       @container (max-width:760px){.lw-idea-shell{grid-template-columns:minmax(0,1fr)}.lw-idea-inspector{max-height:none}}
       @container (max-width:460px){.lw-idea-grid{grid-template-columns:minmax(0,1fr)}}
+      .lw-code-workbench{container-type:inline-size;display:grid;gap:12px;min-width:0;--lw-code-height:clamp(280px,49vh,490px)}
+      .lw-code-header,.lw-code-heading,.lw-code-toolbar,.lw-code-tabs,.lw-code-breadcrumb,.lw-code-preview-head,.lw-code-save-result{display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-width:0}
+      .lw-code-header,.lw-code-toolbar,.lw-code-preview-head,.lw-code-save-result{justify-content:space-between}
+      .lw-code-workbench :is(h2,h3,h4,p){margin:0}
+      .lw-code-heading h2{font-size:var(--lw-ui-xl,1.24rem);letter-spacing:-.02em}
+      .lw-code-heading>span{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:color-mix(in srgb,var(--lw-paradigm-accent,#558fa7) 20%,var(--dsw-alias-bg-base,Canvas))}
+      .lw-code-heading svg{width:17px;height:17px}
+      .lw-code-toolbar{padding:8px 0;border-block-end:1px solid var(--dsw-alias-border-l2,#8883)}
+      .lw-code-toolbar .lw-select,.lw-code-save-result .lw-select{width:auto;max-width:100%}
+      .lw-code-tabs button[aria-pressed=true],.lw-code-tree button[aria-current=page],.lw-code-outline button[aria-pressed=true]{background:color-mix(in srgb,var(--lw-paradigm-accent,#558fa7) 17%,transparent);font-weight:600}
+      .lw-code-breadcrumb{overflow-wrap:anywhere;font-size:var(--lw-ui-sm);color:var(--dsw-alias-label-secondary)}
+      .lw-code-body{display:grid;grid-template-columns:minmax(115px,18%) minmax(0,1fr);gap:12px;align-items:start}
+      .lw-code-body[data-file=true]{grid-template-columns:minmax(115px,17%) minmax(0,1fr) minmax(180px,23%)}
+      .lw-code-tree,.lw-code-outline,.lw-code-preview,.lw-code-empty{min-width:0;min-height:0;border:1px solid var(--dsw-alias-border-l2,#8883);border-radius:12px;padding:11px;background:var(--dsw-alias-bg-base,Canvas)}
+      .lw-code-tree,.lw-code-outline{display:grid;gap:8px;align-content:start;max-height:var(--lw-code-height);overflow:auto;box-sizing:border-box;scrollbar-gutter:stable}
+      .lw-code-tree button,.lw-code-outline button{justify-content:flex-start;text-align:start;white-space:normal;overflow-wrap:anywhere}
+      .lw-code-tree h3,.lw-code-outline :is(h3,h4){color:var(--dsw-alias-label-secondary);font-size:var(--lw-ui-sm);font-weight:600}
+      .lw-code-outline section{display:grid;gap:5px}
+      .lw-code-outline small{font-size:var(--lw-ui-xs)}
+      .lw-code-import{display:flex;flex-wrap:wrap;align-items:center;gap:3px;border-block-end:1px solid var(--dsw-alias-border-l2,#8883)}
+      .lw-code-graph{display:grid;gap:5px;min-width:0}
+      .lw-bot-board .lw-code-graph .lw-bot-canvas{height:var(--lw-code-height)}
+      .lw-code-preview{display:grid;gap:8px;padding:0;overflow:hidden}
+      .lw-code-preview-head{padding:9px 11px;border-block-end:1px solid var(--dsw-alias-border-l2,#8883);overflow-wrap:anywhere;font-size:var(--lw-ui-sm);font-family:var(--dsw-font-mono,monospace)}
+      .lw-code-preview>p{padding:7px 10px}
+      .lw-code-lines{margin:0;max-height:var(--lw-code-height);overflow:auto;position:relative;padding:8px 0;background:var(--dsw-alias-bg-layer-1,Canvas);tab-size:4}
+      .lw-code-line{display:flex;width:max-content;min-width:100%;padding-inline-end:14px;line-height:1.65;font-family:var(--dsw-font-mono,monospace);font-size:var(--lw-ui-sm);white-space:pre}
+      .lw-code-line button{display:inline-block;position:sticky;left:0;flex:none;width:4em;padding:0 .75em;border:0;margin-inline-end:.7em;text-align:end;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-1,Canvas);font:inherit;cursor:pointer}
+      .lw-code-line[data-active=true]{background:color-mix(in srgb,var(--lw-paradigm-accent,#558fa7) 19%,transparent)}
+      .lw-code-line[data-active=true] button{color:var(--dsw-alias-label-primary);font-weight:600}
+      .lw-syntax-keyword{color:light-dark(#78438e,#d5a8ee);font-weight:600}
+      .lw-syntax-string{color:light-dark(#246956,#8ad3b1)}
+      .lw-syntax-number{color:light-dark(#8b4e0d,#efbc82)}
+      .lw-syntax-comment{color:var(--dsw-alias-label-secondary);font-style:italic}
+      .lw-code-save-result{padding:9px;border-radius:8px;background:var(--dsw-alias-bg-layer-1,#8881)}
+      .lw-bot-mesh{margin:0;max-width:680px;border:1px solid var(--dsw-alias-border-l2,#8883);border-radius:11px;overflow:hidden;background:var(--dsw-alias-bg-layer-1,Canvas)}
+      .lw-bot-mesh canvas{display:block;width:100%;height:auto;touch-action:none;cursor:grab;background-image:radial-gradient(var(--dsw-alias-border-l3,#8884) .8px,transparent .8px);background-size:13px 13px}
+      .lw-bot-mesh canvas:active{cursor:grabbing}
+      .lw-bot-mesh figcaption{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:7px;padding:8px 10px;border-block-start:1px solid var(--dsw-alias-border-l2,#8883);font-size:var(--lw-ui-sm)}
+      .lw-run-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,105px),1fr));gap:8px;margin:8px 0}
+      .lw-run-metrics>div{display:grid;gap:2px;min-width:0;padding:8px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-1,#8881);overflow-wrap:anywhere}
+      .lw-run-metrics dt{font-size:var(--lw-ui-xs);color:var(--dsw-alias-label-secondary)}
+      .lw-run-metrics dd{margin:0;font-size:var(--lw-ui-lg,1.1rem);font-variant-numeric:tabular-nums;font-weight:600}
+      @container (max-width:790px){.lw-code-body[data-file=true]{grid-template-columns:minmax(100px,22%) minmax(0,1fr)}.lw-code-outline{grid-column:2}}
+      @container (max-width:490px){.lw-code-body,.lw-code-body[data-file=true]{grid-template-columns:minmax(0,1fr)}.lw-code-outline{grid-column:1}.lw-code-tree{display:flex;flex-wrap:wrap;align-items:center}.lw-code-tree h3{flex:0 0 100%}}
+      .lw-page.lw-overview-page{overflow:auto}
+      .lw-project-overview{box-sizing:border-box;width:100%;max-width:1370px;margin:0 auto;padding:clamp(18px,3vw,38px);display:grid;gap:16px;min-width:0}
+      .lw-project-overview :is(h1,h2,p,ul,ol){margin:0}
+      .lw-overview-header,.lw-overview-card header{display:flex;align-items:center;gap:10px}
+      .lw-overview-header{justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;padding:0 0 5px}
+      .lw-overview-header h1{margin:0;font-size:clamp(24px,3.2vw,38px);line-height:1.2;letter-spacing:-.035em;overflow-wrap:anywhere}
+      .lw-overview-header>div{display:grid;gap:6px;min-width:0}
+      .lw-overview-stage{width:fit-content;padding:1px 7px;border-radius:5px;background:color-mix(in srgb,#786ac4 19%,var(--dsw-alias-bg-base,Canvas));font-size:var(--lw-ui-xs)}
+      .lw-overview-topic{font-size:var(--lw-ui-base);color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere}
+      .lw-overview-summary{display:grid;grid-template-columns:minmax(0,3fr) repeat(2,minmax(100px,1fr));gap:12px}
+      .lw-overview-summary>div,.lw-overview-card,.lw-overview-activity,.lw-overview-next{box-sizing:border-box;min-width:0;border:1px solid var(--dsw-alias-border-l2,#8883);background:var(--dsw-alias-bg-base,Canvas);border-radius:12px;padding:14px}
+      .lw-overview-progress,.lw-overview-metric{display:grid;gap:5px;align-content:start}
+      .lw-overview-summary strong{font-variant-numeric:tabular-nums;font-size:var(--lw-ui-xl,1.24rem);line-height:1.35}
+      .lw-overview-summary .lw-overview-progress{background:linear-gradient(110deg,color-mix(in srgb,#786ac4 12%,var(--dsw-alias-bg-base,Canvas)),var(--dsw-alias-bg-base,Canvas))}
+      .lw-overview-progress progress{width:100%;height:9px;max-width:460px;accent-color:#786ac4}
+      .lw-overview-metric svg{width:19px;height:19px;color:var(--dsw-alias-label-secondary)}
+      .lw-overview-metric span{font-size:var(--lw-ui-sm);color:var(--dsw-alias-label-secondary)}
+      .lw-overview-next{display:grid;gap:5px}
+      .lw-overview-body{display:grid;grid-template-columns:minmax(0,2fr) minmax(205px,1fr);gap:16px;align-items:start}
+      .lw-overview-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+      .lw-overview-card,.lw-overview-activity{display:grid;gap:9px;overflow-wrap:anywhere}
+      .lw-overview-card{grid-template-rows:auto 1fr auto;align-content:start}
+      .lw-project-overview h2{font-size:var(--lw-ui-base);font-weight:650}
+      .lw-overview-card header>span{display:grid;place-items:center;width:30px;height:30px;flex:none;border-radius:8px;background:color-mix(in srgb,var(--lw-overview-accent,#786ac4) 18%,var(--dsw-alias-bg-base,Canvas))}
+      .lw-overview-card[data-area=goals],.lw-overview-activity [data-area=goals]{--lw-overview-accent:#638fd5}
+      .lw-overview-card[data-area=notes],.lw-overview-activity [data-area=notes]{--lw-overview-accent:#489781}
+      .lw-overview-card[data-area=ideas],.lw-overview-activity [data-area=ideas]{--lw-overview-accent:#b47f3d}
+      .lw-overview-card[data-area=engineering],.lw-overview-activity [data-area=engineering]{--lw-overview-accent:#558fa7}
+      .lw-overview-card header svg{width:15px;height:15px}
+      .lw-overview-card ul,.lw-overview-activity ol{display:grid;gap:6px;padding:0;list-style:none}
+      .lw-overview-card li,.lw-overview-activity li{min-width:0;display:grid;gap:2px;align-content:start;justify-items:start}
+      .lw-overview-card li button,.lw-overview-activity li button{justify-content:flex-start;text-align:start;padding-inline:0;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+      .lw-overview-open{display:flex;flex-wrap:wrap;gap:4px;border-block-start:1px solid var(--dsw-alias-border-l2,#8883);padding-block-start:5px}
+      .lw-overview-activity ol{padding-inline-start:13px;border-inline-start:1px solid var(--dsw-alias-border-l2,#8883);gap:12px}
+      .lw-overview-activity li{position:relative}
+      .lw-overview-activity li::before{content:"";position:absolute;inset:6px auto auto -17px;width:7px;height:7px;border-radius:50%;background:var(--lw-overview-accent,#786ac4)}
+      @container lwpage (max-width:790px){.lw-overview-body{grid-template-columns:minmax(0,1fr)}}
+      @container lwpage (max-width:490px){.lw-overview-grid{grid-template-columns:minmax(0,1fr)}.lw-overview-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.lw-overview-progress{grid-column:1/-1}}
       .lw-canvas-attachment{margin:0;border:1px solid var(--dsw-alias-border-l2,#8883);border-radius:8px;padding:8px 10px;justify-content:space-between;overflow-wrap:anywhere}
       .lw-canvas-detail-body{display:grid;gap:12px;min-width:0}
       .lw-record-dialog .lw-dialog-head{align-items:flex-start;margin-bottom:0}
@@ -2272,8 +2361,8 @@ window.__ModuleLoader__.load({
             Btn({ variant: 'danger', disabled: busy, onClick: confirm }, busy ? LW('删除中…') : LW('确认删除')))))
     }
 
-    function ProjectSettingsDialog({ row, close, refresh, pickDirectory, removeProject }) {
-      const [section, setSection] = React.useState('info')
+    function ProjectSettingsDialog({ row, close, refresh, pickDirectory, removeProject, initialSection = 'info' }) {
+      const [section, setSection] = React.useState(initialSection)
       const [settings, setSettings] = React.useState(null)
       const [info, setInfo] = React.useState(null)
       const [folder, setFolder] = React.useState(null)
@@ -2742,7 +2831,7 @@ window.__ModuleLoader__.load({
       calendar: '目标日历', checklist: '目标清单', path: '目标路径', notebook: '笔记资料库', library: '资料库', timeline: '文件动态',
       'research-map': '研究知识地图',
       graph: '关系图', lineage: '文献脉络', 'idea-cards': '研究点子', branches: '发散探索', reasoning: '线性推演',
-      sequence: '实验流程', matrix: '并行实验',
+      sequence: '实验流程', matrix: '并行实验', 'code-map': '工程工作区',
     }
     const extensionLayouts = {
       goals: ['checklist', 'path'], notes: ['library', 'timeline'], mindmap: ['graph', 'lineage'],
@@ -3231,6 +3320,12 @@ window.__ModuleLoader__.load({
     const IdeaCards = React.lazy(() => import(new URL('./labweave-idea-cards.js', document.baseURI).href)
       .then(module => ({ default: module.createIdeaCards(React, { Btn, Icon, Markdown, safeUrl: mdSafeUrl }) })))
     const BotExperiments = React.lazy(() => getWorkbenchViews().then(views => ({ default: views.Experiments })))
+    const CodeWorkbench = React.lazy(() => Promise.all([
+      import(new URL('./labweave-code-workbench.js', document.baseURI).href), getWorkbenchViews(),
+    ]).then(([module, views]) => ({ default: module.createCodeWorkbench(React, project, { Btn, Icon,
+      Canvas: BotParadigmView, Experiments: views.Experiments }) })))
+    const ProjectOverview = React.lazy(() => import(new URL('./labweave-project-overview.js', document.baseURI).href)
+      .then(module => ({ default: module.createProjectOverview(React, { Btn, Icon, Markdown, headline: item => entryHeadlineBody(item)[0], fmtDateTime }) })))
 
     function openComposerFile(input, imagesOnly) {
       if (!input || input.disabled) return
@@ -3604,11 +3699,17 @@ window.__ModuleLoader__.load({
       const researchMap = featMeta.layout === 'research-map'
       const [ideaRequest, setIdeaRequest] = React.useState(null)
       const ideaCards = featMeta.layout === 'idea-cards'
+      const [codeRequest, setCodeRequest] = React.useState(null)
+      const codeMap = featMeta.layout === 'code-map'
+      const collapsibleChat = notebook || researchMap || ideaCards || codeMap || featMeta.layout === 'calendar'
+      const [chatExpanded, setChatExpanded] = React.useState(persisted.chatExpanded)
+      const chatActive = bot.running || bot.sending
+      const showConversation = !collapsibleChat || chatActive || (chatExpanded ?? bot.messages.length > 0)
       const [activeReview, setActiveReview] = React.useState(null)
       const [deletingItem, setDeletingItem] = React.useState(null)
       const [browserLink, setBrowserLink] = React.useState(null)
       const [customBoardPercent, setBoardPercent] = React.useState(persisted.boardPercent)
-      const boardPercent = customBoardPercent || (researchMap || ideaCards ? 77 : 58)
+      const boardPercent = customBoardPercent || (researchMap || ideaCards || codeMap ? 77 : 58)
       const [editingBot, setEditingBot] = React.useState(false)
       const [nodeEdit, setNodeEdit] = React.useState(null)
       const [draftText, setDraftText] = React.useState(() => persisted?.draft || '')
@@ -3630,29 +3731,37 @@ window.__ModuleLoader__.load({
       React.useEffect(() => {
         const log = conversationRef.current
         if (log) log.scrollTop = log.scrollHeight
-      }, [bot.messages.length])
+      }, [bot.messages.length, showConversation])
       React.useEffect(() => {
         if (!recordRequest || !value?.rails || persisted.recordRequest !== recordRequest) return
-        const containsRecord = view => (view.rails[feature] || []).some(item => item.id === recordRequest.id)
-        function openRecord() {
+        if (recordRequest.runId && (featMeta.extension?.base || featMeta.paradigm) === 'engineering') {
+          delete persisted.recordRequest
+          setCodeRequest(recordRequest)
+          return
+        }
+        const findRecord = view => (view.rails[feature] || []).find(item => item.id === recordRequest.id)
+        function openRecord(record) {
           if (persisted.recordRequest !== recordRequest) return
           delete persisted.recordRequest
           if (notebook) setNotebookRequest(recordRequest)
           else if (researchMap) setMapRequest(recordRequest)
           else if (ideaCards) setIdeaRequest(recordRequest)
+          else if (codeMap && record.experimentRun) setCodeRequest({ runId: record.experimentRun })
           else setActiveItemId(recordRequest.id)
           setNotice('')
           setActiveReview(null); setReading(null); setBrowserLink(null); setEditingId(null); setDeletingItem(null)
         }
-        if (containsRecord(value)) {
-          openRecord()
+        const record = findRecord(value)
+        if (record) {
+          openRecord(record)
           return
         }
         const controller = new AbortController()
         project(workspaceId, 'view', {}, controller.signal).then(view => {
           if (controller.signal.aborted || persisted.recordRequest !== recordRequest) return
-          if (containsRecord(view)) {
-            openRecord()
+          const record = findRecord(view)
+          if (record) {
+            openRecord(record)
             window.dispatchEvent(new Event(updated))
           } else {
             delete persisted.recordRequest
@@ -3664,7 +3773,8 @@ window.__ModuleLoader__.load({
           setError(error.message)
         })
         return () => controller.abort()
-      }, [recordRequest, value, feature, persisted, notebook, researchMap, ideaCards, workspaceId])
+      }, [recordRequest, value, feature, persisted, notebook, researchMap, ideaCards, codeMap, workspaceId,
+        featMeta.extension?.base, featMeta.paradigm])
       const fileInputRef = React.useRef(null)
       const textareaRef = React.useRef(null)
       const changeDraft = text => { setDraftText(text); persisted.draft = text }
@@ -3705,6 +3815,7 @@ window.__ModuleLoader__.load({
       const effectiveParadigm = featMeta.extension?.base || featMeta.paradigm
       const engineering = effectiveParadigm === 'engineering'
       const goalPlanner = effectiveParadigm === 'goals' && botLayout === 'calendar'
+      const calendars = (notebook || ideaCards) ? (value.features || []).filter(item => item.layout === 'calendar' && !item.archived) : []
       const saveGoal = (item, changes) => run(() => action('feature_push', {
         featureId: item?.canvasRail || feature,
         ...(item ? { id: item.id } : { source: '用户' }),
@@ -3713,6 +3824,9 @@ window.__ModuleLoader__.load({
       const paradigmAccent = botParadigms[effectiveParadigm]?.accent
       const addNode = parent => setNodeEdit({ parent, title: '', text: '' })
       const deleteNode = item => setNodeEdit({ remove: item })
+      const experimentProps = engineering ? { workspaceId, featureId: feature, updatedEvent: updated, layout: botLayout, busy, runRequest: codeRequest,
+        records: ordered.filter(item => !item.experimentRun).map(item => ({ ...botDisplayRecord(item, extensionFields, botLayout), id: item.id, item })),
+        addNode, deleteNode, openRecord: record => openEntry(record.item) } : null
       const closeNodeEdit = () => { if (!busy) setNodeEdit(null) }
       async function saveNode(event) {
         event.preventDefault()
@@ -3863,7 +3977,7 @@ window.__ModuleLoader__.load({
         'data-paradigm': paradigmAccent ? effectiveParadigm : undefined,
         'aria-label': title,
       },
-        h('div', { ref: mainRef, className: 'lw-fbot-main', style: { '--lw-board-size': boardPercent + '%' } },
+        h('div', { ref: mainRef, className: 'lw-fbot-main', 'data-chat-minimized': !showConversation, style: { '--lw-board-size': boardPercent + '%' } },
           h('div', { className: 'lw-fbot-scroll' },
             h('div', { className: 'lw-fbot-center' },
               h('header', { className: 'lw-fbot-head' },
@@ -3887,11 +4001,22 @@ window.__ModuleLoader__.load({
                 h('span', null, error || bot.error),
                 openModels && /模型|API|key|密钥/i.test(error || bot.error) && Btn({ variant: 'ghost', size: 'xs', onClick: openModels }, LW('模型与 API 设置'))),
 
-              engineering && h(React.Suspense, { fallback: h('p', { className: 'lw-hint' }, LW('正在读取实验…')) },
-                h(BotExperiments, { workspaceId, featureId: feature, updatedEvent: updated, layout: botLayout,
-                  records: ordered.map(item => ({ ...botDisplayRecord(item, extensionFields, botLayout), id: item.id, item })),
-                  addNode, deleteNode, busy,
-                  openRecord: record => openEntry(record.item) })),
+              engineering && h(React.Suspense, { fallback: h('p', { className: 'lw-hint' }, LW('正在读取工程台…')) },
+                codeMap ? h(CodeWorkbench, {
+                  workspaceId, feature, request: codeRequest, busy: busy || bot.running || bot.sending,
+                  settings: done => window.dispatchEvent(new CustomEvent(openSourceSettings, { detail: { workspaceId, done } })),
+                  experimentProps: {
+                    ...experimentProps, notebooks: (value.features || []).filter(item => item.layout === 'notebook' && !item.archived),
+                    saveResult: async (id, notebookId) => {
+                      const target = await run(() => action('workbench/save-run', { featureId: feature, id, notebookId }))
+                      if (target?.id) navigateRecord(target)
+                    },
+                  },
+                  ask: file => run(async () => {
+                    await bot.sendPrompt(LW('我想运行下方工程台选中的 Python 文件。先用项目中已授权的来源定位它，确认依赖、参数和输出位置，按会话审批规则执行。') +
+                      LW('将实际日志、指标和产物路径写入本 Bot 的实验记录。无法找到文件或依赖时说明原因。\n') + JSON.stringify(file))
+                  }),
+                }) : h(BotExperiments, experimentProps)),
               !hasContent && !engineering ? h('div', { className: 'lw-fbot-empty-wrap' },
                 h('div', { className: 'lw-empty' },
                   h('div', { className: 'lw-empty-emblem', 'aria-hidden': true }, h(Icon, { name: botDisplayIcon(featMeta) })),
@@ -4048,7 +4173,11 @@ window.__ModuleLoader__.load({
                       }) })),
                   notebook && h(React.Suspense, { fallback: h('p', { className: 'lw-hint' }, LW('正在读取笔记…')) },
                     h(Notebook, { items: ordered.filter(item => !item.canvasDraft), resources: libraryItems,
-                      requested: notebookRequest, busy, previewFile: readResource,
+                      requested: notebookRequest, busy, previewFile: readResource, calendars,
+                      draftGoal: async (item, goalId) => {
+                        const target = await run(() => action('note/goal-draft', { featureId: item.canvasRail || feature, id: item.id, goalId }))
+                        if (target?.id) navigateRecord(target)
+                      },
                       save: payload => run(() => action('feature_push', {
                         featureId: savedItems.find(item => item.id === payload.id)?.canvasRail || feature, source: '用户', ...payload,
                       })),
@@ -4089,7 +4218,7 @@ window.__ModuleLoader__.load({
                     h(IdeaCards, {
                       items: ordered.filter(item => !item.canvasDraft).map(item => ({ ...item, canvasRail: item.canvasRail || feature })),
                       feature, topic: value.topic, busy: busy || bot.sending || bot.running, request: ideaRequest,
-                      goals: (value.features || []).filter(item => item.layout === 'calendar' && !item.archived),
+                      goals: calendars,
                       save: (payload, rail) => run(() => action('feature_push', { featureId: rail || feature, source: '用户', ...payload })),
                       remove: deleteNode, navigate: navigateRecord, links: linksFor,
                       changeState: (item, state) => run(() => action('ideas/state', { featureId: item.canvasRail, id: item.id, state })),
@@ -4226,6 +4355,10 @@ window.__ModuleLoader__.load({
                 onChange: e => { const f = e.target.files[0]; e.target.value = ''; if (f) importFile(f) },
               }),
               h(ComposerAttachmentMenu, { disabled: busy, onPick: imagesOnly => openComposerFile(fileInputRef.current, imagesOnly) }),
+              collapsibleChat && Btn({ className: 'lw-bot-chat-toggle', size: 'xs', variant: 'ghost', disabled: chatActive,
+                'aria-expanded': Boolean(showConversation), 'aria-label': showConversation ? LW('收起 Bot 对话') : LW('展开 Bot 对话'),
+                title: showConversation ? LW('收起 Bot 对话') : LW('展开 Bot 对话'),
+                onClick: () => { persisted.chatExpanded = !showConversation; setChatExpanded(!showConversation) } }, h(Icon, { name: 'chat' })),
               h('textarea', {
                 ref: textareaRef,
                 rows: 1,
@@ -4634,7 +4767,7 @@ window.__ModuleLoader__.load({
         return Array.isArray(list) && list.length ? list : fallbackFeatures()
       }
       const hasFeature = (row, feature, value) => feature !== 'chat'
-        && (projectFeatures(row, value).some(f => f.id === feature) || (!row?.features && !!features[feature]))
+        && (feature === 'overview' || projectFeatures(row, value).some(f => f.id === feature) || (!row?.features && !!features[feature]))
       const allBotSessionIds = value => {
         const set = new Set(localBotSessions)
         for (const r of rows) {
@@ -4698,7 +4831,7 @@ window.__ModuleLoader__.load({
       function openProjectRecord(workspaceId, reference) {
         const row = rows.find(item => item.workspaceId === workspaceId && item.scope !== 'global')
         if (!row || !hasFeature(row, reference.featureId)) return
-        paneStateFor(workspaceId, reference.featureId).recordRequest = { id: reference.id }
+        paneStateFor(workspaceId, reference.featureId).recordRequest = reference.runId ? { runId: reference.runId } : { id: reference.id }
         selectPage(workspaceId, reference.featureId)
       }
       function rememberChat(id) {
@@ -5602,6 +5735,8 @@ window.__ModuleLoader__.load({
         const entry = (id, text, icon, click, active, extra = {}) => h('button', { type: 'button', className: 'lw-row-main',
           'aria-current': active ? 'page' : undefined, ...extra, onClick: click }, h(Icon, { name: icon }), h('span', null, text))
         return h('nav', { className: 'lw-tier', 'aria-label': row.name + LW(' 项目功能') },
+          (!filter || LW('项目总览').includes(filter)) && h('div', { className: 'lw-row' },
+            entry('overview', LW('项目总览'), 'activity', () => openPage(row, 'overview'), activePage === 'overview')),
           featureList.filter(bot => !bot.archived && !bot.clusterParent).map(feat => {
             const id = feat.id
             const label = labels[id] || feat.label || features[id] || id
@@ -5716,6 +5851,14 @@ window.__ModuleLoader__.load({
         const [expanded, setExpanded] = React.useState({})
         const [filter, setFilter] = React.useState(null)
         const [dialog, setDialog] = React.useState()
+        React.useEffect(() => {
+          function open(event) {
+            const row = rows.find(item => item.workspaceId === event.detail?.workspaceId && item.scope !== 'global')
+            if (row) setDialog({ type: 'project-settings', row, initialSection: 'sources', done: event.detail.done })
+          }
+          window.addEventListener(openSourceSettings, open)
+          return () => window.removeEventListener(openSourceSettings, open)
+        }, [])
         const [rename, setRename] = React.useState('')
         const [busy, setBusy] = React.useState(false)
         const [err, setErr] = React.useState('')
@@ -5736,7 +5879,7 @@ window.__ModuleLoader__.load({
           if (selected?.workspaceId) setExpanded(prev => ({ ...prev, [selected.workspaceId]: true }))
         }, [selected?.workspaceId])
         const q = filter?.trim().toLocaleLowerCase() || ''
-        function close() { if (!busy) { setDialog(undefined); setErr('') } }
+        function close() { if (!busy) { dialog?.done?.(); setDialog(undefined); setErr('') } }
         function created(row) {
           close()
           setExpanded(prev => ({ ...prev, [row.workspaceId]: true }))
@@ -5808,7 +5951,8 @@ window.__ModuleLoader__.load({
             onSaved: refresh, onCancel: close,
           }),
           dialog?.type === 'project-settings' && h(ProjectSettingsDialog, {
-            key: dialog.row.workspaceId, row: dialog.row, close, refresh, removeProject, pickDirectory: () => nav.pickDirectory(),
+            key: dialog.row.workspaceId, row: dialog.row, close, refresh, removeProject, initialSection: dialog.initialSection,
+            pickDirectory: () => nav.pickDirectory(),
           }))
         const hiddenSessions = allBotSessionIds()
         const projectRows = rows.filter(r => r.scope !== 'global')
@@ -5921,24 +6065,20 @@ window.__ModuleLoader__.load({
       }
       slot('sidebar.workspaces', { priority: -25 }, ResearchTree)
 
-      function ProjectMapDrawer({ row, value, close }) {
-        const rails = value?.rails || {}
-        const featureList = projectFeatures(row, value).filter(f => f.id !== 'chat')
-        const jumpRail = rail => { close(); openPage(row, rail) }
-        return h('section', { style: { display: 'grid', gap: 12 }, 'aria-label': LW('课题关系总览') },
-          h('div', { className: 'lw-map-lanes' },
-            featureList.map(feat => {
-              const rail = feat.id
-              const list = rails[rail] || []
-              return h('div', { key: rail, className: 'lw-map-lane' },
-                h('button', { type: 'button', className: 'lw-map-lane-btn', style: { fontWeight: 600, display: 'flex', justifyContent: 'space-between' },
-                  onClick: () => jumpRail(rail) }, h('span', null, feat.label), h('span', { className: 'lw-num lw-hint' }, list.length)),
-                !list.length ? h('span', { className: 'lw-hint', style: { padding: '2px 6px' } }, LW('暂无条目'))
-                  : list.slice(-4).reverse().map((item, idx) => h('button', { key: item.id || idx, type: 'button', className: 'lw-map-lane-btn',
-                    title: item.text, onClick: () => jumpRail(rail) }, item.text)))
-            })),
-          h('div', { className: 'lw-actions', style: { justifyContent: 'flex-end' } },
-            Btn({ variant: 'secondary', size: 'sm', onClick: close }, LW('关闭'))))
+      function OverviewPage({ row }) {
+        const { value, error } = useProject(row.workspaceId, 'project/overview', '', 5000)
+        function showChat() {
+          const list = sessionsFor(row.workspaceId, ctx.workspaces.list.getSnapshot(), ctx.sessions.list.getSnapshot(), allBotSessionIds())
+          const session = recentSessionFor(row.workspaceId, list)
+          if (session) jump(session.id)
+          else startProjectChat(row)
+        }
+        return h('main', { className: 'lw-page lw-overview-page', 'data-feature': 'overview', 'aria-label': row.name + LW('的项目总览') },
+          error && h('p', { className: 'lw-error', role: 'alert' }, error),
+          value ? h(React.Suspense, { fallback: h('p', { className: 'lw-hint' }, LW('正在加载总览…')) },
+            h(ProjectOverview, { value, openBot: id => openPage(row, id), openChat: showChat,
+              openRecord: reference => openProjectRecord(row.workspaceId, reference) }))
+            : !error && h('p', { className: 'lw-hint', role: 'status' }, LW('正在读取项目…')))
       }
 
       const featureHints = {
@@ -6118,7 +6258,11 @@ window.__ModuleLoader__.load({
           openRewind: (message, restore) => openConversationRewind(sid, message.role, message.seq, restore) }
       }
 
-      function ProjectPage({ row, feature, paneIndex = 0, paneCount = 1 }) {
+      function ProjectPage(props) {
+        return h(props.feature === 'overview' ? OverviewPage : FeaturePage, props)
+      }
+
+      function FeaturePage({ row, feature, paneIndex = 0, paneCount = 1 }) {
         const { value, error: loadError } = useProject(row.workspaceId, 'view', '', 5000)
         const featureList = projectFeatures(row, value)
         const featMeta = featureList.find(f => f.id === feature) || { id: feature, label: features[feature] || feature }

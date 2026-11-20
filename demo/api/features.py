@@ -20,7 +20,7 @@ BOT_LAYOUTS = {
     "notes": ("library", "timeline", "notebook"),
     "mindmap": ("graph", "lineage", "research-map"),
     "ideas": ("branches", "reasoning", "idea-cards"),
-    "engineering": ("sequence", "matrix"),
+    "engineering": ("sequence", "matrix", "code-map"),
 }
 FIELD_TYPES = ("text", "number", "date", "boolean", "url", "reference")
 FIELD_ROLES = {
@@ -556,7 +556,9 @@ def create_feature(caller_scope, label, hint="", project_id=None, *, symbol=None
     if not layouts:
         raise workspace.WorkspaceError(400, "当前项目没有这个范式。")
     if layout is None:
-        layout = {"goals": "calendar", "notes": "notebook", "mindmap": "research-map", "ideas": "idea-cards"}.get(paradigm, layouts[0])
+        defaults = {"goals": "calendar", "notes": "notebook", "mindmap": "research-map",
+                    "ideas": "idea-cards", "engineering": "code-map"}
+        layout = defaults.get(paradigm, layouts[0])
     if layout not in layouts:
         raise workspace.WorkspaceError(400, "当前范式不支持这个排布。")
     symbol = "" if symbol is None else _clean_symbol(symbol, allow_empty=True)

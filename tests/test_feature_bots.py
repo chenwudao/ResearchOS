@@ -190,6 +190,33 @@ class FeatureBotsTests(unittest.TestCase):
         self.assertEqual(task["text"], idea["validation"])
         self.assertNotIn("plannedDate", task)
 
+    def test_python_workbench_indexes_only_scoped_sources(self):
+        a, b = self.projects
+        bot = features.create_feature(a, "工程验证", paradigm="engineering")["feature"]
+        self.assertEqual(bot["layout"], "code-map")
+        other_bot = features.create_feature(b, "其他工程", paradigm="engineering")["feature"]
+        source = self.root / "code"
+        (source / "pkg").mkdir(parents=True)
+        (source / "pkg" / "scores.py").write_text("def score():\n    return 42\n", encoding="utf-8")
+        (source / "pkg" / "run.py").write_text("from .scores import score\nprint(score())\n", encoding="utf-8")
+        (source / ".hidden.py").write_text("raise RuntimeError()\n", encoding="utf-8")
+
+        def act(scope, name, args):
+            return web.dispatch("project", {"workspace": self.records[scope], "action": name, "args": args})
+
+        record = act(a, "sources/save", {"path": str(source)})
+        args = {"featureId": bot["id"], "sourceId": record["id"]}
+        result = act(a, "workbench/graph", args)
+        scripts = {item["path"]: item for item in result["files"]}
+        self.assertEqual(set(scripts), {"pkg/run.py", "pkg/scores.py"})
+        self.assertEqual(scripts["pkg/run.py"]["imports"][0]["target"], "pkg/scores.py")
+        path = "pkg/scores.py"
+        self.assertIn("return 42", act(a, "workbench/file", {**args, "path": path})["text"])
+        with self.assertRaises(workspace.WorkspaceError):
+            act(a, "workbench/file", {**args, "path": "../secret.py"})
+        with self.assertRaises(workspace.WorkspaceError):
+            act(b, "workbench/graph", {**args, "featureId": other_bot["id"]})
+
     def test_global_stays_chat_only_and_scopes_create_rename_delete(self):
         a, b = self.projects
         global_list = self.mcp("global", "feature_list", {})

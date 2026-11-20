@@ -11,6 +11,7 @@ import assistant_profile
 import bot_activity
 import bot_dispatches
 import automation
+import code_map
 from dsh_workspace_map import BindingError, WorkspaceBindings
 import features
 import naming
@@ -19,7 +20,9 @@ import project_sources
 import project_tools
 import project_plugins
 import research_api
+import research_ledger
 import research_mcp
+import research_records
 import session_cleanup
 import tasks
 import workspace
@@ -132,6 +135,16 @@ def project_action(scope, data):
         return project_view(scope)
     if scope == "global":
         raise workspace.WorkspaceError(403, "请选择明确的项目。")
+    if action == "project/overview":
+        view = project_view(scope)
+        workbenches = {bot["id"] for bot in view["features"] if not bot.get("archived") and
+                       (bot.get("paradigm") == "engineering" or (bot.get("extension") or {}).get("base") == "engineering")}
+        runs = [bot_activity.summary(record) | {"featureId": record["featureId"]}
+                for record in research_records.records(scope, "experiment") if record.get("featureId") in workbenches]
+        runs.sort(key=lambda record: record["created"], reverse=True)
+        confirmed = research_ledger.state(scope)
+        return {**view, "recentRuns": runs[:8],
+                "confirmedResearch": {key: confirmed.get(key, "") for key in ("question", "stage", "nextAction")}}
     if action == "bot_dispatches":
         return bot_dispatches.view(scope, summary=args.get("summary") is True)
     if action == "bot_canvas":
@@ -167,6 +180,10 @@ def project_action(scope, data):
         return project_sources.read_file(scope, args)
     if action in ("bot/experiments", "bot/experiment", "bot/artifact"):
         return bot_activity.view(scope, action, args)
+    if action in ("workbench/sources", "workbench/graph", "workbench/file"):
+        return code_map.view(scope, action, args)
+    if action == "workbench/save-run":
+        return bot_activity.save_run_note(scope, args)
     if action == "navigation":
         feat_list = features.list_features("global", scope)
         return {
@@ -213,8 +230,10 @@ def project_action(scope, data):
         return projects.decide_note_edit(scope, args)
     if action == "map/save-source":
         return projects.save_map_note(scope, args)
-    if action in ("ideas/state", "ideas/goal-draft"):
-        return projects.change_idea(scope, args, draft_goal=action == "ideas/goal-draft")
+    if action == "ideas/state":
+        return projects.change_idea(scope, args)
+    if action in ("ideas/goal-draft", "note/goal-draft"):
+        return projects.propose_goal_from_record(scope, args, source_layout="notebook" if action == "note/goal-draft" else "idea-cards")
     if action == "rename":
         return {"name": projects.call("project_update", {"name": naming.display_name(args.get("name"))}, scope)["name"]}
     if action == "description":

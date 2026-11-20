@@ -22,6 +22,12 @@
 - [x] Notes AI editing: compare and accept or dismiss an assistant proposal. Verify user-controlled text, history authorship, and rejection of a proposal against an obsolete revision.
 - [x] Mind map: expandable research routes, paper and method nodes, sourced and unverified relationships, route summaries and literature chronology. Verified in the pinned browser workflow, including author edits and round-trip navigation between a paper and its captured note at narrow viewport and 115% zoom.
 - [x] Ideas: source-backed cards, three suggestion categories, saved/deferred feedback, requests for project-context suggestions, and user-confirmed task drafts. Verified real scoped tool records, round-trip links from ideas to their draft, and explicit acceptance.
-- [ ] Engineering: project, module and file levels, source/import links and file preview; related runs, status, logs, metrics and artifacts. Verify against a real local Python fixture and label historic results as historic.
-- [ ] Shared project: real-data overview, recent activity, contextual navigation and scoped references. Verify the complete path from a map source through plans and results to the next task in a disposable project.
-- [ ] Record remaining P2 limits accurately. Verify on the pinned runtime without touching the user's real projects or publishing changes.
+- [x] Engineering: project, module and file levels, static Python imports, source preview with line highlights, historical status, logs, metrics, and artifacts. The disposable project runs a Python fixture and checks the resulting CSV and rotatable OBJ preview before saving its actual results to a notebook.
+- [x] Shared project: project overview with real counts, progress, recent records and direct links. The pinned runtime test exercises map → paper capture → project note → idea → accepted goal → actual Python fixture → result note → related goal, including dark theme and narrow window at 115% zoom.
+- [x] Record remaining P2 limits. Continuous literature monitoring, a multi-language call graph, and richer 3D formats are follow-on work. The Workbench indexes Python without executing it, resolves static imports where the selected root identifies a unique file, and previews small OBJ geometry. Model-assisted suggestions and live runs use the existing project session and model configuration. Tests use scoped tool records and offline fixtures.
+
+## Verification
+
+- `tests/test_feature_bots.py` validates scoped storage and cross-project rejection, including Python imports in a linked source directory.
+- `tests/integration_goal_planner.py` exercises the integrated research workflow in a disposable browser and project, with no model calls.
+- `tests/integration_native_web.py --rightbar-only` checks the existing project chat and tools independently.

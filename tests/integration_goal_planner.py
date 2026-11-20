@@ -8,6 +8,7 @@ from tempfile import TemporaryDirectory
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import native_launcher as launcher
+import bot_activity
 import features
 import native_web
 import project_service
@@ -32,7 +33,7 @@ def main():
             reference = {"featureId": "library", "id": resource["id"]}
             assert all(reference in item["recordRefs"] for item in items
                        if item.get("kind") == "note" and not item.get("capturedFrom"))
-            note, = (item for item in items if item.get("capturedFrom"))
+            note, = (item for item in items if item.get("source") == "思维导图")
             paper, = (item for item in view["rails"]["library"] if item.get("kind") == "paper")
             assert {"featureId": "library", "id": paper["id"]} in note["recordRefs"]
             assert paper["url"] == "https://example.test/benchmark"
@@ -42,6 +43,9 @@ def main():
             accepted, = (row for row in view["rails"][calendar["id"]] if row.get("proposedFrom"))
             assert accepted["proposedFrom"] == {"featureId": idea_bot["id"], "id": saved_idea["id"]}
             assert not accepted.get("planningDraft")
+            result, = (item for item in items if item.get("source") == "工程台")
+            assert "42" in result["text"] and "outputs/scores.csv" in result["text"]
+            assert {"featureId": calendar["id"], "id": accepted["id"]} in result["recordRefs"]
             files = list((project_service.folder(scope) / "resources").iterdir())
             assert len(files) == 1 and files[0].read_text(encoding="utf-8") == "stage,score\nR2,65.29\n"
     finally:
@@ -130,6 +134,35 @@ def publish_test_ideas(data):
         assert not response.get("isError"), response
 
 
+def publish_workbench_fixture(data):
+    launcher.workspace.DATA = Path(data)
+    scope = next(row["scope"] for row in native_web.catalog() if row["name"] == "排期验收")
+    bot = next(row for row in features.list_features(scope) if row["label"] == "代码工程台")
+    project_service.call("project_update", {"topic": "3D 编程基准",
+                         "description": "比较三维场景复现与局部编辑，检验不同机位对评测结果的影响。"}, scope)
+    root = project_service.folder(scope)
+    (root / "pipeline").mkdir(exist_ok=True)
+    (root / "outputs").mkdir(exist_ok=True)
+    (root / "pipeline" / "loader.py").write_text("def load_scores():\n    return [40, 42, 44]\n", encoding="utf-8")
+    (root / "pipeline" / "evaluate.py").write_text(
+        "from .loader import load_scores\n\ndef score():\n    values = load_scores()\n    return sum(values) / len(values)\n",
+        encoding="utf-8")
+    (root / "main.py").write_text(
+        "from pathlib import Path\nfrom pipeline.evaluate import score\n\nresult = score()\n"
+        "Path('outputs/scores.csv').write_text(f'mean\\n{result}\\n', encoding='utf-8')\n"
+        "Path('outputs/scene.obj').write_text('v 0 0 0\\nv 1 0 0\\nv 0 1 0\\nv 0 0 1\\n'"
+        "'f 1 2 3\\nf 1 2 4\\nf 1 3 4\\nf 2 3 4\\n', encoding='utf-8')\nprint(f'mean={result}')\n",
+        encoding="utf-8")
+    completed = subprocess.run([sys.executable, "main.py"], cwd=root, check=True, capture_output=True, text=True, timeout=10)
+    output = completed.stdout.strip()
+    assert output == "mean=42.0"
+    bot_activity.record(scope, bot["id"], "integration-run", {
+        "name": "固定机位对照结果", "status": "completed", "logs": output,
+        "metrics": {"mean": float(output.split("=")[1])},
+        "parameters": {"script": "main.py", "artifacts": ["outputs/scores.csv", "outputs/scene.obj"]},
+    })
+
+
 if __name__ == "__main__":
     if len(sys.argv) == 4 and sys.argv[1] == "--suggest":
         publish_test_suggestions(*sys.argv[2:])
@@ -139,5 +172,7 @@ if __name__ == "__main__":
         publish_test_map(sys.argv[2])
     elif len(sys.argv) == 3 and sys.argv[1] == "--seed-ideas":
         publish_test_ideas(sys.argv[2])
+    elif len(sys.argv) == 3 and sys.argv[1] == "--seed-workbench":
+        publish_workbench_fixture(sys.argv[2])
     else:
         main()

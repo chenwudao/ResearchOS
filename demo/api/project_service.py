@@ -736,7 +736,7 @@ def save_map_note(project_id, args):
     return mutate(project_id, operation)
 
 
-def change_idea(project_id, args, *, draft_goal=False):
+def change_idea(project_id, args):
     import features
     origin, entry_id = args.get("featureId"), args.get("id")
     if not isinstance(origin, str) or not isinstance(entry_id, str):
@@ -745,11 +745,8 @@ def change_idea(project_id, args, *, draft_goal=False):
                if not bot.get("archived")}
     if layouts.get(origin) != "idea-cards":
         raise workspace.WorkspaceError(400, "请选择当前项目的点子 Bot。")
-    state, destination = args.get("state"), args.get("goalId")
-    if draft_goal:
-        if not isinstance(destination, str) or layouts.get(destination) != "calendar":
-            raise workspace.WorkspaceError(400, "请选择当前项目的目标日历。")
-    elif state not in ("active", "saved", "deferred"):
+    state = args.get("state")
+    if state not in ("active", "saved", "deferred"):
         raise workspace.WorkspaceError(400, "无效的点子状态。")
 
     def operation(item):
@@ -757,17 +754,34 @@ def change_idea(project_id, args, *, draft_goal=False):
         idea = next((entry for entry in rails.get(origin, []) if entry["id"] == entry_id), None)
         if not idea:
             raise workspace.WorkspaceError(404, "点子不存在。")
-        now = timestamp()
-        if not draft_goal:
-            idea.update(ideaState=state, updatedAt=now)
-            return idea
+        idea.update(ideaState=state, updatedAt=timestamp())
+        return idea
+    return mutate(project_id, operation)
+
+
+def propose_goal_from_record(project_id, args, *, source_layout):
+    import features
+    origin, entry_id, destination = (args.get(key) for key in ("featureId", "id", "goalId"))
+    if not all(isinstance(value, str) and value for value in (origin, entry_id, destination)):
+        raise workspace.WorkspaceError(400, "请选择一条项目记录和目标日历。")
+    layouts = {bot["id"]: bot.get("layout") for bot in features.list_features(project_id, project_id)
+               if not bot.get("archived")}
+    if layouts.get(origin) != source_layout or layouts.get(destination) != "calendar":
+        raise workspace.WorkspaceError(400, "请选择当前项目的记录和目标日历。")
+
+    def operation(item):
+        rails = item["rails"]
+        record = next((entry for entry in rails.get(origin, []) if entry["id"] == entry_id and entry.get("kind") != "note-folder"), None)
+        if not record:
+            raise workspace.WorkspaceError(404, "项目记录不存在。")
         reference = {"featureId": origin, "id": entry_id}
         goals = rails.setdefault(destination, [])
         goal = next((entry for entry in goals if entry.get("proposedFrom") == reference), None)
         if goal is None:
-            title = idea.get("title") or workspace.text(idea["text"].splitlines()[0], 240)
-            goal = {"id": "n_" + uuid4().hex, "title": title, "text": idea.get("validation") or idea["text"],
-                    "source": "点子", "planningDraft": True, "ts": now, "proposedFrom": reference,
+            title = record.get("title") or workspace.text(record["text"].splitlines()[0], 240)
+            goal = {"id": "n_" + uuid4().hex, "title": title, "text": record.get("validation") or record["text"],
+                    "source": "笔记" if source_layout == "notebook" else "点子",
+                    "planningDraft": True, "ts": timestamp(), "proposedFrom": reference,
                     "recordRefs": [reference]}
             goals.append(goal)
         return {"featureId": destination, "id": goal["id"], "planningDraft": bool(goal.get("planningDraft"))}

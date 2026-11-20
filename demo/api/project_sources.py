@@ -12,10 +12,12 @@ import project_service as projects
 import workspace
 
 
+def protected_roots():
+    return workspace.DATA.resolve(), model_config.active_web_home().resolve()
+
+
 def _protected(path):
-    return any(path.is_relative_to(root.resolve()) for root in (
-        workspace.DATA, model_config.active_web_home(),
-    ))
+    return any(path.is_relative_to(root) for root in protected_roots())
 
 
 def settings(project_id):
@@ -159,7 +161,7 @@ def list_directory(project_id, source_id, relative=None):
         raise workspace.WorkspaceError(400, "请选择来源内的目录。")
     try:
         items = []
-        protected = (workspace.DATA.resolve(), model_config.active_web_home().resolve())
+        protected = protected_roots()
         with os.scandir(directory) as entries:
             entries = iter(entries)
             for entry in islice(entries, 2000):
