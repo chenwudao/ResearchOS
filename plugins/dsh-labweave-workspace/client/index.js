@@ -3501,14 +3501,14 @@ window.__ModuleLoader__.load({
               h('header', { className: 'lw-fbot-head' },
                 h('button', {
                   type: 'button', className: 'lw-bot-pill',
-                  'aria-label': LW('修改功能 Bot 信息 ') + title,
-                  title: LW('查看或编辑功能 Bot 信息'),
-                  onClick: () => setEditingBot(true),
+                  'aria-label': (featMeta.fixed ? LW('固定 Worker ') : LW('修改功能 Bot 信息 ')) + title,
+                  title: featMeta.fixed ? subtitle : LW('查看或编辑功能 Bot 信息'),
+                  onClick: () => { if (!featMeta.fixed) setEditingBot(true) },
                 },
                   h('span', { className: 'lw-bot-pill-badge', 'data-tone': feature, 'aria-hidden': true },
                     h(Icon, { name: botDisplayIcon(featMeta) })),
                   h('span', { className: 'lw-bot-pill-name' }, title),
-                  h('span', { className: 'lw-bot-pill-edit', 'aria-hidden': true }, h(Icon, { name: 'edit' })))),
+                  !featMeta.fixed && h('span', { className: 'lw-bot-pill-edit', 'aria-hidden': true }, h(Icon, { name: 'edit' })))),
 
               h('div', { className: 'lw-bot-board' },
               Boolean(live?.active) && h('p', { className: 'lw-canvas-live', role: 'status' },
@@ -5124,7 +5124,7 @@ window.__ModuleLoader__.load({
         const { value, error } = useProject(row.workspaceId, 'navigation')
         const [chatsOpen, setChatsOpen] = React.useState(true)
         const featureList = projectFeatures(row, value)
-        const archivedBots = featureList.filter(bot => bot.archived)
+        const archivedBots = featureList.filter(bot => bot.archived || bot.legacy)
         const labels = value?.labels || Object.fromEntries(featureList.map(f => [f.id, f.label]))
         const hidden = allBotSessionIds(value)
         const visibleSessions = sessions.filter(s => !hidden.has(s.id))
@@ -5132,7 +5132,7 @@ window.__ModuleLoader__.load({
         const entry = (id, text, icon, click, active, extra = {}) => h('button', { type: 'button', className: 'lw-row-main',
           'aria-current': active ? 'page' : undefined, ...extra, onClick: click }, h(Icon, { name: icon }), h('span', null, text))
         return h('nav', { className: 'lw-tier', 'aria-label': row.name + LW(' 项目功能') },
-          featureList.filter(bot => !bot.archived && !bot.clusterParent).map(feat => {
+          featureList.filter(bot => !bot.legacy && !bot.archived && !bot.clusterParent).map(feat => {
             const id = feat.id
             const label = labels[id] || feat.label || features[id] || id
             const members = featureList.filter(bot => bot.clusterParent === id && !bot.archived)
@@ -5151,8 +5151,8 @@ window.__ModuleLoader__.load({
               }),
               h('span', { className: 'lw-row-tools' },
                 id === 'chat' && tool('plus', LW('在') + row.name + LW('中新建对话'), () => { setChatsOpen(true); startProjectChat(row) }),
-                onRenameFeature && tool('edit', LW('重命名功能 ') + label, () => onRenameFeature(row, feat, label)),
-                id!=='chat' && onDeleteFeature && tool('trash',LW('删除功能 ')+label,()=>onDeleteFeature(row,feat,label),'lw-tool-danger'),
+                !feat.fixed && onRenameFeature && tool('edit', LW('重命名功能 ') + label, () => onRenameFeature(row, feat, label)),
+                feat.deletable && id!=='chat' && onDeleteFeature && tool('trash',LW('删除功能 ')+label,()=>onDeleteFeature(row,feat,label),'lw-tool-danger'),
                 tool('split', LW('分屏打开') + label, () => splitPage(row, id)))),
               members.length > 0 && h('details', { className: 'lw-sessions' },
                 h('summary', null, LW('成员 Bot') + ' · ' + members.length),
@@ -5169,11 +5169,11 @@ window.__ModuleLoader__.load({
                     tool('trash', LW('删除对话 ') + chatTitle(s), () => onDeleteChat(row, s), 'lw-tool-danger'))))))
           }),
           archivedBots.length > 0 && h('details', { className: 'lw-sessions' },
-            h('summary', null, LW('已归档 Bot') + ' · ' + archivedBots.length),
+            h('summary', null, LW('历史 Bot') + ' · ' + archivedBots.length),
             archivedBots.map(bot => h('div', { className: 'lw-row', key: bot.id },
               entry(bot.id, bot.label, botDisplayIcon(bot), () => openPage(row, bot.id), activePage === bot.id,
                 paradigmKeyFor(bot) ? { 'data-paradigm': paradigmKeyFor(bot), style: { '--lw-paradigm-accent': paradigmAccentFor(bot) } } : {}),
-              tool('back', LW('恢复 ') + bot.label, async () => {
+              bot.archived && !bot.legacy && tool('back', LW('恢复 ') + bot.label, async () => {
                 try {
                   await project(row.workspaceId, 'bot_restore', { featureId: bot.id })
                   await refresh()
@@ -5388,7 +5388,6 @@ window.__ModuleLoader__.load({
                   h('div', { className: 'lw-rail-popover-head' },
                     h('strong', null, flyRow.name),
                     h('span', { className: 'lw-actions', style: { gap: 2 } },
-                      tool('plus', LW('在')+flyRow.name+LW('创建功能 Bot'), () => {setFlyout(null);setDialog({type:'create-bot',row:flyRow})}),
                       tool('gear', LW('项目设置 ') + flyRow.name, () => { setFlyout(null); setDialog({ type: 'project-settings', row: flyRow }) }),
                       tool('edit', LW('重命名') + flyRow.name, () => { setFlyout(null); setRename(flyRow.name); setDialog({ type: 'rename', row: flyRow }) }),
                       tool('trash', LW('删除') + flyRow.name, () => { setFlyout(null); setDialog({ type: 'delete-project', row: flyRow }) }, 'lw-tool-danger'),
@@ -5429,7 +5428,6 @@ window.__ModuleLoader__.load({
                 onClick: () => setExpanded(prev => ({ ...prev, [id]: !open })) },
                 h(Icon, { name: open ? 'down' : 'right' }), h(Icon, { name: 'folder' }), h('span', null, row.name)),
               h('span', { className: 'lw-row-tools' },
-                tool('plus', LW('在')+row.name+LW('创建功能 Bot'),()=>setDialog({type:'create-bot',row})),
                 tool('gear', LW('项目设置 ') + row.name, () => setDialog({ type: 'project-settings', row }))),
               open && h('span', { className: 'lw-row-tools' },
                 tool('edit', LW('重命名') + row.name, () => { setRename(row.name); setDialog({ type: 'rename', row }) }),

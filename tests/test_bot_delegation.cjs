@@ -1,10 +1,10 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-test('one batch reserves isolated Bot workers and only archives completed assigned results', async () => {
+test('one batch saves completed results and never retires its Workers', async () => {
   const { createBotDelegation } = await import('../plugins/dsh-labweave-workspace/host/bot-delegation.js')
   const bots = [
-    { id: 'notes-id', label: '论文笔记', paradigm: 'notes', layout: 'library', assignments: [{ kind: 'duty', instruction: '报告页码' }] },
+    { id: 'notes-id', label: '论文笔记', paradigm: 'notes', layout: 'library', temporary: true, assignments: [{ kind: 'duty', instruction: '报告页码' }] },
     { id: 'engineering-id', label: '复现实验', paradigm: 'engineering', layout: 'matrix' },
   ]
   const launches = []
@@ -43,6 +43,7 @@ test('one batch reserves isolated Bot workers and only archives completed assign
         tracked.push({ route, ...data })
         return { id: 'draft-card' }
       }
+      assert.notEqual(route, 'bot-complete')
       assert.equal(route, 'project')
       archived.push(data.args)
       return { id: 'saved-note' }

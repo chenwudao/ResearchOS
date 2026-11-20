@@ -15,7 +15,7 @@ TOOLS = {
     "assistant_name_get": ("Read the global assistant's current display name.", {}),
     "assistant_rename": ("Change the global assistant's display name when requested in the conversation.", {"name": {"type": "string"}}),
     "feature_labels": ("Read active feature IDs and their current display names for this conversation scope. A global conversation may optionally specify projectId.", {}),
-    "feature_list": ("List active Feature Bots in the project. clusterParent identifies grouped members. Use includeArchived to find completed temporary Bots and their preserved results.", {"includeArchived":{"type":"boolean"}}),
+    "feature_list": ("List the five permanent project Workers A goals, B notes, C mindmap, D ideas, E engineering. Reuse these identities and update their records; never create, delete, rename or archive them. includeArchived includes preserved historical Bots.", {"includeArchived":{"type":"boolean"}}),
     "feature_create": ("Create a Bot with one paradigm and one compatible layout. Use goals: checklist/path, notes: library/timeline, mindmap: graph/lineage, ideas: branches/reasoning or engineering: sequence/matrix. For a project extension, use its ext_ ID and fixed layout from project_get_context. Global chat must specify the project explicitly.", {
         "label":{"type":"string"}, "paradigm":{"type":"string"},
         "layout":{"type":"string","enum":[layout for layouts in features.BOT_LAYOUTS.values() for layout in layouts]},
@@ -118,7 +118,7 @@ def dispatch(request, scope, *, protocol_version="2024-11-05"):
                                                 "properties": schema if name.startswith("global_memory_") else {**schema, "projectId": {"type": "string"}},
                                                 "additionalProperties": False,
                                                 **({"required": ["label", "paradigm"]} if name == "feature_create" else {})}}
-                               for name, (description, schema) in TOOLS.items()]}
+                               for name, (description, schema) in TOOLS.items() if name not in ("feature_create", "feature_delete", "project_paradigm_create")]}
         elif method == "tools/call":
             params = request.get("params", {})
             try:
@@ -160,7 +160,7 @@ def dispatch(request, scope, *, protocol_version="2024-11-05"):
                             value = features.feature_labels_map(resolved_id)
                     elif name == "feature_list":
                         value = [item for item in features.list_features(scope, project_id=target)
-                                 if arguments.get("includeArchived") or not item.get("archived")]
+                                 if arguments.get("includeArchived") or (not item.get("archived") and not item.get("legacy"))]
                     elif name == "feature_create":
                         value = features.create_feature(
                             scope, arguments.get("label"), arguments.get("hint", ""), project_id=target,

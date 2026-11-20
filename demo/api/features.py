@@ -1,4 +1,4 @@
-"""Per-project dynamic Feature Bot catalog, isolation, and bot session bindings."""
+"""Fixed project Workers, historical Bot compatibility, and scoped session bindings."""
 
 from contextlib import closing
 from datetime import datetime, timezone
@@ -6,7 +6,6 @@ import hashlib
 import json
 from pathlib import Path
 import re
-import secrets
 import time
 
 import naming
@@ -22,6 +21,36 @@ BOT_LAYOUTS = {
     "ideas": ("branches", "reasoning"),
     "engineering": ("sequence", "matrix"),
 }
+
+# Stable identities keep records and session bindings independent of model decisions.
+FIXED_WORKERS = (
+    ("goals", "A", "目标", "goals", "checklist", "备忘录与待办清单：维护优先级、截止时间、完成条件和实际进度。"),
+    ("library", "B", "笔记", "notes", "library", "分类资料库：整理资料、来源和摘录，持续记录新增与修订时间。"),
+    ("feat_c0000000", "C", "思维导图", "mindmap", "graph", "维护文献关系、历史脉络与研究范式；关系注明出处和核查状态。"),
+    ("ideas", "D", "点子", "ideas", "branches", "依据项目记忆与实时进度迭代可尝试操作，记录假设、最小验证和下一步。"),
+    ("feat_e0000000", "E", "工程台", "engineering", "sequence", "根据要求编写代码、运行实验，展示真实状态、日志、指标和可视化产物。"),
+)
+FIXED_IDS = frozenset(row[0] for row in FIXED_WORKERS)
+FIXED_MESSAGE = "项目固定保留目标、笔记、思维导图、点子、工程台五个 Worker；请更新内容或分派任务，不能增删、改名、聚类或改变类型。"
+
+
+def fixed_catalog(items, bot_map):
+    existing = {item['id']: item for item in items}
+    result = [item for item in items if item['id'] == 'chat']
+    for fid, letter, label, paradigm, layout, hint in FIXED_WORKERS:
+        item = dict(existing.get(fid, {}))
+        item.update(id=fid, label=label, workerKey=letter, fixed=True, legacy=False,
+                    builtin=fid in BUILTIN_ORDER, deletable=False, shared=False,
+                    hint=hint, paradigm=paradigm, layout=layout, extension=None,
+                    symbol='', keywords=[], temporary=False, archived=False, clusterParent=None,
+                    emptyText='尚未记录内容，可直接对话或由项目主对话分派任务。',
+                    botSessionId=bot_map.get(fid))
+        result.append(item)
+    for item in items:
+        if item['id'] != 'chat' and item['id'] not in FIXED_IDS:
+            result.append({**item, 'legacy': True, 'fixed': False, 'deletable': False})
+    return result
+
 FIELD_TYPES = ("text", "number", "date", "boolean", "url", "reference")
 FIELD_ROLES = {
     "title": ("text",), "summary": ("text",), "group": ("text",), "date": ("date",),
@@ -207,13 +236,13 @@ def ensure_tables(db):
 
 
 def suppress_optional_builtins(project_id):
-    """New projects start with chat only. Existing projects are left unchanged."""
+    """New projects expose five fixed Workers; keep the historical feed hidden."""
     if not isinstance(project_id, str) or not project_id.startswith("proj_"):
         return
     now = int(time.time())
     with closing(workspace.database()) as db, db:
         ensure_tables(db)
-        for fid in OPTIONAL_BUILTINS:
+        for fid in ("feed",):
             db.execute(
                 "INSERT INTO labweave_features (scope, feature_id, label, hint, deleted, sort_order, updated_ts) "
                 "VALUES (?, ?, ?, '', 1, 999, ?) "
@@ -352,35 +381,7 @@ def project_paradigms(project):
 
 def create_project_paradigm(project, args, *, lenient_symbol=False):
     _resolve_target(project, project, require_project_from_global=True, allow_all=False)
-    label = naming.display_name(args.get("label"))
-    description = workspace.text(args.get("description"), 2000)
-    if not description:
-        raise workspace.WorkspaceError(400, "请描述这个范式展示什么，以及如何组织这些内容。")
-    base, layout = args.get("base"), args.get("layout")
-    if not isinstance(base, str) or layout not in BOT_LAYOUTS.get(base, ()):
-        raise workspace.WorkspaceError(400, "请选择支持的展示排布。")
-    fields = _paradigm_fields(args)
-    raw_symbol = args.get("symbol")
-    explicit_symbol = normalize_paradigm_symbol(raw_symbol, lenient=lenient_symbol)
-    extra_hint = raw_symbol if (lenient_symbol and isinstance(raw_symbol, str) and not explicit_symbol) else ""
-    identity = "ext_" + secrets.token_hex(12)
-    with closing(workspace.database()) as db, db:
-        ensure_tables(db)
-        existing_map = _project_paradigms(db, project)
-        used = [item["symbol"] for item in existing_map.values() if item["label"] != label]
-        symbol = explicit_symbol or infer_paradigm_symbol(
-            label, description, base, layout, fields, used_symbols=used, extra_hint=extra_hint,
-        )
-        db.execute(
-            "INSERT OR IGNORE INTO labweave_project_paradigms(project,id,label,base,layout,elements,description,symbol) VALUES(?,?,?,?,?,?,?,?)",
-            (project, identity, label, base, layout, json.dumps({"fields": fields}, ensure_ascii=False), description, symbol),
-        )
-        definition = next(item for item in _project_paradigms(db, project).values() if item["label"] == label)
-        same_spec = (definition["base"], definition["layout"], definition["fields"], definition["description"]) == (base, layout, fields, description)
-        same_symbol = (not explicit_symbol) or definition["symbol"] == explicit_symbol
-        if not (same_spec and same_symbol):
-            raise workspace.WorkspaceError(409, "当前项目已有同名扩展范式。")
-    return definition
+    raise workspace.WorkspaceError(409, FIXED_MESSAGE)
 
 
 def list_features(caller_scope, project_id=None):
@@ -507,7 +508,7 @@ def list_features(caller_scope, project_id=None):
     for item in result:
         temporary, archived, parent = lifecycle.get(item["id"], (False, False, None))
         item.update(temporary=temporary, archived=archived, clusterParent=parent if parent in visible else None)
-    return result
+    return fixed_catalog(result, bot_map)
 
 
 def feature_labels_map(project_id):
@@ -540,169 +541,43 @@ def is_valid_rail(project_id, rail):
 
 def create_feature(caller_scope, label, hint="", project_id=None, *, symbol=None, keywords=None, request_id=None,
                    paradigm="notes", layout=None, temporary=False):
-    """Add a new custom Feature Bot to an explicit project or across all projects."""
-    cleaned_label = naming.display_name(label)
-    cleaned_hint = _clean_hint(hint)
-    if type(temporary) is not bool or (temporary and caller_scope == "global"):
-        raise workspace.WorkspaceError(400, "临时 Bot 只能由具体项目创建。")
-    target, _ = _resolve_target(caller_scope, project_id, require_project_from_global=True, allow_all=True)
-    if not isinstance(paradigm, str):
-        raise workspace.WorkspaceError(400, "请选择目标、笔记、思维导图、点子或工程台范式。")
-    extension = next((item for item in project_paradigms(target) if item["id"] == paradigm), None) if paradigm.startswith("ext_") and target != "all" else None
-    layouts = (extension["layout"],) if extension else BOT_LAYOUTS.get(paradigm, ())
-    if not layouts:
-        raise workspace.WorkspaceError(400, "当前项目没有这个范式。")
-    if layout is None:
-        layout = layouts[0]
-    if layout not in layouts:
-        raise workspace.WorkspaceError(400, "当前范式不支持这个排布。")
-    symbol = "" if symbol is None else _clean_symbol(symbol, allow_empty=True)
-    words = _clean_keywords(keywords)
-    if request_id is not None and (not isinstance(request_id,str) or not re.fullmatch(r"[0-9a-f]{32}",request_id)):
-        raise workspace.WorkspaceError(400, "创建请求标识无效。")
-    fid = "feat_" + (hashlib.sha256((target+"/"+request_id).encode()).hexdigest()[:20] if request_id else secrets.token_hex(8))
-    now = int(time.time())
-
-    with closing(workspace.database()) as db, db:
-        naming.NamingStore._schema(db)
-        ensure_tables(db)
-        db.execute("BEGIN IMMEDIATE")
-        row = db.execute("SELECT COALESCE(MAX(sort_order), 100) FROM labweave_features").fetchone()
-        next_order = int(row[0] or 100) + 10
-        db.execute(
-            "INSERT OR IGNORE INTO labweave_features (scope, feature_id, label, hint, deleted, sort_order, updated_ts, paradigm, layout) "
-            "VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)",
-            (target, fid, cleaned_label, cleaned_hint, next_order, now, paradigm, layout),
-        )
-        encoded = json.dumps(words,ensure_ascii=False)
-        db.execute("INSERT OR IGNORE INTO labweave_feature_profiles VALUES(?,?,?,?)",(target,fid,symbol,encoded))
-        saved = db.execute("SELECT label,hint,deleted,symbol,keywords,COALESCE(paradigm,'notes'),COALESCE(layout,'library') FROM labweave_features "
-                           "JOIN labweave_feature_profiles USING(scope,feature_id) WHERE scope=? AND feature_id=?",(target,fid)).fetchone()
-        if saved != (cleaned_label,cleaned_hint,0,symbol,encoded,paradigm,layout):
-            raise workspace.WorkspaceError(409,"创建请求已被使用，请重新打开创建窗口。")
-        if temporary:
-            db.execute("INSERT OR IGNORE INTO labweave_bot_lifecycle(project,feature,temporary) VALUES(?,?,1)", (target, fid))
-
-    effective_hint = cleaned_hint or f"围绕「{cleaned_label}」沉淀推送消息与文件资源"
-    return {
-        "scope": target,
-        "feature": {
-            "id": fid,
-            "label": cleaned_label,
-            "builtin": False,
-            "deletable": True,
-            "shared": target == "all",
-            "hint": effective_hint,
-            "symbol": symbol,
-            "keywords": words,
-            "paradigm": paradigm,
-            "extension": extension,
-            "layout": layout,
-            "emptyText": f"还没有收到来自「{cleaned_label}」的推送内容",
-            "categories": [["push", "推送消息"], ["file", "文件资源"]],
-            "temporary": temporary,
-            "botSessionId": None,
-        },
-    }
+    """Compatibility API: reuse the fixed Worker without mutating its identity."""
+    target, _ = _resolve_target(caller_scope, project_id, require_project_from_global=True, allow_all=False)
+    worker = next((item for item in list_features(caller_scope, target)
+                   if item.get('fixed') and item['paradigm'] == paradigm), None)
+    if worker is None:
+        raise workspace.WorkspaceError(400, FIXED_MESSAGE)
+    return {'scope': target, 'feature': worker, 'reused': True}
 
 
 def cluster_bots(project, target_id, member_ids):
-    if not isinstance(member_ids, list) or not member_ids or not all(isinstance(value, str) for value in member_ids):
-        raise workspace.WorkspaceError(400, "请选择要聚类的成员 Bot。")
-    target_id = _clean_id(target_id)
-    members = set(member_ids)
-    with closing(workspace.database()) as db, db:
-        ensure_tables(db)
-        db.execute("BEGIN IMMEDIATE")
-        bots = {item["id"]: item for item in list_features(project, project) if item.get("paradigm")}
-        target = bots.get(target_id)
-        if not target or target["archived"] or target["clusterParent"] or target["temporary"] or target_id in members:
-            raise workspace.WorkspaceError(400, "请选择本项目中独立且长期使用的聚类 Bot。")
-        parents = {bot["clusterParent"] for bot in bots.values() if bot["clusterParent"]}
-        for identity in members:
-            member = bots.get(identity)
-            if (not member or member["paradigm"] != target["paradigm"] or member["archived"]
-                    or identity in parents or member["clusterParent"] not in (None, target_id)):
-                raise workspace.WorkspaceError(400, "聚类成员须属于本项目的同一范式，且没有归入其他聚类。")
-        db.executemany(
-            "INSERT INTO labweave_bot_lifecycle(project,feature,cluster_parent) VALUES(?,?,?) "
-            "ON CONFLICT(project,feature) DO UPDATE SET cluster_parent=excluded.cluster_parent",
-            ((project, identity, target_id) for identity in sorted(members)),
-        )
-    return {"targetId": target_id, "members": sorted(members)}
+    _resolve_target(project, project, require_project_from_global=True, allow_all=False)
+    raise workspace.WorkspaceError(409, FIXED_MESSAGE)
 
 
 def set_bot_archived(project, feature_id, *, archived):
+    _resolve_target(project, project, require_project_from_global=True, allow_all=False)
     fid = _clean_id(feature_id)
-    with closing(workspace.database()) as db, db:
-        ensure_tables(db)
-        db.execute("BEGIN IMMEDIATE")
-        state = db.execute("SELECT temporary,cluster_parent FROM labweave_bot_lifecycle WHERE project=? AND feature=?",
-                           (project, fid)).fetchone()
-        if not state or not state[0]:
-            return {"archived": False}
-        if archived:
-            has_duties = db.execute("SELECT 1 FROM labweave_bot_assignments WHERE project=? AND feature=?", (project, fid)).fetchone()
-            has_schedules = db.execute("SELECT 1 FROM labweave_bot_schedules WHERE project=? AND feature=?", (project, fid)).fetchone()
-            has_chat = db.execute("SELECT 1 FROM labweave_feature_bots WHERE project_id=? AND feature_id=?", (project, fid)).fetchone()
-            if state[1] or has_duties or has_schedules or has_chat:
-                return {"archived": False}
-        db.execute("UPDATE labweave_bot_lifecycle SET archived=? WHERE project=? AND feature=?", (int(archived), project, fid))
-    return {"archived": archived}
+    if not any(item['id'] == fid for item in list_features(project, project)):
+        raise workspace.WorkspaceError(404, '未找到 Worker。')
+    # Completion is a task status, never a Worker lifecycle change.
+    if not archived and fid not in FIXED_IDS:
+        with closing(workspace.database()) as db, db:
+            ensure_tables(db)
+            db.execute('UPDATE labweave_bot_lifecycle SET archived=0 WHERE project=? AND feature=?', (project, fid))
+    return {'archived': False}
 
 
 def delete_feature(caller_scope, feature_id, project_id=None):
-    """Remove a removable built-in or custom Feature Bot within allowed scope."""
-    fid = _clean_id(feature_id)
-    if fid in PROTECTED_FEATURES:
-        raise workspace.WorkspaceError(400, "「聊天」为核心功能，不可删除。")
-    target, _ = _resolve_target(caller_scope, project_id, require_project_from_global=True, allow_all=True)
-    now = int(time.time())
-
-    with closing(workspace.database()) as db, db:
-        naming.NamingStore._schema(db)
-        ensure_tables(db)
-        if target == "all":
-            is_known = fid in naming.DEFAULT_FEATURE_LABELS or db.execute(
-                "SELECT 1 FROM labweave_features WHERE scope = 'all' AND feature_id = ? AND deleted = 0",
-                (fid,),
-            ).fetchone() is not None
-            if not is_known:
-                raise workspace.WorkspaceError(404, "未找到要删除的全局共享功能。")
-            db.execute(
-                "INSERT INTO labweave_features (scope, feature_id, label, hint, deleted, sort_order, updated_ts) "
-                "VALUES ('all', ?, ?, '', 1, 999, ?) "
-                "ON CONFLICT(scope, feature_id) DO UPDATE SET deleted = 1, updated_ts = excluded.updated_ts",
-                (fid, naming.DEFAULT_FEATURE_LABELS.get(fid, fid), now),
-            )
-            db.execute("DELETE FROM labweave_feature_bots WHERE feature_id = ?", (fid,))
-            db.execute("DELETE FROM labweave_bot_assignments WHERE feature=?", (fid,))
-            db.execute("DELETE FROM labweave_bot_schedules WHERE feature=?", (fid,))
-            db.execute("DELETE FROM labweave_bot_lifecycle WHERE feature=?", (fid,))
-            db.execute("UPDATE labweave_bot_lifecycle SET cluster_parent=NULL WHERE cluster_parent=?", (fid,))
-            return {"scope": "all", "deleted": fid}
-
-        active = {item["id"]: item for item in list_features("global", target)}
-        if fid not in active:
-            raise workspace.WorkspaceError(404, "当前项目中不存在该功能。")
-        existing_label = active[fid]["label"]
-        db.execute(
-            "INSERT INTO labweave_features (scope, feature_id, label, hint, deleted, sort_order, updated_ts) "
-            "VALUES (?, ?, ?, '', 1, 999, ?) "
-            "ON CONFLICT(scope, feature_id) DO UPDATE SET deleted = 1, updated_ts = excluded.updated_ts",
-            (target, fid, existing_label, now),
-        )
-        db.execute("DELETE FROM labweave_feature_bots WHERE project_id = ? AND feature_id = ?", (target, fid))
-        db.execute("DELETE FROM labweave_bot_assignments WHERE project=? AND feature=?", (target,fid))
-        db.execute("DELETE FROM labweave_bot_schedules WHERE project=? AND feature=?", (target,fid))
-        db.execute("DELETE FROM labweave_bot_lifecycle WHERE project=? AND feature=?", (target, fid))
-        db.execute("UPDATE labweave_bot_lifecycle SET cluster_parent=NULL WHERE project=? AND cluster_parent=?", (target, fid))
-    return {"scope": target, "deleted": fid}
+    _resolve_target(caller_scope, project_id, require_project_from_global=True, allow_all=True)
+    raise workspace.WorkspaceError(409, FIXED_MESSAGE)
 
 
 def rename_feature(caller_scope, feature_id, label, project_id=None):
     """Rename either a built-in feature or a custom Feature Bot within caller_scope."""
     fid = _clean_id(feature_id)
+    if fid in FIXED_IDS:
+        raise workspace.WorkspaceError(409, FIXED_MESSAGE)
     if fid in naming.DEFAULT_FEATURE_LABELS:
         return naming.NamingStore().rename_feature_from_conversation(caller_scope, fid, label, project_id=project_id)
 
@@ -753,6 +628,8 @@ def rename_feature(caller_scope, feature_id, label, project_id=None):
 def update_feature(caller_scope, feature_id, *, label=None, hint=None, symbol=None, keywords=None, project_id=None):
     """Update a Feature Bot's profile (label, hint, symbol, keywords) within allowed scope."""
     fid = _clean_id(feature_id)
+    if fid in FIXED_IDS:
+        raise workspace.WorkspaceError(409, FIXED_MESSAGE)
     if fid in PROTECTED_FEATURES:
         raise workspace.WorkspaceError(400, "「聊天」不是功能 Bot，如需改名请使用重命名功能。")
     target, _ = _resolve_target(caller_scope, project_id, require_project_from_global=True, allow_all=True)

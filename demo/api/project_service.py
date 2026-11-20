@@ -81,7 +81,10 @@ def context(project_id):
     import memory_store
     result["coreMemories"] = memory_store.core_memories(project_id)
     import features
-    result["projectParadigms"] = features.project_paradigms(project_id)
+    result["projectParadigms"] = []
+    result["workerPolicy"] = features.FIXED_MESSAGE
+    result["workers"] = [{k: bot[k] for k in ("id", "label", "workerKey", "paradigm", "layout", "hint")}
+                         for bot in features.list_features(project_id, project_id) if bot.get("fixed")]
     directory = folder(project_id)
     result["directory"] = str(directory)
     result["outputDirectory"] = str(directory / OUTPUT_DIRECTORY)

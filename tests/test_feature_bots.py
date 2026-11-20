@@ -44,59 +44,28 @@ class FeatureBotsTests(unittest.TestCase):
             return result
         return json.loads(result["content"][0]["text"])
 
-    def test_global_stays_chat_only_and_scopes_create_rename_delete(self):
-        a, b = self.projects
-        global_list = self.mcp("global", "feature_list", {})
-        self.assertEqual([f["id"] for f in global_list], ["chat"])
+    def test_global_stays_chat_only_and_fixed_workers_are_scoped(self):
+        a,b=self.projects
+        self.assertEqual([f['id'] for f in self.mcp('global','feature_list',{})],['chat'])
+        self.assertTrue(self.mcp('global','feature_create',{'label':'missing project'})['isError'])
+        created=self.mcp('global','feature_create',{'label':'ignored','paradigm':'notes','projectId':a})
+        self.assertEqual(created['feature']['id'],'library')
+        self.assertTrue(created['reused'])
+        self.assertTrue(self.mcp(b,'feature_create',{'label':'cross scope','projectId':a})['isError'])
+        self.assertTrue(self.mcp(a,'feature_delete',{'featureId':'library'})['isError'])
+        self.assertEqual(len(self.mcp(a,'feature_list',{})),6)
 
-        # Global create/delete must specify explicit projectId or 'all'.
-        self.assertTrue(self.mcp("global", "feature_create", {"label": "缺失目标"})["isError"])
-        self.assertTrue(self.mcp("global", "feature_create", {"label": "越界", "projectId": "global"})["isError"])
-        self.assertTrue(self.mcp("global", "feature_delete", {"featureId": "feed"})["isError"])
-
-        # Explicit project creation stays isolated to Alpha.
-        only_a = self.mcp("global", "feature_create", {"label": "实验周报", "hint": "按周归档实验进度", "projectId": a})
-        fid_a = only_a["feature"]["id"]
-        self.assertEqual(only_a["scope"], a)
-        self.assertIn(fid_a, [f["id"] for f in web.project_view(a)["features"]])
-        self.assertNotIn(fid_a, [f["id"] for f in web.project_view(b)["features"]])
-
-        # Project B cannot rename or delete A's feature or create inside A.
-        self.assertTrue(self.mcp(b, "feature_create", {"label": "偷创", "projectId": a})["isError"])
-        self.assertTrue(self.mcp(b, "feature_delete", {"featureId": fid_a, "projectId": a})["isError"])
-        self.assertTrue(self.mcp(b, "rename_feature", {"featureId": fid_a, "label": "偷改"})["isError"])
-
-        # Project-local rename works on custom feature IDs and preserves isolation.
-        renamed = self.mcp(a, "rename_feature", {"featureId": fid_a, "label": "组会周报"})
-        self.assertEqual(renamed["label"], "组会周报")
-        self.assertEqual(web.project_view(a)["labels"][fid_a], "组会周报")
-        self.assertEqual(self.mcp(a, "feature_labels", {})[fid_a], "组会周报")
-
-        # Shared creation with 'all' appears in both; deleting in A leaves B active.
-        shared = self.mcp("global", "feature_create", {"label": "投稿清单", "projectId": "all"})["feature"]
-        fid_all = shared["id"]
-        self.assertIn(fid_all, [f["id"] for f in web.project_view(a)["features"]])
-        self.assertIn(fid_all, [f["id"] for f in web.project_view(b)["features"]])
-        self.mcp(a, "feature_delete", {"featureId": fid_all})
-        self.assertNotIn(fid_all, [f["id"] for f in web.project_view(a)["features"]])
-        self.assertIn(fid_all, [f["id"] for f in web.project_view(b)["features"]])
-
-        # New projects start with chat only; deleting 'chat' is always forbidden.
-        self.assertEqual([f["id"] for f in web.project_view(a)["features"] if f["builtin"]], ["chat"])
-        self.assertEqual([f["id"] for f in web.project_view(b)["features"] if f["builtin"]], ["chat"])
-        self.assertTrue(self.mcp(a, "feature_delete", {"featureId": "chat"})["isError"])
-        # Once optional builtins are enabled, deleting 'feed' is isolated to the current project.
-        features.enable_builtin(a, "feed")
-        features.enable_builtin(b, "feed")
-        self.mcp(a, "feature_delete", {"featureId": "feed"})
-        self.assertNotIn("feed", [f["id"] for f in web.project_view(a)["features"]])
-        self.assertIn("feed", [f["id"] for f in web.project_view(b)["features"]])
+    def legacy_feature(self, project, label):
+        from contextlib import closing
+        with closing(workspace.database()) as db, db:
+            features.ensure_tables(db)
+            db.execute("INSERT INTO labweave_features(scope,feature_id,label,updated_ts,paradigm,layout) VALUES(?,?,?,0,'notes','timeline')",(project,'feat_12345678',label))
+        return 'feat_12345678'
 
     def test_feature_push_upload_and_bot_session_persistence(self):
         a, b = self.projects
         rec_a = self.records[a]
-        created = self.mcp(a, "feature_create", {"label": "文献速递"})["feature"]
-        fid = created["id"]
+        fid = self.legacy_feature(a, "文献速递")
 
         # Generic HTTP workspace-page must NOT allow creating or deleting features directly,
         # while scoped per-project feature renaming works on built-in and custom features without crossing projects.
@@ -210,27 +179,23 @@ class FeatureBotsTests(unittest.TestCase):
         })
         self.assertFalse(any(item["title"] == "旧归档规则" for item in after_remove))
 
-    def test_project_plus_and_chat_share_feature_profile(self):
+    def test_ui_and_chat_reuse_fixed_worker_without_profile_changes(self):
         a,b=self.projects
-        args={"label":"研究笔记","paradigm":"notes","hint":"记录假设","symbol":"✎","keywords":["假设","证据","假设"],"requestId":"a"*32}
-        def create(values):
-            return web.dispatch("project",{"workspace":self.records[a],"action":"create_feature_bot","args":values})
-        first=create(args)["feature"]
-        self.assertEqual(create(args)["feature"]["id"],first["id"])
-        self.assertEqual(first["keywords"],["假设","证据"])
+        args={'label':'arbitrary name','paradigm':'notes','hint':'arbitrary duty','requestId':'a'*32}
+        result=web.dispatch('project',{'workspace':self.records[a],'action':'create_feature_bot','args':args})
+        self.assertTrue(result['reused'])
+        self.assertEqual(result['feature']['label'],'笔记')
         with self.assertRaises(workspace.WorkspaceError):
-            create({**args,"label":"另一个名字"})
+            web.dispatch('project',{'workspace':self.records[a],'action':'feature_update','args':{'featureId':'library','label':'changed'}})
+        chat=self.mcp(a,'feature_create',{'label':'ignored','paradigm':'notes'})
+        self.assertEqual(chat['feature'],result['feature'])
         with self.assertRaises(workspace.WorkspaceError):
-            create({**args,"projectId":b})
-        self.assertNotIn(first["id"],web.project_view(b)["labels"])
-        chat=self.mcp(a,"feature_create",{"label":"推导","symbol":"λ","keywords":["公式"]})["feature"]
-        saved=next(f for f in web.project_view(a)["features"] if f["id"]==chat["id"])
-        self.assertEqual((saved["symbol"],saved["keywords"]),("λ",["公式"]))
+            web.dispatch('project',{'workspace':self.records[a],'action':'create_feature_bot','args':{**args,'projectId':b}})
 
     def test_feature_push_illustrated_svg_image_path_and_security(self):
         a, b = self.projects
         rec_a = self.records[a]
-        fid = self.mcp(a, "feature_create", {"label": "实验观察", "hint": "输出关键曲线与对比图"})["feature"]["id"]
+        fid = self.legacy_feature(a, "实验观察")
 
         # Text-only push omits image fields when LLM deems plain text clearer.
         plain = self.mcp(a, "feature_push", {"featureId": fid, "text": "仅文本状态提醒", "category": "push"})
@@ -306,84 +271,15 @@ class FeatureBotsTests(unittest.TestCase):
         self.assertTrue(uploaded["image"].startswith("data:image/png;base64,"))
         self.assertTrue(uploaded["linkedItem"]["image"].startswith("data:image/png;base64,"))
 
-    def test_paradigm_avatars_for_builtin_and_custom_paradigms(self):
-        a, _ = self.projects
-        rec_a = self.records[a]
-
-        # Newly created bots default to empty symbol (inherit paradigm avatar) instead of legacy '✦'.
-        ui_bot = web.dispatch("project", {
-            "workspace": rec_a, "action": "create_feature_bot",
-            "args": {"label": "阶段目标", "paradigm": "goals", "requestId": "1" * 32},
-        })["feature"]
-        self.assertEqual(ui_bot["symbol"], "")
-        self.assertEqual(ui_bot["paradigm"], "goals")
-
-        mcp_bot = self.mcp(a, "feature_create", {"label": "文献脉络", "paradigm": "mindmap"})["feature"]
-        self.assertEqual(mcp_bot["symbol"], "")
-        self.assertEqual(mcp_bot["paradigm"], "mindmap")
-
-        # Manually created project extension paradigm automatically gets a matching avatar icon.
-        defect_ext = web.dispatch("project", {
-            "workspace": rec_a, "action": "create_project_paradigm",
-            "args": {
-                "label": "缺陷追踪",
-                "description": "记录系统故障、报错复现步骤和排查进展。",
-                "base": "engineering",
-                "layout": "sequence",
-                "fields": [{"name": "问题标题", "type": "text", "role": "title"}],
-            },
-        })
-        self.assertEqual(defect_ext["symbol"], "lucide:bug")
-
-        # Conversation-created paradigm auto-matches and tolerates an unrecognized symbol hint.
-        paper_ext = self.mcp(a, "project_paradigm_create", {
-            "label": "文献精读",
-            "description": "按主题整理核心论文与阅读笔记。",
-            "base": "notes",
-            "layout": "library",
-            "symbol": "lucide:not-a-real-icon",
-            "fields": [{"name": "论文标题", "type": "text", "role": "title"}],
-        })
-        self.assertEqual(paper_ext["symbol"], "lucide:book-open")
-
-        # Explicit valid symbol on custom paradigm is preserved (both exact and bare lucide name).
-        custom_ext = web.dispatch("project", {
-            "workspace": rec_a, "action": "create_project_paradigm",
-            "args": {
-                "label": "自定义看板",
-                "description": "通用结构化记录。",
-                "base": "notes",
-                "layout": "timeline",
-                "symbol": "telescope",
-                "fields": [{"name": "条目", "type": "text", "role": "title"}],
-            },
-        })
-        self.assertEqual(custom_ext["symbol"], "lucide:telescope")
-
-        # Bots created from custom extension paradigms carry extension.symbol and default symbol=''.
-        ext_bot = web.dispatch("project", {
-            "workspace": rec_a, "action": "create_feature_bot",
-            "args": {"label": "缺陷清单", "paradigm": defect_ext["id"], "requestId": "2" * 32},
-        })["feature"]
-        self.assertEqual(ext_bot["symbol"], "")
-        self.assertEqual(ext_bot["extension"]["symbol"], "lucide:bug")
-        listed_ext = next(f for f in web.project_view(a)["features"] if f["id"] == ext_bot["id"])
-        self.assertEqual(listed_ext["symbol"], "")
-        self.assertEqual(listed_ext["extension"]["symbol"], "lucide:bug")
-
-        # Legacy '✦' rows migrate cleanly once; later explicit updates to '✦' stay intact.
-        from contextlib import closing
-        with closing(workspace.database()) as db, db:
-            db.execute("DELETE FROM labweave_meta WHERE key = 'paradigm_avatar_default_v1'")
-            db.execute("UPDATE labweave_feature_profiles SET symbol = '✦' WHERE scope = ? AND feature_id = ?", (a, ui_bot["id"]))
-        migrated = next(f for f in web.project_view(a)["features"] if f["id"] == ui_bot["id"])
-        self.assertEqual(migrated["symbol"], "")
-        web.dispatch("project", {
-            "workspace": rec_a, "action": "feature_update",
-            "args": {"featureId": ui_bot["id"], "symbol": "✦"},
-        })
-        explicit_star = next(f for f in web.project_view(a)["features"] if f["id"] == ui_bot["id"])
-        self.assertEqual(explicit_star["symbol"], "✦")
+    def test_fixed_paradigm_avatars_and_extension_creation_blocked(self):
+        a,_=self.projects
+        workers=[f for f in features.list_features(a) if f.get('fixed')]
+        self.assertEqual(len(workers),5)
+        self.assertTrue(all(f['symbol']=='' and f['extension'] is None for f in workers))
+        with self.assertRaises(workspace.WorkspaceError):
+            web.dispatch('project',{'workspace':self.records[a],'action':'create_project_paradigm',
+                                   'args':{'label':'custom','description':'new type','base':'notes','layout':'library'}})
+        self.assertTrue(self.mcp(a,'project_paradigm_create',{'label':'custom'})['isError'])
 
 
 if __name__ == "__main__":

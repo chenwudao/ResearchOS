@@ -114,6 +114,12 @@ class NamingStore:
 
     def rename_feature_from_conversation(self, caller_scope, feature_id, label, project_id=None):
         """Rename through a trusted conversation dispatcher, never a generic UI endpoint."""
+        import features
+        if isinstance(feature_id, str) and feature_id in features.FIXED_IDS:
+            with closing(self._connect()) as db:
+                self._schema(db)
+                self._target(db, caller_scope, project_id)
+            raise workspace.WorkspaceError(409, features.FIXED_MESSAGE)
         if isinstance(feature_id, str) and feature_id.startswith("feat_"):
             import features
             return features.rename_feature(caller_scope, feature_id, label, project_id=project_id)

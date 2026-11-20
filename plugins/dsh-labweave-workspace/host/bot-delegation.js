@@ -160,26 +160,6 @@ export function createBotDelegation(ctx, { call, caller, output, refresh = async
     catch { return false }
   } }
   ctx.tools.register({
-    name: 'labweave_bot_cluster', output,
-    description: 'Group overlapping Bots under one existing permanent Bot in the same project and exact paradigm. Use when the user requests a cluster or separate workstreams now serve one sustained responsibility. Original member identities, conversations, and records stay available. Do not group solely because paradigms match.',
-    parameters: { type: 'object', additionalProperties: false, required: ['targetId', 'memberIds'], properties: {
-      targetId: { type: 'string' }, memberIds: { type: 'array', minItems: 1, items: { type: 'string' } },
-    } },
-    async execute(args, exec) {
-      const { row, workspace } = caller(exec)
-      if (!isProjectLeader(exec.agent, row) || !canArchive(exec.agent.session)) {
-        throw Error('请在有修改权限的项目主对话聚类 Bot。')
-      }
-      const involved = new Set([args.targetId, ...args.memberIds])
-      if ([...children.values()].some(job => job.row.scope === row.scope && involved.has(job.bot.id))) {
-        throw Error('请等关联的 Bot 完成本次任务再聚类。')
-      }
-      const result = await call('project', { workspace, action: 'bot_cluster', args }, exec.signal)
-      await refresh()
-      return JSON.stringify(result)
-    },
-  }, leaderOnly)
-  ctx.tools.register({
     name: 'labweave_bot_delegate', output,
     description: 'Delegate one-time work to existing Bots in the current project main chat. Use feature_list to find Bot IDs. Submit independent assignments together to run in parallel, and wait for their results before starting dependent work. Returns each result to this conversation and saves completed items to the Bot when writing is permitted.',
     parameters: { type: 'object', additionalProperties: false, required: ['assignments'], properties: {
@@ -207,7 +187,7 @@ export function createBotDelegation(ctx, { call, caller, output, refresh = async
       const canWrite = canArchive(exec.agent.session)
       const batchTemporary = new Set()
       const jobs = assignments.map(assignment => {
-        const bot = row.features.find(feature => feature.id === assignment.featureId && feature.paradigm && !feature.archived)
+        const bot = row.features.find(feature => feature.id === assignment.featureId && feature.paradigm && !feature.archived && !feature.legacy)
         const task = assignment.task?.trim()
         if (!bot || !task || task.length > 8000) throw Error('请选择本项目已有的 Bot，并填写具体任务。')
         if (bot.temporary) {
@@ -232,15 +212,7 @@ export function createBotDelegation(ctx, { call, caller, output, refresh = async
               result.trackingError = '项目任务状态未能更新。'
               return result
             }
-            if (job.bot.temporary && result.recordId && !exec.signal.aborted && canArchive(exec.agent.session)) {
-              try {
-                const completion = await call('bot-complete', {
-                  workspace, featureId: job.bot.id, recordId: result.recordId,
-                }, exec.signal)
-                result.archived = completion.archived
-                if (completion.archived) job.bot.archived = true
-              } catch (error) { result.retirementError = error.message }
-            }
+            result.archived = false // Workers remain present after every outcome.
             return result
           } finally {
             children.delete(job.childId)

@@ -34,21 +34,21 @@ class McpNamingTests(unittest.TestCase):
         return json.loads(result["content"][0]["text"])
 
     def test_conversation_scope_controls_target(self):
-        self.assertEqual(self.call("global", "rename_feature", {"featureId": "ideas", "label": "灵感"})["scope"], "global")
-        self.assertEqual(self.call("proj_a", "feature_labels", {})["ideas"], "灵感")
-        self.assertEqual(self.call("proj_a", "rename_feature", {"featureId": "ideas", "label": "假说"})["scope"], "proj_a")
-        self.assertEqual(self.call("proj_a", "feature_labels", {})["ideas"], "假说")
-        self.assertEqual(self.call("proj_b", "feature_labels", {})["ideas"], "灵感")
-        self.assertTrue(self.call("proj_a", "rename_feature", {"featureId": "ideas", "label": "越权", "projectId": "proj_b", "caller_scope": "global"})["isError"])
-        self.assertTrue(self.call("proj_a", "rename_feature", {"featureId": "ideas", "label": "越权", "projectId": "global"})["isError"])
-        self.assertEqual(self.call("proj_b", "feature_labels", {})["ideas"], "灵感")
+        self.assertEqual(self.call("global", "rename_feature", {"featureId": "feed", "label": "灵感"})["scope"], "global")
+        self.assertEqual(self.call("proj_a", "feature_labels", {})["feed"], "灵感")
+        self.assertEqual(self.call("proj_a", "rename_feature", {"featureId": "feed", "label": "假说"})["scope"], "proj_a")
+        self.assertEqual(self.call("proj_a", "feature_labels", {})["feed"], "假说")
+        self.assertEqual(self.call("proj_b", "feature_labels", {})["feed"], "灵感")
+        self.assertTrue(self.call("proj_a", "rename_feature", {"featureId": "feed", "label": "越权", "projectId": "proj_b", "caller_scope": "global"})["isError"])
+        self.assertTrue(self.call("proj_a", "rename_feature", {"featureId": "feed", "label": "越权", "projectId": "global"})["isError"])
+        self.assertEqual(self.call("proj_b", "feature_labels", {})["feed"], "灵感")
 
     def test_global_conversation_can_select_project(self):
-        result = self.call("global", "rename_feature", {"featureId": "goals", "label": "里程碑", "projectId": "proj_b"})
+        result = self.call("global", "rename_feature", {"featureId": "feed", "label": "里程碑", "projectId": "proj_b"})
         self.assertEqual(result["scope"], "proj_b")
-        self.assertEqual(self.call("proj_b", "feature_labels", {})["goals"], "里程碑")
-        self.assertEqual(self.call("proj_a", "feature_labels", {})["goals"], "目标")
-        self.assertTrue(self.call("global", "rename_feature", {"featureId": "goals", "label": "错", "projectId": "proj_missing"})["isError"])
+        self.assertEqual(self.call("proj_b", "feature_labels", {})["feed"], "里程碑")
+        self.assertEqual(self.call("proj_a", "feature_labels", {})["feed"], "动态")
+        self.assertTrue(self.call("global", "rename_feature", {"featureId": "feed", "label": "错", "projectId": "proj_missing"})["isError"])
 
     def test_assistant_name_can_change_from_a_conversation(self):
         self.assertEqual(self.call("global", "assistant_name_get", {}), {"name": "Weave"})
@@ -67,9 +67,9 @@ class McpNamingTests(unittest.TestCase):
 
     def test_generic_project_tool_cannot_write_feature_names(self):
         with self.assertRaises(workspace.WorkspaceError) as raised:
-            project_service.call("rename_feature", {"featureId": "ideas", "label": "绕过"}, "proj_a")
+            project_service.call("rename_feature", {"featureId": "feed", "label": "绕过"}, "proj_a")
         self.assertEqual(raised.exception.status, 404)
-        self.assertEqual(self.call("proj_a", "feature_labels", {})["ideas"], "点子")
+        self.assertEqual(self.call("proj_a", "feature_labels", {})["feed"], "动态")
 
 
 if __name__ == "__main__":

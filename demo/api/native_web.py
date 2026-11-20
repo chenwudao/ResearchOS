@@ -58,7 +58,7 @@ def catalog():
             "scope": identity,
             "name": item["name"],
             "path": str(path),
-            "features": [{**{k:f.get(k) for k in ("id","label","builtin","shared","hint","symbol","keywords","botSessionId","paradigm","layout","extension","temporary","archived","clusterParent")},
+            "features": [{**{k:f.get(k) for k in ("id","label","builtin","shared","hint","symbol","keywords","botSessionId","paradigm","layout","extension","temporary","archived","clusterParent","fixed","legacy","workerKey","deletable")},
                           "assignments":assigned.get(f["id"],[]),
                           "scheduleIds":schedules.get(f["id"],[])} for f in feat_list],
             "botSessionIds": [f["botSessionId"] for f in feat_list if f.get("botSessionId")],
