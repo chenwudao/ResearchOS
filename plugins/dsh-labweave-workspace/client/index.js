@@ -3745,6 +3745,9 @@ window.__ModuleLoader__.load({
       const [chatExpanded, setChatExpanded] = React.useState(persisted.chatExpanded)
       const chatActive = bot.running || bot.sending
       const showConversation = !collapsibleChat || chatActive || (chatExpanded ?? bot.messages.length > 0)
+      const progress = (bot.running && bot.progress) || (bot.sending && preparingReply)
+      const showingProgress = Boolean(progress)
+      const showingApproval = Boolean(progress?.pendingApproval)
       const [activeReview, setActiveReview] = React.useState(null)
       const [deletingItem, setDeletingItem] = React.useState(null)
       const [browserLink, setBrowserLink] = React.useState(null)
@@ -3768,10 +3771,10 @@ window.__ModuleLoader__.load({
         const rect = mainRef.current.getBoundingClientRect()
         resizeBoard(100 * (event.clientY - rect.top) / rect.height)
       }
-      React.useEffect(() => {
+      React.useLayoutEffect(() => {
         const log = conversationRef.current
         if (log) log.scrollTop = log.scrollHeight
-      }, [bot.messages.length, showConversation])
+      }, [bot.messages.length, showConversation, showingProgress, showingApproval, boardPercent])
       React.useEffect(() => {
         if (!recordRequest || !value?.rails || persisted.recordRequest !== recordRequest) return
         if (recordRequest.runId && (featMeta.extension?.base || featMeta.paradigm) === 'engineering') {
@@ -3976,7 +3979,6 @@ window.__ModuleLoader__.load({
       const goalsList = value.rails.goals || []
       const linkedIdeaIds = new Set(goalsList.map(g => g.ideaId).filter(Boolean))
 
-      const progress = (bot.running && bot.progress) || (bot.sending && preparingReply)
       const hasDetail = Boolean(reading || activeItem || activeReview)
       const hasContent = typedLayout || items.length > 0 || hasDetail || (feature === 'ideas' && (value.reviews?.length || 0) > 0)
 
@@ -5168,11 +5170,12 @@ window.__ModuleLoader__.load({
         }
         window.addEventListener(nameChanged, names)
         window.addEventListener(profileChanged, names)
+        window.addEventListener(updated, names)
         let updateTimer, catalogTimer
         const offSessions = ctx.sessions.list.subscribe(() => {
           syncRoom()
           clearTimeout(updateTimer)
-          updateTimer = setTimeout(() => { names(); window.dispatchEvent(new Event(updated)) }, 300)
+          updateTimer = setTimeout(() => window.dispatchEvent(new Event(updated)), 300)
         })
         const offWorkspaces = ctx.workspaces.list.subscribe(() => {
           syncRoom()
@@ -5193,6 +5196,7 @@ window.__ModuleLoader__.load({
         return () => {
           disposed = true; nameStrings?.(); titleObserver.disconnect(); style.remove()
           window.removeEventListener(nameChanged, names); window.removeEventListener(profileChanged, names)
+          window.removeEventListener(updated, names)
           window.removeEventListener(navEvent, syncRoom)
           offSessions(); offWorkspaces(); offPanel(); clearTimeout(updateTimer); clearTimeout(catalogTimer)
           delete document.documentElement.dataset.lwRoom
@@ -6107,6 +6111,7 @@ window.__ModuleLoader__.load({
 
       function OverviewPage({ row }) {
         const { value, error } = useProject(row.workspaceId, 'project/overview', '', 5000)
+        const [creatingBot, setCreatingBot] = React.useState(false)
         function showChat() {
           const list = sessionsFor(row.workspaceId, ctx.workspaces.list.getSnapshot(), ctx.sessions.list.getSnapshot(), allBotSessionIds())
           const session = recentSessionFor(row.workspaceId, list)
@@ -6116,9 +6121,15 @@ window.__ModuleLoader__.load({
         return h('main', { className: 'lw-page lw-overview-page', 'data-feature': 'overview', 'aria-label': row.name + LW('的项目总览') },
           error && h('p', { className: 'lw-error', role: 'alert' }, error),
           value ? h(React.Suspense, { fallback: h('p', { className: 'lw-hint' }, LW('正在加载总览…')) },
-            h(ProjectOverview, { value, openBot: id => openPage(row, id), openChat: showChat,
+            h(ProjectOverview, { value, openBot: id => openPage(row, id), openChat: showChat, createBot: () => setCreatingBot(true),
               openRecord: reference => openProjectRecord(row.workspaceId, reference) }))
-            : !error && h('p', { className: 'lw-hint', role: 'status' }, LW('正在读取项目…')))
+            : !error && h('p', { className: 'lw-hint', role: 'status' }, LW('正在读取项目…')),
+          creatingBot && h(CreateFeatureBot, { row, close: () => setCreatingBot(false), created: async (owner, bot) => {
+            await refresh()
+            window.dispatchEvent(new Event(updated))
+            setCreatingBot(false)
+            openPage(owner, bot.id)
+          } }))
       }
 
       const featureHints = {

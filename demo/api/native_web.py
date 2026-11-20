@@ -304,9 +304,7 @@ def project_action(scope, data):
         if tasks.get(args.get("id"))["projectId"] != scope:
             raise workspace.WorkspaceError(404, "任务不存在。")
         return task_actions[action](args)
-    if action in ("research/overview", "research/draft", "research/approve", "research/run", "research/pause",
-                  "research/cancel", "research/accept", "research/log", "research/state", "research/review-evidence",
-                  "research/plan", "research/evidence", "research/link"):
+    if action in research_api.POST:
         return research_api.POST[action]({**args, "projectId": scope})
     tools_result = project_tools.handle(scope, action, args)
     if tools_result is not None:

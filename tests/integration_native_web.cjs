@@ -129,20 +129,16 @@ async function main() {
     await page.getByRole('navigation', { name: name + ' 项目功能' }).waitFor()
     return waitView(v => v?.name === name)
   }
-  async function checkFormalDraft(project) {
-    const { sessionId, scope } = project
-    const plan = JSON.parse(execFileSync(python,
-      [path.join(__dirname, 'workflow_fixture.py'), path.join(root, 'data'), scope], { encoding: 'utf8' }))
-    const draft = await owner('project', { sessionId, action: 'research/draft', args: { plan } })
-    assert.equal(draft.code, 200, JSON.stringify(draft.data))
-    assert.equal(draft.data.status, 'DRAFT')
-    assert.deepEqual(draft.data.runs, [])
-    assert.equal(draft.data.plan.question, plan.question)
-    const list = await owner('project', { sessionId, action: 'sandbox/list' })
-    assert.equal(list.code, 200)
-    assert.ok(list.data.workflows.some(flow => flow.id === draft.data.id && flow.status === 'DRAFT' && flow.total === 0))
-    assert.equal((await owner('project', { sessionId, action: 'research/run', args: { id: draft.data.id } })).code, 409)
-    assert.equal((await owner('project', { sessionId, action: 'research/example' })).code, 404)
+  async function checkResearchState({ sessionId }) {
+    const question = '固定机位能否提升可比性？'
+    const state = await owner('project', { sessionId, action: 'research/state', args: { revision: 0, question } })
+    assert.equal(state.code, 200, JSON.stringify(state.data))
+    assert.equal(state.data.question, question)
+    const project = await owner('project', { sessionId, action: 'project/overview' })
+    assert.equal(project.code, 200)
+    assert.equal(project.data.confirmedResearch.question, question)
+    assert.equal((await owner('project', { sessionId, action: 'research/draft' })).code, 404)
+    assert.equal((await owner('project', { sessionId, action: 'sandbox/list' })).code, 404)
   }
   async function enableLegacyColumns(project) {
     assert.deepEqual(project.features.map(feature => feature.id), ['chat'])
@@ -155,8 +151,13 @@ async function main() {
       'workspace.DATA = Path(sys.argv[2])',
       'for feature in features.OPTIONAL_BUILTINS: features.enable_builtin(sys.argv[3], feature)',
     ].join('\n'), path.join(__dirname, '..', 'demo', 'api'), path.join(root, 'data'), project.scope])
-    assert.equal((await owner('catalog')).code, 200)
+    const catalogRefresh = page.waitForResponse(async response => {
+      if (!response.ok() || !response.url().endsWith('/api/labweave/catalog')) return false
+      const rows = await response.json()
+      return rows.find(row => row.scope === project.scope)?.features.some(feature => feature.id === 'ideas')
+    })
     await page.evaluate(() => window.dispatchEvent(new Event('labweave:project-updated')))
+    await catalogRefresh
   }
   async function checkProjectTools(name, scope) {
     step = '项目聊天右侧栏'
@@ -275,8 +276,8 @@ async function main() {
     }
     if (phase === 'workflow-draft') {
       step = '使用项目自有输入创建正式实验草案'
-      await checkFormalDraft(await newProject('草案验收'))
-      console.log('使用项目输入创建草案、沙盒列表读取及未审批拒绝运行通过。')
+      await checkResearchState(await newProject('研究状态验收'))
+      console.log('已验证项目科研状态的保存、总览读取及旧实验接口的响应。')
       return
     }
     if (phase === 'rightbar') {
@@ -500,9 +501,9 @@ async function main() {
     }
     await button('收起侧边栏').click()
     await page.mouse.move(480, 450)
-    await page.locator('[data-sidebar-toggle] img.lw-brand-mark').waitFor()
+    await page.locator('[data-sidebar-toggle] img.lw-brand-mark').waitFor({ state: 'hidden' })
     assert.equal(await page.locator('[class*="newSession"]:visible').count(), 0)
-    await assertCollapsedRailAligned(page.locator('nav[aria-label="工作区项目快捷栏"] button').first(), '收起后项目图标应与上方品牌图标纵向对齐')
+    await assertCollapsedRailAligned(page.locator('nav[aria-label="工作区项目快捷栏"] button').first(), '收起后项目图标应与侧栏开关纵向对齐')
     await page.locator('nav[aria-label="工作区项目快捷栏"] button').first().click()
     await page.getByRole('dialog', { name: '工作区项目菜单' }).waitFor()
     await page.getByRole('dialog', { name: '工作区项目菜单' }).getByRole('button', { name: /回到全局助手/ }).click()
@@ -589,8 +590,6 @@ async function main() {
     assert.equal(await page.locator('aside[aria-label*="分配任务"], button[aria-label*="分配任务"], .lw-fbot-drawer').count(), 0)
     await ideas.getByLabel('向 点子 发送消息').waitFor()
     await ideas.getByRole('button', { name: '发送', exact: true }).waitFor()
-    await ideas.locator('.lw-empty-emblem').waitFor()
-    await ideas.locator('.lw-empty-chips').waitFor()
     assert.equal(await ideas.getByRole('button', { name: '快速录入', exact: true }).count(), 0)
     assert.equal(await ideas.locator('.lw-fbot-tools, .lw-fbot-model-badge, .lw-fbot-model-select').count(), 0)
     const composerBox = await ideas.locator('.lw-fbot-composer').boundingBox()
@@ -651,7 +650,7 @@ async function main() {
     await page.evaluate(() => window.dispatchEvent(new Event('labweave:project-updated')))
     await goals.getByRole('checkbox', { name: '完成 完成对照' }).click()
     await goals.locator('input[type=checkbox]:checked').waitFor()
-    await goals.locator('.lw-goal-ring').waitFor()
+    await goals.getByText('已完成', { exact: true }).waitFor()
     await preview('04-project-goals')
     await projectBar.getByRole('button', { name: '动态', exact: true }).click()
     const feed = page.getByRole('region', { name: '动态', exact: true })
@@ -687,19 +686,15 @@ async function main() {
     await resourceDetail.getByText('2 / 2', { exact: true }).waitFor()
     assert.equal(await resourceDetail.getByRole('button', { name: '填入提问' }).count(), 0)
     await resourceDetail.getByRole('button', { name: '关闭 记录详情' }).click()
-    step = '目标栏检查与正式实验草案创建'
+    step = '目标栏检查与科研状态保存'
     await projectBar.getByRole('button', { name: '目标', exact: true }).click()
     assert.equal(await page.locator('aside[aria-label*="分配任务"], button[aria-label*="分配任务"], .lw-fbot-drawer').count(), 0)
-    await checkFormalDraft(a)
+    await checkResearchState(a)
     step = '记录项目作用域用于持久化与动态功能测试'
     assert.ok(a.scope, '研究甲作用域应存在')
-    step = '接口级项目插件隔离和试跑授权'
+    step = '接口级项目插件作用域'
     assert.equal((await owner('plugin', { requestId: require('node:crypto').randomUUID().replaceAll('-', ''),
       name: '周报', prompt: '总结本项目本周工作。', scope: 'all' })).code, 200)
-    const grant = await owner('project', { sessionId: a.sessionId, action: 'sandbox/configure',
-      args: { grantSeconds: 30, requestId: require('node:crypto').randomUUID() } })
-    assert.equal(grant.code, 200)
-    assert.equal(grant.data.seconds, 30)
     step = '项目切换与全局新会话'
     const b = await newProject('研究乙')
     await enableLegacyColumns(b)
@@ -799,6 +794,8 @@ async function main() {
     await button('删除待删除项目').click()
     await page.getByRole('dialog', { name: '删除项目' }).getByRole('button', { name: '确认删除' }).click()
     await button('待删除项目').waitFor({ state: 'hidden' })
+    await projectBarB.getByRole('button', { name: '聊天', exact: true }).click()
+    await waitView(v => v?.scope === b.scope)
     step = '顶部新会话回到全局并验证取消右侧栏与自动化队列'
     await assistantHome.click()
     await waitView(v => v?.scope === 'global')

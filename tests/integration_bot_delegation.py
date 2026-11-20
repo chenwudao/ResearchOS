@@ -96,7 +96,7 @@ def main():
                 scope = create_project("分派验收项目")["id"]
                 bot_ids.append(features.create_feature(scope, "原文核对", paradigm="notes", temporary=True)["feature"]["id"])
                 bot_ids.append(features.create_feature(scope, "证据关系", paradigm="mindmap")["feature"]["id"])
-                create_entry(scope, bot_ids[1], {"title": "对照总览", "text": "用于画布分支验收"})
+                create_entry(scope, bot_ids[1], {"kind": "topic", "title": "对照总览", "text": "用于画布分支验收"})
                 group = features.create_feature(scope, "方法证据组", paradigm="mindmap")["feature"]["id"]
                 home = root / "web"
                 profile = home / "profiles/web"

@@ -28,7 +28,7 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--model", action="store_true", help="Also send a synthetic project tool request to DeepSeek")
     mode.add_argument("--rightbar-only", action="store_true", help="Check the project chat tool panels without a model")
-    mode.add_argument("--workflow-draft-only", action="store_true", help="Check the authenticated draft flow without a model")
+    mode.add_argument("--workflow-draft-only", action="store_true", help="Check authenticated research state without a model")
     args = parser.parse_args()
     previous = launcher.workspace.DATA
     try:

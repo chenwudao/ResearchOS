@@ -9,7 +9,7 @@ const recentFirst = (a, b) => String(b.date || '').localeCompare(String(a.date |
 
 export function createProjectOverview(React, { Btn, Icon, Markdown, headline, fmtDateTime }) {
   const h = React.createElement
-  return function ProjectOverview({ value, openBot, openRecord, openChat }) {
+  return function ProjectOverview({ value, openBot, openRecord, openChat, createBot }) {
     const bots = value.features.filter(bot => !bot.archived && bot.id !== 'chat')
     const areaOf = bot => bot.extension?.base || bot.paradigm
     const records = bots.flatMap(bot => (value.rails[bot.id] || []).filter(item => !item.planningDraft && item.kind !== 'note-folder')
@@ -44,6 +44,8 @@ export function createProjectOverview(React, { Btn, Icon, Markdown, headline, fm
     const keyOf = row => row.featureId + ':' + (row.runId || row.item.id)
     const go = row => openRecord(row.runId ? { featureId: row.featureId, runId: row.runId } : { featureId: row.featureId, id: row.item.id })
     const link = row => Btn({ variant: 'ghost', size: 'xs', title: row.title, onClick: () => go(row) }, row.title)
+    const chat = Btn({ variant: bots.length ? 'secondary' : 'primary', size: 'sm', onClick: openChat },
+      h(Icon, { name: 'chat' }), '打开项目聊天')
     return h('section', { className: 'lw-project-overview', 'aria-label': '项目进度与活动' },
       h('header', { className: 'lw-overview-header' },
         h('div', null,
@@ -52,7 +54,11 @@ export function createProjectOverview(React, { Btn, Icon, Markdown, headline, fm
           (project.question || value.topic) && h('p', { className: 'lw-overview-topic' }, project.question || value.topic),
           value.description && h('details', { className: 'lw-record-picker' }, h('summary', null, '项目简介'),
             h(Markdown, { source: value.description }))),
-        Btn({ variant: 'secondary', size: 'sm', onClick: openChat }, h(Icon, { name: 'chat' }), '打开项目聊天')),
+        bots.length > 0 && chat),
+      !bots.length && h('section', { className: 'lw-overview-next', 'aria-label': '开始项目' },
+        h('div', null, h('h2', null, '你想做什么？'),
+          h('p', { className: 'lw-hint' }, '在项目聊天里说说研究主题，或者直接创建一个 Bot 开始记录。')),
+        h('span', { className: 'lw-actions' }, chat, Btn({ variant: 'secondary', size: 'sm', onClick: createBot }, '创建 Bot'))),
       (project.nextAction || nextReady) && h('section', { className: 'lw-overview-next', 'aria-label': '下一步' },
         h('div', null, h('h2', null, project.nextAction ? '已确认的下一步' : '下一项待办'),
           project.nextAction ? h(Markdown, { source: project.nextAction }) : h(React.Fragment, null,

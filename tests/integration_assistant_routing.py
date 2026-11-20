@@ -1,5 +1,6 @@
 """Verify assistant-only routing through the pinned runtime and a local model fixture."""
 
+from contextlib import closing
 import http.server
 import json
 from pathlib import Path
@@ -78,7 +79,7 @@ def main():
             source_folder.mkdir()
             (source_folder / "README.md").write_text("已核对的本机资料", encoding="utf-8")
             assert assistant_permission({}) == {"preset": "read-only"}
-            with launcher.workspace.database() as db:
+            with closing(launcher.workspace.database()) as db, db:
                 db.execute(
                     "INSERT INTO labweave_assistant_profile(profile_key, value, updated_at) VALUES (?, ?, ?)",
                     ("permissionPreset", "", "2026-01-01T00:00:00Z"),

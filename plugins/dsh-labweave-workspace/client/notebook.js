@@ -36,13 +36,16 @@ export function createNotebook(React, { Btn, Markdown, formatDate, resourceImage
     const tags = [...new Set(documents.flatMap(item => item.noteTags || []))].sort()
     const visible = documents.filter(item => (!folder || folderOf(item) === folder || folderOf(item).startsWith(folder + '/')) &&
       (!tag || item.noteTags?.includes(tag)) && (!query.trim() || (titleOf(item) + '\n' + item.text).toLowerCase().includes(query.trim().toLowerCase())))
-    const active = documents.find(item => item.id === (editor?.id || selected)) || (!editor && !selected ? visible[0] : null)
+    const active = documents.find(item => item.id === (editor ? editor.id : selected)) || (!editor && !selected ? visible[0] : null)
+    const initialId = !editor && !selected ? active?.id : null
+    const versions = history?.id === active?.id ? history?.versions : null
     const proposal = active?.noteSuggestion
     const proposalCurrent = proposal?.baseVersion === active?.noteVersion
     const attached = new Set((active?.recordRefs || []).filter(ref => ref.featureId === 'library').map(ref => ref.id))
     const open = id => {
       setSelected(id); setEditor(null); setPreview(false); setAttachment(''); setImage(null); setHistory(null); setAiRequest(''); setExcerpt('')
     }
+    React.useEffect(() => { if (initialId) setSelected(initialId) }, [initialId])
     React.useEffect(() => { if (requested) open(requested.id) }, [requested])
 
     function insert(before, after, example) {
@@ -108,7 +111,7 @@ export function createNotebook(React, { Btn, Markdown, formatDate, resourceImage
     return h('section', { className: 'lw-notebook', 'aria-label': '项目笔记资料库', 'data-wide': wide },
       h('div', { className: 'lw-actions lw-notebook-actions' },
         toggle(wide ? '退出宽屏' : '宽屏编辑', wide, () => setWide(!wide)),
-        Btn({ size: 'xs', disabled: Boolean(editor), onClick: () => { setSelected(''); setHistory(null); setEditor(blank(folder)) } }, '新建笔记')),
+        Btn({ size: 'xs', disabled: Boolean(editor), onClick: () => { setHistory(null); setEditor(blank(folder)) } }, '新建笔记')),
       h('div', { className: 'lw-notebook-body' },
         !wide && h('aside', { className: 'lw-notebook-tree', 'aria-label': '笔记目录' },
           h('input', { type: 'search', className: 'lw-input', 'aria-label': '搜索笔记', placeholder: '搜索笔记', value: query,
@@ -158,9 +161,14 @@ export function createNotebook(React, { Btn, Markdown, formatDate, resourceImage
               h('div', { className: 'lw-actions' },
                 Btn({ size: 'xs', onClick: () => setEditor({ id: active.id, expectedNoteVersion: active.noteVersion || 1,
                   title: titleOf(active), text: active.text, category: folderOf(active), noteTags: (active.noteTags || []).join(', ') }) }, '编辑笔记'),
-                Btn({ variant: 'ghost', size: 'xs', disabled: busy, onClick: async () => setHistory(history ? null : await readHistory(active)) },
-                  history ? '收起版本历史' : '查看版本历史')),
-              history?.versions && h('section', { 'aria-label': '笔记版本历史' }, history.versions.map(version =>
+                Btn({ variant: 'ghost', size: 'xs', disabled: busy, onClick: async () => {
+                  if (versions) setHistory(null)
+                  else {
+                    const result = await readHistory(active)
+                    if (result) setHistory({ id: active.id, versions: result.versions })
+                  }
+                } }, versions ? '收起版本历史' : '查看版本历史')),
+              versions && h('section', { 'aria-label': '笔记版本历史' }, versions.map(version =>
                 h('details', { key: version.version },
                   h('summary', null, '第 ' + version.version + ' 版 · ' + (version.author === 'assistant' ? 'AI' : '用户') + ' · ' + formatDate(version.at)),
                   h(Markdown, { source: version.text, notebook: true })))),

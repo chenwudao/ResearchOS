@@ -29,7 +29,7 @@ export function calendarPeriod(key, scale) {
 export function createGoalPlanner(React) {
   const h = React.createElement
   const validDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
-  const planned = item => [item.plannedDate, item.due].find(validDate) || ''
+  const planned = item => validDate(item.plannedDate) ? item.plannedDate : ''
   const itemTitle = item => item.title || item.text
   const btn = (label, props = {}) => h('button', { type: 'button', ...props }, label)
 
@@ -81,7 +81,7 @@ export function createGoalPlanner(React) {
     const formSubmit = async event => {
       event.preventDefault()
       if (!title.trim() || busy) return
-      if (await onSave({ text: title.trim(), plannedDate: filter === '未排期' ? null : selected,
+      if (await onSave({ text: title.trim(), plannedDate: view === '日历' && filter === '选中日期' ? selected : null,
         ...(stage.trim() && { category: stage.trim() }), ...(deadline && { due: deadline }),
         ...(milestone && { kind: 'milestone' }) })) {
         setTitle('')
@@ -131,12 +131,16 @@ export function createGoalPlanner(React) {
             dates.map(key => h('div', { className: 'lw-goal-day', key, 'data-selected': key === selected,
               'data-outside': scale === '月' && key.slice(0, 7) !== selected.slice(0, 7), 'data-drop': dropDay === key,
               onDragOver: event => { if (dragging) { event.preventDefault(); setDropDay(key) } },
-              onDragLeave: event => { if (!event.currentTarget.contains(event.relatedTarget)) setDropDay('') },
-              onDrop: event => {
+              onDragLeave: event => {
+                if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) setDropDay('')
+              },
+              onDrop: async event => {
                 event.preventDefault()
                 const item = items.find(record => record.id === dragging)
-                if (item && movable(item)) onMove(item, key)
                 setDragging(null); setDropDay('')
+                if (item && movable(item) && await onMove(item, key)) {
+                  setSelected(key); setFilter('选中日期')
+                }
               } },
               btn(String(Number(key.slice(-2))), { 'aria-label': key, 'aria-pressed': key === selected,
                 'aria-current': key === today ? 'date' : undefined, onClick: () => { setSelected(key); setFilter('选中日期') } }),

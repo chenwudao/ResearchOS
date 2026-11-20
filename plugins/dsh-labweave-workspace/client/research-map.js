@@ -54,8 +54,7 @@ export function createResearchMap(React, { Btn, Canvas, Markdown, safeUrl }) {
       return ids
     }
     const related = new Set()
-    if (activeRoute && !parents.has(activeRoute.id)) {
-      related.add(root?.id)
+    if (activeRoute) {
       for (const link of activeRoute.mapLinks || []) related.add(link.id)
       for (const record of items) {
         if (record.mapLinks?.some(link => link.id === activeRoute.id)) related.add(record.id)
@@ -63,7 +62,7 @@ export function createResearchMap(React, { Btn, Canvas, Markdown, safeUrl }) {
     }
     const lanes = items.filter(record => {
       const ancestry = trace(record)
-      return (!activeRoute || ancestry.has(activeRoute.id) || trace(activeRoute).has(record.id) || related.has(record.id)) &&
+      return (!activeRoute || record === root || ancestry.has(activeRoute.id) || trace(activeRoute).has(record.id) || related.has(record.id)) &&
         !collapsed.some(id => id !== record.id && ancestry.has(id)) &&
         (!kind || record.kind === kind || record.kind === 'topic' || record.kind === 'route')
     })
@@ -87,6 +86,7 @@ export function createResearchMap(React, { Btn, Canvas, Markdown, safeUrl }) {
     function focus(record) {
       select(record)
       setRoute(record.id)
+      setKind('')
       setCollapsed(ids => ids.filter(id => !trace(record).has(id)))
     }
     function openStep({ type, record }) {
