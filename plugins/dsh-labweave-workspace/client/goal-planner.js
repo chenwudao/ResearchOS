@@ -43,7 +43,7 @@ export function createGoalPlanner(React) {
     const [deadline, setDeadline] = React.useState('')
     const [milestone, setMilestone] = React.useState(false)
     const [request, setRequest] = React.useState('')
-    const [filter, setFilter] = React.useState('选中日期')
+    const [agendaFilter, setFilter] = React.useState(null)
     const [dropDay, setDropDay] = React.useState('')
     const [dragging, setDragging] = React.useState(null)
     const { dates, label } = calendarPeriod(selected, scale)
@@ -51,6 +51,9 @@ export function createGoalPlanner(React) {
     const stages = new Map()
     const drafts = items.filter(item => item.planningDraft)
     const tasks = items.filter(item => !item.planningDraft && !item.canvasDraft)
+    const completed = new Set(tasks.filter(item => item.done).map(item => item.id))
+    const waiting = item => !item.done && Array.isArray(item.dependsOn) &&
+      item.dependsOn.some(id => !completed.has(id))
     for (const item of tasks) {
       const date = planned(item)
       if (date) {
@@ -63,7 +66,10 @@ export function createGoalPlanner(React) {
     }
     const overdue = tasks.filter(item => !item.done && validDate(item.due) && item.due < today)
     const unscheduled = tasks.filter(item => !planned(item) && !item.done)
-    const visible = filter === '未排期' ? unscheduled : filter === '逾期' ? overdue : byDay.get(selected) || []
+      .sort((a, b) => Number(waiting(a)) - Number(waiting(b)))
+    const selectedDay = byDay.get(selected) || []
+    const filter = agendaFilter || (!selectedDay.length && unscheduled.length ? '未排期' : '选中日期')
+    const visible = filter === '未排期' ? unscheduled : filter === '逾期' ? overdue : selectedDay
     const selectable = (name, active, select) => btn(name, { key: name, 'aria-pressed': active === name, onClick: () => select(name) })
     const movable = item => !busy && !item.planningDraft && !item.canvasDraft
     function step(amount) {
@@ -85,16 +91,19 @@ export function createGoalPlanner(React) {
     }
     function row(item, compact = false) {
       const name = itemTitle(item)
+      const blocked = waiting(item)
       return h('div', { className: 'lw-goal-task', key: item.id, 'data-done': Boolean(item.done),
         draggable: movable(item), onDragStart: event => {
           event.dataTransfer.effectAllowed = 'move'
           event.dataTransfer.setData('text/plain', name)
           setDragging(item.id)
         }, onDragEnd: () => { setDragging(null); setDropDay('') } },
-        !compact && h('input', { type: 'checkbox', checked: Boolean(item.done), disabled: !movable(item),
+        !compact && h('input', { type: 'checkbox', checked: Boolean(item.done), disabled: !movable(item) || blocked,
+          title: blocked ? '先完成前置待办' : undefined,
           'aria-label': '完成 ' + name, onChange: () => onToggle(item) }),
         btn(name, { onClick: () => openEntry(item), title: name }),
         item.kind === 'milestone' && h('small', { className: 'lw-goal-milestone' }, '里程碑'),
+        !compact && blocked && h('small', { className: 'lw-hint' }, '等待前置待办'),
         !compact && h('div', { className: 'lw-goal-task-dates' },
           h('label', null, '安排', h('input', { type: 'date', value: validDate(item.plannedDate) ? item.plannedDate : '', disabled: !movable(item),
             'aria-label': '安排日期 ' + name, onChange: event => onMove(item, event.target.value || null) })),
@@ -115,7 +124,7 @@ export function createGoalPlanner(React) {
         view === '日历' ? h('div', { className: 'lw-goal-calendar' },
           h('header', { className: 'lw-goal-toolbar' }, h('strong', null, label),
             h('div', null, btn('‹', { onClick: () => step(-1), 'aria-label': '上一' + scale }),
-              btn('今天', { onClick: () => setSelected(today) }),
+              btn('今天', { onClick: () => { setSelected(today); setFilter('选中日期') } }),
               btn('›', { onClick: () => step(1), 'aria-label': '下一' + scale }))),
           h('div', { className: 'lw-goal-days', 'data-scale': scale },
             scale !== '日' && weekdays.map(name => h('span', { key: name, className: 'lw-goal-weekday' }, name)),

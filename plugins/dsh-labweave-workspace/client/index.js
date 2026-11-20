@@ -1526,10 +1526,21 @@ window.__ModuleLoader__.load({
       .lw-overview-progress progress{width:100%;height:9px;max-width:460px;accent-color:#786ac4}
       .lw-overview-metric svg{width:19px;height:19px;color:var(--dsw-alias-label-secondary)}
       .lw-overview-metric span{font-size:var(--lw-ui-sm);color:var(--dsw-alias-label-secondary)}
-      .lw-overview-next{display:grid;gap:5px}
+      .lw-overview-next{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+      .lw-overview-next>div{display:grid;gap:4px;min-width:0;overflow-wrap:anywhere}
+      .lw-overview-next>div strong{font-size:var(--lw-ui-lg,1.1rem)}
+      .lw-overview-entry{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,126px),1fr));gap:8px;align-items:start}
+      .lw-overview-entry>.lw-btn,.lw-overview-choice>summary{min-height:40px;gap:7px;padding:6px 10px}
+      .lw-overview-entry svg{width:15px;height:15px;flex:none}
+      .lw-overview-choice{min-width:0;border:1px solid var(--dsw-alias-border-l2,#8883);border-radius:8px}
+      .lw-overview-choice>summary{display:flex;align-items:center;justify-content:center;cursor:pointer}
+      .lw-overview-choice>summary::after{content:"⌄";color:var(--dsw-alias-label-secondary)}
+      .lw-overview-choice>div{display:grid;gap:4px;padding:3px 6px 6px}
+      .lw-overview-choice button{white-space:normal;overflow-wrap:anywhere}
+      .lw-overview-records>summary{cursor:pointer;font-weight:600;padding:8px 0}
       .lw-overview-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,270px),1fr));gap:12px}
       .lw-overview-card{display:grid;gap:9px;overflow-wrap:anywhere}
-      .lw-overview-card{grid-template-rows:auto 1fr auto;align-content:start}
+      .lw-overview-card{grid-template-rows:auto 1fr;align-content:start}
       .lw-project-overview h2{font-size:var(--lw-ui-base);font-weight:650}
       .lw-overview-card header>span{display:grid;place-items:center;width:30px;height:30px;flex:none;border-radius:8px;background:color-mix(in srgb,var(--lw-overview-accent,#786ac4) 18%,var(--dsw-alias-bg-base,Canvas))}
       .lw-overview-card[data-area=goals],.lw-overview-activity [data-area=goals]{--lw-overview-accent:#638fd5}
@@ -1537,11 +1548,9 @@ window.__ModuleLoader__.load({
       .lw-overview-card[data-area=ideas],.lw-overview-activity [data-area=ideas]{--lw-overview-accent:#b47f3d}
       .lw-overview-card[data-area=engineering],.lw-overview-activity [data-area=engineering]{--lw-overview-accent:#558fa7}
       .lw-overview-card header svg{width:15px;height:15px}
-      .lw-overview-card .lw-overview-jump{margin-inline-start:auto}
       .lw-overview-card ul,.lw-overview-activity ol{display:grid;gap:6px;padding:0;list-style:none}
       .lw-overview-card li,.lw-overview-activity li{min-width:0;display:grid;gap:2px;align-content:start;justify-items:start}
       .lw-overview-card li button,.lw-overview-activity li button{justify-content:flex-start;text-align:start;padding-inline:0;max-width:100%;white-space:normal;overflow-wrap:anywhere}
-      .lw-overview-open{display:flex;flex-wrap:wrap;gap:4px;border-block-start:1px solid var(--dsw-alias-border-l2,#8883);padding-block-start:5px}
       .lw-overview-activity ol{padding-inline-start:13px;border-inline-start:1px solid var(--dsw-alias-border-l2,#8883);gap:12px}
       .lw-overview-activity li{position:relative}
       .lw-overview-activity li::before{content:"";position:absolute;inset:6px auto auto -17px;width:7px;height:7px;border-radius:50%;background:var(--lw-overview-accent,#786ac4)}
@@ -4394,7 +4403,7 @@ window.__ModuleLoader__.load({
                 ref: textareaRef,
                 rows: 1,
                 'aria-label': LW('向 ') + title + LW(' 发送消息'),
-                placeholder: LW('消息，/ 指令，@ 引用或邀请'),
+                placeholder: LW('给这个 Bot 发消息…'),
                 'aria-controls': inputMenu.controls,
                 'aria-activedescendant': inputMenu.selected,
                 'aria-autocomplete': 'list',
@@ -6308,12 +6317,14 @@ window.__ModuleLoader__.load({
         return h('main', { className: 'lw-page', 'data-feature': feature, 'aria-label': row.name + '的' + title },
           h('div', { className: 'lw-page-topbar' },
             h('div', { className: 'lw-actions' },
+              paneIndex === 0 && Btn({ variant: 'ghost', size: 'xs', 'aria-label': LW('返回项目总览'),
+                onClick: () => openPage(row, 'overview') }, h(Icon, { name: 'back' }), LW('总览')),
               paneIndex === 0 && h('button', {
                 type: 'button', className: 'lw-companion-btn', 'aria-pressed': !!chatSplit,
                 'aria-label': chatSplit ? LW('收起项目聊天') : LW('展开项目聊天'),
                 title: chatSplit ? LW('收起左侧项目聊天') : LW('在侧栏与主区之间展开项目聊天'),
                 onClick: () => toggleCompanionChat(row),
-              }, h(Icon, { name: 'chat' }), h('span', null, chatSplit ? LW('收起聊天') : LW('聊天')))),
+              }, h(Icon, { name: 'chat' }), h('span', null, chatSplit ? LW('收起项目聊天') : LW('项目聊天')))),
             h('div', { className: 'lw-actions' },
               paneCount > 1 && h('button', {
                 type: 'button', className: 'lw-pane-close',

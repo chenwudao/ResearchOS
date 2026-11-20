@@ -31,14 +31,14 @@ export function createNotebook(React, { Btn, Markdown, formatDate, resourceImage
     const noteText = React.useRef(null)
     const input = React.useRef(null)
     const documents = items.filter(item => item.kind !== 'note-folder')
-    const active = documents.find(item => item.id === selected)
-    const proposal = active?.noteSuggestion
-    const proposalCurrent = proposal?.baseVersion === active?.noteVersion
     const paths = [...new Set(items.flatMap(item => folderOf(item).split('/').filter(Boolean)
       .map((_, n, parts) => parts.slice(0, n + 1).join('/'))))].sort((a, b) => a.localeCompare(b, 'zh-CN'))
     const tags = [...new Set(documents.flatMap(item => item.noteTags || []))].sort()
     const visible = documents.filter(item => (!folder || folderOf(item) === folder || folderOf(item).startsWith(folder + '/')) &&
       (!tag || item.noteTags?.includes(tag)) && (!query.trim() || (titleOf(item) + '\n' + item.text).toLowerCase().includes(query.trim().toLowerCase())))
+    const active = documents.find(item => item.id === (editor?.id || selected)) || (!editor && !selected ? visible[0] : null)
+    const proposal = active?.noteSuggestion
+    const proposalCurrent = proposal?.baseVersion === active?.noteVersion
     const attached = new Set((active?.recordRefs || []).filter(ref => ref.featureId === 'library').map(ref => ref.id))
     const open = id => {
       setSelected(id); setEditor(null); setPreview(false); setAttachment(''); setImage(null); setHistory(null); setAiRequest(''); setExcerpt('')
@@ -128,7 +128,7 @@ export function createNotebook(React, { Btn, Markdown, formatDate, resourceImage
             h('option', { value: '' }, '全部标签'), tags.map(name => h('option', { key: name }, name))),
           h('div', { className: 'lw-notebook-files' },
             visible.length ? visible.map(item => h('div', { key: item.id },
-              Btn({ variant: 'ghost', size: 'xs', disabled: Boolean(editor), 'aria-current': selected === item.id ? 'page' : undefined,
+              Btn({ variant: 'ghost', size: 'xs', disabled: Boolean(editor), 'aria-current': active?.id === item.id ? 'page' : undefined,
                 onClick: () => open(item.id) }, titleOf(item)))) : h('p', { className: 'lw-hint' }, '暂无匹配笔记')),
           resources.length > 0 && h('details', null, h('summary', null, '资料库'),
             h('ul', null, resources.map(item => resourceRow(item))))),
