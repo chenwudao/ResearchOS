@@ -340,12 +340,45 @@ def _apply_record_references(args, entry, rail, rails):
     entry["recordRefs"] = references
 
 
-def create_entry(project_id, rail, args, *, planning_draft=False):
+NOTE_FIELDS = ("title", "text", "category", "noteTags")
+
+
+def _note_payload(args, entry):
+    if "category" in args:
+        value = args["category"]
+        if not isinstance(value, str) or len(value) > 80:
+            raise workspace.WorkspaceError(400, "目录路径须在 80 字以内。")
+        parts = value.split("/") if value else []
+        if any(not part.strip() or part.strip() in (".", "..") or "\\" in part for part in parts) or len(parts) > 6:
+            raise workspace.WorkspaceError(400, "目录路径无效，最多支持六层。")
+        entry["category"] = "/".join(part.strip() for part in parts)
+    if "noteTags" in args:
+        tags = args["noteTags"]
+        if not isinstance(tags, list) or len(tags) > 12 or any(not isinstance(tag, str) or len(tag) > 32 for tag in tags):
+            raise workspace.WorkspaceError(400, "最多 12 个标签，每个标签不超过 32 字。")
+        entry["noteTags"] = list(dict.fromkeys(tag.strip() for tag in tags if tag.strip()))
+
+
+def _note_version(entry):
+    return {"version": entry.get("noteVersion", 1),
+            "at": entry.get("noteEditedAt") or entry.get("ts"),
+            "author": entry.get("noteEditor") or entry.get("noteOrigin", "user"),
+            **{field: entry.get(field) for field in NOTE_FIELDS}}
+
+
+def _record_note_edit(entry, previous, author):
+    if any(entry.get(field) != previous[field] for field in NOTE_FIELDS):
+        entry["noteHistory"] = [previous, *entry.get("noteHistory", [])][:8]
+        entry.update(noteVersion=previous["version"] + 1, noteEditedAt=timestamp(), noteEditor=author)
+
+
+def create_entry(project_id, rail, args, *, planning_draft=False, assistant=False):
     import features
     if not features.is_valid_rail(project_id, rail):
         raise workspace.WorkspaceError(400, "未找到对应的项目功能。")
-    extension = next((feature.get("extension") for feature in features.list_features(project_id, project_id)
-                      if feature["id"] == rail), None) if "elements" in args else None
+    bot = next((feature for feature in features.list_features(project_id, project_id) if feature["id"] == rail), {}) if rail.startswith("feat_") else {}
+    extension = bot.get("extension")
+    notebook = bot.get("layout") == "notebook"
     text = workspace.text(args.get("text"), 16000)
     if not text and extension and isinstance(args["elements"], dict):
         display = {field["role"]: args["elements"].get(field["name"]) for field in extension["fields"]}
@@ -362,8 +395,16 @@ def create_entry(project_id, rail, args, *, planning_draft=False):
             entry[field] = args[field]
     _apply_rich_fields(project_id, args, entry, allow_clear=False)
     _bot_record_fields(args, entry)
+    if notebook:
+        _note_payload(args, entry)
+        if entry.get("kind") == "note-folder" and not entry.get("category"):
+            raise workspace.WorkspaceError(400, "请输入目录名称。")
+        entry.update(noteVersion=1, noteOrigin="assistant" if assistant else "user")
     def operation(item):
         records = item["rails"].setdefault(rail, [])
+        if notebook and entry.get("kind") == "note-folder" and any(
+                record.get("kind") == "note-folder" and record.get("category") == entry["category"] for record in records):
+            raise workspace.WorkspaceError(409, "该目录已存在。")
         _entry_elements(args, entry, extension, records)
         _apply_record_references(args, entry, rail, item["rails"])
         if rail == "goals" or rail.startswith("feat_") or "parentId" in entry:
@@ -378,12 +419,13 @@ def create_entry(project_id, rail, args, *, planning_draft=False):
     return mutate(project_id, operation)
 
 
-def update_entry(project_id, rail, args, *, draft_only=False):
+def update_entry(project_id, rail, args, *, draft_only=False, assistant=False):
     import features
     if not features.is_valid_rail(project_id, rail):
         raise workspace.WorkspaceError(400, "未找到对应的项目功能。")
     bot = next((feature for feature in features.list_features(project_id, project_id) if feature["id"] == rail), {}) if rail.startswith("feat_") else {}
     extension = bot.get("extension")
+    notebook = bot.get("layout") == "notebook"
     is_goal = rail == "goals" or bot.get("paradigm") == "goals" or bool(extension and extension["base"] == "goals")
 
     def operation(item):
@@ -394,12 +436,16 @@ def update_entry(project_id, rail, args, *, draft_only=False):
             raise workspace.WorkspaceError(409, "正式排期由用户修改。请创建待确认的排期建议。")
         if entry.get("planningDraft") and "done" in args:
             raise workspace.WorkspaceError(409, "请先确认排期，再更新完成状态。")
+        previous_note = _note_version(entry) if notebook else None
+        if notebook and "expectedNoteVersion" in args and (
+                type(args["expectedNoteVersion"]) is not int or args["expectedNoteVersion"] != previous_note["version"]):
+            raise workspace.WorkspaceError(409, "笔记已有新版本。请重新打开后合并修改。")
         if "text" in args and args["text"] is not None:
             text = workspace.text(args["text"], 16000)
             if not text:
                 raise workspace.WorkspaceError(400, "内容为空。")
             entry["text"] = text
-        if "category" in args and args["category"] is not None:
+        if not notebook and "category" in args and args["category"] is not None:
             category = workspace.text(args["category"], 80)
             if not category:
                 raise workspace.WorkspaceError(400, "归档分类不能为空。")
@@ -411,6 +457,9 @@ def update_entry(project_id, rail, args, *, draft_only=False):
             entry["source"] = workspace.text(args["source"], 240) or "Weave"
         _apply_rich_fields(project_id, args, entry, allow_clear=True)
         _bot_record_fields(args, entry)
+        if notebook:
+            _note_payload(args, entry)
+            _record_note_edit(entry, previous_note, "assistant" if assistant else "user")
         records = item["rails"].get(rail, [])
         _entry_elements(args, entry, extension, records)
         _apply_record_references(args, entry, rail, item["rails"])
@@ -519,6 +568,16 @@ def change_record_reference(project_id, rail, entry_id, reference, remove):
         entry["updatedAt"] = timestamp()
         return entry
     return mutate(project_id, operation)
+
+
+def note_history(project_id, rail, entry_id):
+    if not isinstance(rail, str) or not isinstance(entry_id, str):
+        raise workspace.WorkspaceError(400, "无效笔记标识。")
+    item = project(workspace.snapshot(), project_id)
+    entry = next((record for record in item["rails"].get(rail, []) if record["id"] == entry_id), None)
+    if not entry or "noteVersion" not in entry:
+        raise workspace.WorkspaceError(404, "笔记不存在。")
+    return {"versions": [_note_version(entry), *entry.get("noteHistory", [])]}
 
 
 def delete_entry(project_id, rail, entry_id):
@@ -1015,8 +1074,8 @@ def call(name, args, project_id, *, assistant=False):
         draft = assistant and any(f["id"] == fid and f.get("layout") == "calendar"
                                   for f in features.list_features(project_id, project_id))
         if args.get("id"):
-            return update_entry(project_id, fid, args, draft_only=draft)
-        return create_entry(project_id, fid, args, planning_draft=draft)
+            return update_entry(project_id, fid, args, draft_only=draft, assistant=assistant)
+        return create_entry(project_id, fid, args, planning_draft=draft, assistant=assistant)
     if name in ("idea_update", "goal_update"):
         return update_entry(project_id, "ideas" if name.startswith("idea") else "goals", args)
     if name == "task_create":

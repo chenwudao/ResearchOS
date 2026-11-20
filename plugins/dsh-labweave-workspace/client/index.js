@@ -112,14 +112,81 @@ window.__ModuleLoader__.load({
       if (last < source.length) push(source.slice(last))
       return nodes
     }
-    function markdownBlocks(value) {
+    const noteSymbols = { alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', theta: 'θ', lambda: 'λ', mu: 'μ',
+      sigma: 'σ', pi: 'π', Delta: 'Δ', Sigma: 'Σ', sum: '∑', prod: '∏', cdot: '⋅', times: '×',
+      pm: '±', leq: '≤', geq: '≥', infty: '∞', approx: '≈', neq: '≠', to: '→' }
+    function notebookMath(source, key, block = false) {
+      const tokens = source.match(/\\[a-zA-Z]+|\d+(?:\.\d+)?|[a-zA-Z]|[^\s]/g) || []
+      let index = 0
+      function group(depth) {
+        if (depth > 8 || index >= tokens.length) return h('mrow')
+        const token = tokens[index++]
+        if (token === '{') {
+          const children = sequence(depth + 1)
+          if (tokens[index] === '}') index++
+          return h('mrow', null, children)
+        }
+        if (token === '\\frac') return h('mfrac', null, group(depth + 1), group(depth + 1))
+        if (token === '\\sqrt') return h('msqrt', null, group(depth + 1))
+        const name = token.slice(1)
+        const symbol = token.startsWith('\\') && Object.hasOwn(noteSymbols, name) ? noteSymbols[name] : token
+        const tag = /^\d/.test(symbol) ? 'mn' : /^[\p{L}]$/u.test(symbol) ? 'mi' : symbol.startsWith('\\') ? 'mtext' : 'mo'
+        return h(tag, null, symbol)
+      }
+      function sequence(depth) {
+        const children = []
+        while (index < tokens.length && tokens[index] !== '}') {
+          const start = index
+          let atom = group(depth)
+          if (start === index) break
+          while (tokens[index] === '_' || tokens[index] === '^') {
+            const operation = tokens[index++]
+            atom = h(operation === '_' ? 'msub' : 'msup', null, atom, group(depth))
+          }
+          children.push(React.cloneElement(atom, { key: start }))
+        }
+        return children
+      }
+      return h('math', { key, display: block ? 'block' : 'inline', title: source, 'aria-label': source },
+        h('mrow', null, sequence(0)))
+    }
+    function notebookInline(source, key) {
+      return source.split(/(\$[^$\n]+\$)/g).flatMap((part, index) => part.startsWith('$') && part.endsWith('$') && part.length > 2
+        ? notebookMath(part.slice(1, -1), key + '-math-' + index) : inlineMarkdown(part, key + '-' + index))
+    }
+    function markdownBlocks(value, notebook = false) {
       const lines = String(value ?? '').replace(/\r\n?/g, '\n').split('\n')
       const blocks = []
+      const inline = notebook ? notebookInline : inlineMarkdown
+      const tableStart = index => notebook && /^\s*\|/.test(lines[index] || '') &&
+        /^\s*\|\s*:?-{3,}/.test(lines[index + 1] || '')
       const blockStart = line => /^\s*(```|#{1,6}\s|>\s?|[-*+]\s+|\d+[.)]\s+|---+\s*$|\*\*\*+\s*$|___+\s*$)/.test(line)
+        || (notebook && line.trim() === '$$')
       let i = 0
       while (i < lines.length) {
         const line = lines[i]
         if (!line.trim()) { i++; continue }
+        if (tableStart(i)) {
+          const cells = row => row.trim().replace(/^\||\|$/g, '').split('|').map(cell => cell.trim())
+          const header = cells(line)
+          const rows = []
+          i += 2
+          while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(cells(lines[i++]))
+          const row = (values, tag, key) => h('tr', { key }, header.map((_, index) =>
+            h(tag, { key: index, ...(tag === 'th' && { scope: 'col' }) }, inline(values[index] || '', key + '-' + index))))
+          blocks.push(h('div', { className: 'lw-table-wrap', key: 'md-t' + blocks.length },
+            h('table', { className: 'lw-table' }, h('thead', null, row(header, 'th', 'head')),
+              h('tbody', null, rows.map((values, index) => row(values, 'td', 'row-' + index))))))
+          continue
+        }
+        if (notebook && line.trim() === '$$') {
+          const end = lines.findIndex((part, index) => index > i && part.trim() === '$$')
+          if (end > i) {
+            blocks.push(notebookMath(lines.slice(i + 1, end).join(' '), 'md-m' + blocks.length, true))
+            i = end + 1
+            continue
+          }
+        }
         const fence = /^\s*```([\w-]*)\s*$/.exec(line)
         if (fence) {
           const body = []
@@ -133,7 +200,7 @@ window.__ModuleLoader__.load({
         const heading = /^(#{1,6})\s+(.*)$/.exec(line)
         if (heading) {
           const tag = 'h' + Math.min(6, heading[1].length)
-          blocks.push(h(tag, { key: 'md-h' + blocks.length }, inlineMarkdown(heading[2], 'md-h' + blocks.length)))
+          blocks.push(h(tag, { key: 'md-h' + blocks.length }, inline(heading[2], 'md-h' + blocks.length)))
           i++
           continue
         }
@@ -145,7 +212,7 @@ window.__ModuleLoader__.load({
         if (/^\s*>\s?/.test(line)) {
           const quote = []
           while (i < lines.length && /^\s*>\s?/.test(lines[i])) quote.push(lines[i++].replace(/^\s*>\s?/, ''))
-          blocks.push(h('blockquote', { key: 'md-q' + blocks.length }, markdownBlocks(quote.join('\n'))))
+          blocks.push(h('blockquote', { key: 'md-q' + blocks.length }, markdownBlocks(quote.join('\n'), notebook)))
           continue
         }
         const ordered = /^\s*\d+[.)]\s+/.test(line)
@@ -158,8 +225,8 @@ window.__ModuleLoader__.load({
             const key = 'md-l' + blocks.length + '-' + items.length
             items.push(h('li', { key }, check
               ? [h('input', { key: key + '-c', type: 'checkbox', checked: check[1].toLowerCase() === 'x', disabled: true,
-                  'aria-label': check[1].toLowerCase() === 'x' ? LW('已完成') : LW('未完成') }), ' ', ...inlineMarkdown(check[2], key)]
-              : inlineMarkdown(item, key)))
+                  'aria-label': check[1].toLowerCase() === 'x' ? LW('已完成') : LW('未完成') }), ' ', ...inline(check[2], key)]
+              : inline(item, key)))
             i++
           }
           blocks.push(h(ordered ? 'ol' : 'ul', { key: 'md-l' + blocks.length }, items))
@@ -167,18 +234,18 @@ window.__ModuleLoader__.load({
         }
         const paragraph = [line]
         i++
-        while (i < lines.length && lines[i].trim() && !blockStart(lines[i])) paragraph.push(lines[i++])
+        while (i < lines.length && lines[i].trim() && !blockStart(lines[i]) && !tableStart(i)) paragraph.push(lines[i++])
         const children = []
         paragraph.forEach((text, index) => {
           if (index) children.push(h('br', { key: 'md-p' + blocks.length + '-br' + index }))
-          children.push(...inlineMarkdown(text, 'md-p' + blocks.length + '-' + index))
+          children.push(...inline(text, 'md-p' + blocks.length + '-' + index))
         })
         blocks.push(h('p', { key: 'md-p' + blocks.length }, children))
       }
       return blocks
     }
-    function Markdown({ source, className = '' }) {
-      return h('div', { className: ('lw-md ' + className).trim() }, markdownBlocks(source))
+    function Markdown({ source, className = '', notebook = false }) {
+      return h('div', { className: ('lw-md ' + className).trim() }, markdownBlocks(source, notebook))
     }
 
     const recordSectionKinds = {
@@ -590,6 +657,25 @@ window.__ModuleLoader__.load({
       .lw-goal-draft small,.lw-goal-milestone{color:var(--dsw-alias-label-secondary);font-size:var(--lw-ui-xs,12px)}
       .lw-goal-draft>button{text-align:left;overflow-wrap:anywhere}
       @container (max-width:640px){.lw-goal-columns{grid-template-columns:minmax(0,1fr)}}
+      .lw-notebook{container-type:inline-size;display:grid;gap:10px;min-width:0}
+      .lw-notebook-toolbar,.lw-notebook-metadata{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+      .lw-notebook-body{display:grid;grid-template-columns:minmax(140px,20%) minmax(0,1fr) minmax(190px,24%);gap:12px;align-items:start}
+      .lw-notebook[data-wide=true] .lw-notebook-body{grid-template-columns:minmax(0,1fr)}
+      .lw-notebook :is(.lw-notebook-tree,.lw-notebook-document,.lw-notebook-context){display:grid;gap:9px;min-width:0;border:1px solid var(--dsw-alias-border-l4,#8886);border-radius:9px;padding:10px}
+      .lw-notebook :is(h2,h3,p){margin:0}
+      .lw-notebook-context h3{font-size:inherit}
+      .lw-notebook-form,.lw-notebook-form label,.lw-notebook-files{display:grid;gap:6px;min-width:0}
+      .lw-notebook-metadata label{flex:1 1 150px}
+      .lw-notebook-form textarea{resize:vertical;min-height:140px}
+      .lw-notebook-tree button,.lw-notebook-context button{max-width:100%;white-space:normal;overflow-wrap:anywhere;text-align:left}
+      .lw-notebook :is(button[aria-pressed=true],button[aria-current=page]){background:color-mix(in srgb,var(--lw-paradigm-accent,#489781) 15%,transparent)}
+      .lw-notebook :is(.lw-notebook-tags,.lw-notebook-tree ul,.lw-notebook-context ul){list-style:none;padding:0;margin:0}
+      .lw-notebook-tags{display:flex;gap:5px;flex-wrap:wrap}
+      .lw-notebook-tags li{padding:0 6px;border-radius:4px;background:var(--dsw-alias-bg-layer-1,#8881);font-size:var(--lw-ui-xs)}
+      .lw-notebook-attachment-preview{margin:0;min-width:0}
+      .lw-notebook-attachment-preview img{display:block;max-width:100%;height:auto}
+      @container (max-width:820px){.lw-notebook-body{grid-template-columns:minmax(125px,24%) minmax(0,1fr)}.lw-notebook-context{grid-column:2}}
+      @container (max-width:540px){.lw-notebook-body{grid-template-columns:minmax(0,1fr)}.lw-notebook-context{grid-column:1}}
       [data-done=true]>.lw-paradigm-record>.lw-paradigm-title{color:var(--dsw-alias-label-secondary);text-decoration:line-through}
       .lw-paradigm-view :is(button,summary,input):focus-visible{outline:2px solid var(--dsw-focus-ring-color,#3b82f6);outline-offset:2px}
       .lw-paradigm-preview{font-size:var(--lw-ui-sm);color:var(--dsw-alias-label-secondary);line-height:1.55;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
@@ -2549,7 +2635,7 @@ window.__ModuleLoader__.load({
       return key ? botParadigms[key].accent : undefined
     }
     const botLayoutLabels = {
-      calendar: '目标日历', checklist: '目标清单', path: '目标路径', library: '资料库', timeline: '文件动态',
+      calendar: '目标日历', checklist: '目标清单', path: '目标路径', notebook: '笔记资料库', library: '资料库', timeline: '文件动态',
       graph: '关系图', lineage: '文献脉络', branches: '发散探索', reasoning: '线性推演',
       sequence: '实验流程', matrix: '并行实验',
     }
@@ -3031,6 +3117,9 @@ window.__ModuleLoader__.load({
       .then(module => module.createWorkbenchViews(React, project, { Btn, Icon, Tag, Select, fmtDateTime, Canvas: BotParadigmView }))
     const GoalPlanner = React.lazy(() => import(new URL('./labweave-goal-planner.js', document.baseURI).href)
       .then(module => ({ default: module.createGoalPlanner(React) })))
+    const Notebook = React.lazy(() => import(new URL('./labweave-notebook.js', document.baseURI).href)
+      .then(module => ({ default: module.createNotebook(React, { Btn, Markdown, formatDate: fmtDateTime,
+        resourceImage: entryImageSrc, safeUrl: mdSafeUrl }) })))
     const BotExperiments = React.lazy(() => getWorkbenchViews().then(views => ({ default: views.Experiments })))
 
     function openComposerFile(input, imagesOnly) {
@@ -3340,12 +3429,13 @@ window.__ModuleLoader__.load({
     const refKey = reference => reference.featureId + ':' + reference.id
     const asRecordRef = (featureId, id) => ({ featureId, id })
 
-    function RecordLinks({ rails, featureList, feature, item, busy, navigate, change }) {
+    function RecordLinks({ rails, featureList, feature, item, busy, navigate, change, showLibrary = true }) {
       const [choice, setChoice] = React.useState('')
       const featureNames = new Map(featureList.map(row => [row.id, row.label]))
       const current = refKey(asRecordRef(feature, item.id))
-      const outgoing = new Map((item.recordRefs || []).map(ref => [refKey(ref), ref]))
-      const records = featureList.flatMap(row => (rails[row.id] || []).filter(record => !record.planningDraft)
+      const outgoing = new Map((item.recordRefs || []).filter(ref => showLibrary || ref.featureId !== 'library').map(ref => [refKey(ref), ref]))
+      const records = featureList.filter(row => showLibrary || row.id !== 'library')
+        .flatMap(row => (rails[row.id] || []).filter(record => !record.planningDraft && record.kind !== 'note-folder')
         .map(record => ({ ...asRecordRef(row.id, record.id), title: entryHeadlineBody(record)[0], refs: record.recordRefs || [] })))
       const index = new Map(records.map(record => [refKey(record), record]))
       const incoming = records.filter(record => record.refs.some(ref => refKey(ref) === current))
@@ -3388,6 +3478,8 @@ window.__ModuleLoader__.load({
       const [notice, setNotice] = React.useState('')
       const [reading, setReading] = React.useState(null)
       const [activeItemId, setActiveItemId] = React.useState(null)
+      const [notebookRequest, setNotebookRequest] = React.useState(null)
+      const notebook = featMeta.layout === 'notebook'
       const [activeReview, setActiveReview] = React.useState(null)
       const [deletingItem, setDeletingItem] = React.useState(null)
       const [browserLink, setBrowserLink] = React.useState(null)
@@ -3418,12 +3510,13 @@ window.__ModuleLoader__.load({
         if (!recordRequest || !value?.rails || persisted.recordRequest !== recordRequest) return
         delete persisted.recordRequest
         if ((value.rails[feature] || []).some(item => item.id === recordRequest.id)) {
-          setActiveItemId(recordRequest.id)
+          if (notebook) setNotebookRequest(recordRequest)
+          else setActiveItemId(recordRequest.id)
           setActiveReview(null); setReading(null); setBrowserLink(null); setEditingId(null); setDeletingItem(null)
         } else {
           setNotice(LW('关联记录已移除或不可访问。'))
         }
-      }, [recordRequest, value, feature, persisted])
+      }, [recordRequest, value, feature, persisted, notebook])
       const fileInputRef = React.useRef(null)
       const textareaRef = React.useRef(null)
       const changeDraft = text => { setDraftText(text); persisted.draft = text }
@@ -3556,6 +3649,20 @@ window.__ModuleLoader__.load({
         setActiveItemId(null); setActiveReview(null); setReading(null); setDeletingItem(null); setEditingId(null); setBrowserLink(null)
       }
       const libraryItems = value.rails.library || []
+      const changeLink = (item, ref, remove) => action('entry_reference', {
+        featureId: item.canvasRail || feature, id: item.id, target: asRecordRef(ref.featureId, ref.id), remove,
+      })
+      function linksFor(item, showLibrary = true) {
+        return h(RecordLinks, { key: item.id, rails: value.rails, featureList: value.features || [],
+          feature: item.canvasRail || feature, item, busy, showLibrary,
+          navigate: ref => {
+            if (ref.featureId !== feature) navigateRecord(ref)
+            else if (notebook) setNotebookRequest({ id: ref.id })
+            else openEntry((value.rails[feature] || []).find(record => record.id === ref.id))
+          },
+          change: (ref, remove) => run(() => changeLink(item, ref, remove)),
+        })
+      }
       const libraryUrls = new Set(libraryItems.map(x => x.url).filter(Boolean))
       const goalsList = value.rails.goals || []
       const linkedIdeaIds = new Set(goalsList.map(g => g.ideaId).filter(Boolean))
@@ -3734,18 +3841,7 @@ window.__ModuleLoader__.load({
                             isReadableEntry(activeItem) && Btn({ size: 'xs', disabled: busy,
                               onClick: () => readResource(attachment.id, 1, activeItem) }, LW('预览文件'))),
                           h(EntrySource, { item: activeItem }),
-                          !activeItem.canvasDraft && h(RecordLinks, {
-                            key: activeItem.id, rails: value.rails, featureList: value.features || [],
-                            feature: activeItem.canvasRail || feature, item: activeItem, busy,
-                            navigate: ref => {
-                              if (ref.featureId === feature) openEntry((value.rails[feature] || []).find(record => record.id === ref.id))
-                              else navigateRecord(ref)
-                            },
-                            change: (ref, remove) => run(() => action('entry_reference', {
-                              featureId: activeItem.canvasRail || feature, id: activeItem.id,
-                              target: asRecordRef(ref.featureId, ref.id), remove,
-                            })),
-                          }),
+                          !activeItem.canvasDraft && linksFor(activeItem),
                           !activeItem.canvasDraft && h('div', { className: 'lw-actions lw-record-actions' },
                             Btn({ variant: 'danger', size: 'xs', className: 'lw-record-delete', disabled: busy,
                               onClick: () => setDeletingItem(activeItem.id) }, feature === 'feed' ? LW('删除动态') : LW('删除记录')),
@@ -3795,7 +3891,19 @@ window.__ModuleLoader__.load({
                           LW('只提出建议，不改正式排期或完成状态。') + '\n\n' + request)
                         return true
                       }) })),
-                  typedLayout && !engineering && !goalPlanner && h(BotParadigmView, {
+                  notebook && h(React.Suspense, { fallback: h('p', { className: 'lw-hint' }, LW('正在读取笔记…')) },
+                    h(Notebook, { items: ordered.filter(item => !item.canvasDraft), resources: libraryItems,
+                      requested: notebookRequest, busy, previewFile: readResource,
+                      save: payload => run(() => action('feature_push', { featureId: feature, source: '用户', ...payload })),
+                      changeLink: (item, ref, remove) => run(() => changeLink(item, ref, remove)),
+                      readHistory: item => run(() => action('note/history', { featureId: item.canvasRail || feature, id: item.id })),
+                      upload: (item, file) => run(async () => {
+                        const resource = await action('upload', { name: file.name, data: await fileUploadData(file) })
+                        await changeLink(item, asRecordRef('library', resource.id), false)
+                        setNotice(LW('已导入并关联附件：') + file.name)
+                      }),
+                      links: item => linksFor(item, false) })),
+                  typedLayout && !engineering && !goalPlanner && !notebook && h(BotParadigmView, {
                     layout: botLayout, items: ordered, fields: extensionFields, activeId: activeItemId, openEntry, busy,
                     addNode, deleteNode, emptyTitle,
                     toggleGoal: effectiveParadigm === 'goals' ? item => run(() =>

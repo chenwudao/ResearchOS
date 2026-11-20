@@ -98,7 +98,9 @@ def project_view(scope):
     feed = jobs.get("feed", {})
     review = jobs.get("review", {})
     hidden = set(item.get("dismissedFeed", []))
-    rails = dict(item["rails"])
+    rails = {rail: [{key: value for key, value in entry.items() if key != "noteHistory"}
+                    if "noteHistory" in entry else entry for entry in entries]
+             for rail, entries in item["rails"].items()}
     for f in feature_list:
         if f["id"] != "chat":
             rails.setdefault(f["id"], [])
@@ -205,6 +207,8 @@ def project_action(scope, data):
     if action == "entry_reference":
         return projects.change_record_reference(scope, args.get("featureId"), args.get("id"),
                                                 args.get("target"), args.get("remove", False))
+    if action == "note/history":
+        return projects.note_history(scope, args.get("featureId"), args.get("id"))
     if action == "rename":
         return {"name": projects.call("project_update", {"name": naming.display_name(args.get("name"))}, scope)["name"]}
     if action == "description":

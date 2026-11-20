@@ -10,6 +10,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import native_launcher as launcher
 import features
 import native_web
+import project_service
 import research_mcp
 
 
@@ -23,6 +24,15 @@ def main():
                 subprocess.run(["node", str(ROOT / "tests/integration_goal_planner.cjs"),
                                 sys.executable, __file__, str(root / "data")],
                                cwd=ROOT, input=url, text=True, check=True, timeout=125)
+            scope = next(row["scope"] for row in native_web.catalog() if row["name"] == "排期验收")
+            view = native_web.project_view(scope)
+            bot = next(row for row in view["features"] if row["label"] == "实验日志")
+            items = view["rails"][bot["id"]]
+            resource, = view["rails"]["library"]
+            reference = {"featureId": "library", "id": resource["id"]}
+            assert all(reference in item["recordRefs"] for item in items if item.get("kind") == "note")
+            files = list((project_service.folder(scope) / "resources").iterdir())
+            assert len(files) == 1 and files[0].read_text(encoding="utf-8") == "stage,score\nR2,65.29\n"
     finally:
         launcher.workspace.DATA = previous
 

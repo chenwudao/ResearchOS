@@ -17,7 +17,7 @@ OPTIONAL_BUILTINS = ("feed", "ideas", "goals", "library")
 PROTECTED_FEATURES = frozenset({"chat"})
 BOT_LAYOUTS = {
     "goals": ("checklist", "path", "calendar"),
-    "notes": ("library", "timeline"),
+    "notes": ("library", "timeline", "notebook"),
     "mindmap": ("graph", "lineage"),
     "ideas": ("branches", "reasoning"),
     "engineering": ("sequence", "matrix"),
@@ -553,7 +553,7 @@ def create_feature(caller_scope, label, hint="", project_id=None, *, symbol=None
     if not layouts:
         raise workspace.WorkspaceError(400, "当前项目没有这个范式。")
     if layout is None:
-        layout = "calendar" if paradigm == "goals" else layouts[0]
+        layout = {"goals": "calendar", "notes": "notebook"}.get(paradigm, layouts[0])
     if layout not in layouts:
         raise workspace.WorkspaceError(400, "当前范式不支持这个排布。")
     symbol = "" if symbol is None else _clean_symbol(symbol, allow_empty=True)
