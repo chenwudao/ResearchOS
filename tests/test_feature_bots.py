@@ -120,23 +120,21 @@ class FeatureBotsTests(unittest.TestCase):
         ctx = features.bot_context_for_session(a, "sess-bot-001")
         self.assertEqual((ctx["featureId"], ctx["label"]), (fid, "论文速报"))
 
-        # MCP feature_push writes categorized entry persisted in SQLite entities table.
-        pushed = self.mcp(a, "feature_push", {"featureId": fid, "text": "本周新增 3 篇相关论文", "category": "push"})
-        self.assertEqual(pushed["category"], "push")
+        # MCP feature_push writes timeline entry persisted in SQLite entities table.
+        pushed = self.mcp(a, "feature_push", {"featureId": fid, "text": "本周新增 3 篇相关论文"})
+        self.assertEqual(pushed["text"], "本周新增 3 篇相关论文")
         self.assertEqual(len(web.project_view(a)["rails"][fid]), 1)
 
-
-        # MCP feature_entries returns categories and entries for LLM-driven classification decisions.
+        # MCP feature_entries returns pushed entries for the Bot.
         listed = self.mcp(a, "feature_entries", {"featureId": fid})
         self.assertEqual(listed["featureId"], fid)
-        self.assertTrue(any(cat[0] == "push" for cat in listed["categories"]))
+        self.assertNotIn("categories", listed)
         self.assertEqual([entry["id"] for entry in listed["entries"]], [pushed["id"]])
 
-        # MCP feature_push with existing id recategorizes entry without duplicating it.
-        recat = self.mcp(a, "feature_push", {"featureId": fid, "id": pushed["id"], "category": "核心结论"})
-        self.assertEqual(recat["id"], pushed["id"])
-        self.assertEqual(recat["text"], "本周新增 3 篇相关论文")
-        self.assertEqual(recat["category"], "核心结论")
+        # MCP feature_push with existing id updates entry without duplicating it.
+        updated_entry = self.mcp(a, "feature_push", {"featureId": fid, "id": pushed["id"], "text": "本周新增 3 篇核心论文"})
+        self.assertEqual(updated_entry["id"], pushed["id"])
+        self.assertEqual(updated_entry["text"], "本周新增 3 篇核心论文")
         self.assertEqual(len(web.project_view(a)["rails"][fid]), 1)
 
         # Cross-project and global scopes cannot inspect custom feature entries of project a.
@@ -200,9 +198,21 @@ class FeatureBotsTests(unittest.TestCase):
                 "args": {"featureId": "ideas", "kind": "duty", "title": "越权", "instruction": "x", "projectId": a},
             })
 
+        # Legacy storage rows in SQLite remain readable as duty and can be updated or removed cleanly.
+        legacy_rows = web.dispatch("project", {
+            "workspace": rec_a, "action": "bot_assignment_write",
+            "args": {"featureId": "ideas", "kind": "storage", "title": "旧归档规则", "instruction": "保留出处"},
+        })
+        self.assertTrue(any(item["kind"] == "duty" and item["title"] == "旧归档规则" for item in legacy_rows))
+        after_remove = web.dispatch("project", {
+            "workspace": rec_a, "action": "bot_assignment_write",
+            "args": {"featureId": "ideas", "kind": "duty", "title": "旧归档规则", "remove": True},
+        })
+        self.assertFalse(any(item["title"] == "旧归档规则" for item in after_remove))
+
     def test_project_plus_and_chat_share_feature_profile(self):
         a,b=self.projects
-        args={"label":"研究笔记","hint":"记录假设","symbol":"✎","keywords":["假设","证据","假设"],"requestId":"a"*32}
+        args={"label":"研究笔记","paradigm":"notes","hint":"记录假设","symbol":"✎","keywords":["假设","证据","假设"],"requestId":"a"*32}
         def create(values):
             return web.dispatch("project",{"workspace":self.records[a],"action":"create_feature_bot","args":values})
         first=create(args)["feature"]
@@ -295,6 +305,85 @@ class FeatureBotsTests(unittest.TestCase):
         })
         self.assertTrue(uploaded["image"].startswith("data:image/png;base64,"))
         self.assertTrue(uploaded["linkedItem"]["image"].startswith("data:image/png;base64,"))
+
+    def test_paradigm_avatars_for_builtin_and_custom_paradigms(self):
+        a, _ = self.projects
+        rec_a = self.records[a]
+
+        # Newly created bots default to empty symbol (inherit paradigm avatar) instead of legacy '✦'.
+        ui_bot = web.dispatch("project", {
+            "workspace": rec_a, "action": "create_feature_bot",
+            "args": {"label": "阶段目标", "paradigm": "goals", "requestId": "1" * 32},
+        })["feature"]
+        self.assertEqual(ui_bot["symbol"], "")
+        self.assertEqual(ui_bot["paradigm"], "goals")
+
+        mcp_bot = self.mcp(a, "feature_create", {"label": "文献脉络", "paradigm": "mindmap"})["feature"]
+        self.assertEqual(mcp_bot["symbol"], "")
+        self.assertEqual(mcp_bot["paradigm"], "mindmap")
+
+        # Manually created project extension paradigm automatically gets a matching avatar icon.
+        defect_ext = web.dispatch("project", {
+            "workspace": rec_a, "action": "create_project_paradigm",
+            "args": {
+                "label": "缺陷追踪",
+                "description": "记录系统故障、报错复现步骤和排查进展。",
+                "base": "engineering",
+                "layout": "sequence",
+                "fields": [{"name": "问题标题", "type": "text", "role": "title"}],
+            },
+        })
+        self.assertEqual(defect_ext["symbol"], "lucide:bug")
+
+        # Conversation-created paradigm auto-matches and tolerates an unrecognized symbol hint.
+        paper_ext = self.mcp(a, "project_paradigm_create", {
+            "label": "文献精读",
+            "description": "按主题整理核心论文与阅读笔记。",
+            "base": "notes",
+            "layout": "library",
+            "symbol": "lucide:not-a-real-icon",
+            "fields": [{"name": "论文标题", "type": "text", "role": "title"}],
+        })
+        self.assertEqual(paper_ext["symbol"], "lucide:book-open")
+
+        # Explicit valid symbol on custom paradigm is preserved (both exact and bare lucide name).
+        custom_ext = web.dispatch("project", {
+            "workspace": rec_a, "action": "create_project_paradigm",
+            "args": {
+                "label": "自定义看板",
+                "description": "通用结构化记录。",
+                "base": "notes",
+                "layout": "timeline",
+                "symbol": "telescope",
+                "fields": [{"name": "条目", "type": "text", "role": "title"}],
+            },
+        })
+        self.assertEqual(custom_ext["symbol"], "lucide:telescope")
+
+        # Bots created from custom extension paradigms carry extension.symbol and default symbol=''.
+        ext_bot = web.dispatch("project", {
+            "workspace": rec_a, "action": "create_feature_bot",
+            "args": {"label": "缺陷清单", "paradigm": defect_ext["id"], "requestId": "2" * 32},
+        })["feature"]
+        self.assertEqual(ext_bot["symbol"], "")
+        self.assertEqual(ext_bot["extension"]["symbol"], "lucide:bug")
+        listed_ext = next(f for f in web.project_view(a)["features"] if f["id"] == ext_bot["id"])
+        self.assertEqual(listed_ext["symbol"], "")
+        self.assertEqual(listed_ext["extension"]["symbol"], "lucide:bug")
+
+        # Legacy '✦' rows migrate cleanly once; later explicit updates to '✦' stay intact.
+        from contextlib import closing
+        with closing(workspace.database()) as db, db:
+            db.execute("DELETE FROM labweave_meta WHERE key = 'paradigm_avatar_default_v1'")
+            db.execute("UPDATE labweave_feature_profiles SET symbol = '✦' WHERE scope = ? AND feature_id = ?", (a, ui_bot["id"]))
+        migrated = next(f for f in web.project_view(a)["features"] if f["id"] == ui_bot["id"])
+        self.assertEqual(migrated["symbol"], "")
+        web.dispatch("project", {
+            "workspace": rec_a, "action": "feature_update",
+            "args": {"featureId": ui_bot["id"], "symbol": "✦"},
+        })
+        explicit_star = next(f for f in web.project_view(a)["features"] if f["id"] == ui_bot["id"])
+        self.assertEqual(explicit_star["symbol"], "✦")
 
 
 if __name__ == "__main__":

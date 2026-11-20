@@ -1,4 +1,4 @@
-"""Work-tree listings, Git status and keyword-category storage."""
+"""Work-tree listings and Git status."""
 from pathlib import Path
 import subprocess
 import sys
@@ -56,24 +56,6 @@ class ProjectToolsTests(unittest.TestCase):
         dirty = project_tools.git_status(self.project)["repos"][0]
         self.assertFalse(dirty["clean"])
         self.assertTrue(any(f["path"] == "extra.txt" for f in dirty["files"]))
-
-    def test_storage_categories_and_files(self):
-        created = project_tools.storage_define(self.project, "文献", ["论文", "PDF"])
-        self.assertEqual(created["name"], "文献")
-        updated = project_tools.storage_define(self.project, "文献", ["论文", "综述"])
-        self.assertEqual(updated["id"], created["id"])
-        self.assertEqual(updated["keywords"], ["论文", "综述"])
-        saved = project_tools.storage_save(self.project, "文献", source="notes/todo.md")
-        listing = project_tools.storage_list(self.project)
-        self.assertEqual(len(listing["categories"]), 1)
-        self.assertEqual(listing["categories"][0]["files"][0]["name"], "todo.md")
-        self.assertTrue((self.root / saved["path"]).is_file())
-        with self.assertRaises(workspace.WorkspaceError):
-            project_tools.storage_save(self.project, "文献", source="../secret.txt")
-        project_tools.storage_remove_file(self.project, "文献", saved["path"])
-        self.assertEqual(project_tools.storage_list(self.project)["categories"][0]["files"], [])
-        project_tools.storage_remove_category(self.project, created["id"])
-        self.assertEqual(project_tools.storage_list(self.project)["categories"], [])
 
     def test_handle_unknown_is_none(self):
         self.assertIsNone(project_tools.handle(self.project, "view", {}))

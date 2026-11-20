@@ -68,6 +68,7 @@ window.__ModuleLoader__.load({
     const openProfileEvent = 'labweave:open-assistant-profile'
     const profileChanged = 'labweave:assistant-profile-changed'
     const pageKey = 'labweave-project-page'
+    const welcomeKey = 'labweave-welcome'
     const selectionKey = 'labweave.project-page.v2'
     const navEvent = 'labweave:navigate'
     const rewindEvent = 'labweave:conversation-rewind'
@@ -178,6 +179,50 @@ window.__ModuleLoader__.load({
     }
     function Markdown({ source, className = '' }) {
       return h('div', { className: ('lw-md ' + className).trim() }, markdownBlocks(source))
+    }
+
+    const recordSectionKinds = {
+      '方法': 'method', '实验方法': 'method', '方法与设置': 'method', method: 'method', methods: 'method',
+      '结论': 'finding', '主要结论': 'finding', '发现': 'finding', '结果': 'finding', '主要发现': 'finding',
+      conclusion: 'finding', findings: 'finding', results: 'finding',
+      '意义': 'implication', '启示': 'implication', implications: 'implication',
+      '局限': 'limitation', '局限性': 'limitation', limitations: 'limitation',
+      '证据等级': 'evidence', '证据': 'evidence', evidence: 'evidence',
+      '假设': 'hypothesis', '缺口': 'gap', '验证': 'validation', '下一步': 'next',
+    }
+
+    function recordSections(source) {
+      const sections = [{ lines: [] }]
+      let fence = ''
+      for (const line of source.replace(/\r\n?/g, '\n').split('\n')) {
+        const boundary = /^ {0,3}(```+|~~~+)/.exec(line)
+        if (boundary) {
+          if (!fence) fence = boundary[1]
+          else if (boundary[1][0] === fence[0] && boundary[1].length >= fence.length && line.trim() === boundary[1]) fence = ''
+          sections.at(-1).lines.push(line)
+          continue
+        }
+        const label = !fence && /^ {0,3}(?:\*\*([^*：:]{1,20}?)\s*(?:[：:]\*\*|\*\*\s*[：:])|([^*：:]{1,20}?)\s*[：:])\s*(.*)$/.exec(line)
+        const name = label && (label[1] || label[2]).trim()
+        const key = name && name.toLowerCase()
+        const kind = key && Object.hasOwn(recordSectionKinds, key) && recordSectionKinds[key]
+        if (kind) sections.push({ name, kind, lines: [label[3]] })
+        else sections.at(-1).lines.push(line)
+      }
+      return sections
+    }
+
+    function RecordBody({ source }) {
+      const text = String(source || '').trim()
+      if (!text) return null
+      const sections = recordSections(text)
+      if (sections.length < 3) return h(Markdown, { source: text, className: 'lw-record-markdown' })
+      return h('div', { className: 'lw-record-sections' }, sections.map(({ name, kind, lines }, index) => {
+        const body = lines.join('\n').trim()
+        if (!name) return body && h(Markdown, { key: index, source: body, className: 'lw-record-markdown' })
+        return h('section', { key: index, className: 'lw-record-section', 'data-kind': kind },
+          h('h3', null, name), body && h(Markdown, { source: body, className: 'lw-record-markdown' }))
+      }))
     }
 
     function rewindStart(event) {
@@ -460,13 +505,90 @@ window.__ModuleLoader__.load({
       .lw-assigned-editor{display:grid;gap:10px;margin-top:10px}
       .lw-assigned-preview{border:.5px solid var(--dsw-alias-border-l2,rgba(128,128,128,.2));border-radius:var(--dsw-radius-md,8px);padding:9px 11px;background:var(--dsw-alias-bg-base,Canvas);max-height:220px;overflow:auto}
       .lw-task-count{position:absolute;top:-3px;right:-3px;min-width:14px;height:14px;padding:0 3px;border-radius:999px;background:var(--dsw-alias-state-business-primary,#3b82f6);color:#fff;font:600 9px/14px var(--ds-font-family-code,monospace);text-align:center}
-      .lw-bot-symbols{display:grid;grid-template-columns:repeat(auto-fill,minmax(36px,1fr));gap:4px;margin-top:6px;max-height:162px;overflow-y:auto;padding:2px}
-      .lw-bot-symbols button{display:grid;place-items:center}.lw-bot-symbols svg,.lw-avatar-label svg{width:20px;height:20px}
-      .lw-avatar-label,.lw-avatar-filter{display:flex;align-items:center;gap:8px}.lw-avatar-filter{margin-top:5px}.lw-avatar-filter select{flex:0 0 5.6em}.lw-avatar-filter input{min-width:0;flex:1}
-      .lw-bot-symbols button,.lw-symbol-mark{font-family:"Segoe UI Symbol",sans-serif;text-align:center}
-      .lw-bot-symbols button{min-height:34px;border:1px solid var(--dsw-alias-border-l2);border-radius:7px;background:var(--dsw-alias-bg-base);color:inherit;cursor:pointer}
-      .lw-dialog .lw-form .lw-bot-symbols button{font:500 18px/1.25 "Segoe UI Symbol",sans-serif}
-      .lw-dialog .lw-form .lw-bot-symbols button[aria-pressed=true]{color:var(--dsw-alias-label-primary,CanvasText);background:var(--dsw-alias-bg-secondary,ButtonFace);box-shadow:inset 0 0 0 1.5px currentColor}
+      .lw-symbol-mark{font-family:"Segoe UI Symbol",sans-serif;text-align:center}
+      .lw-bot-form-dialog .lw-dialog-head{margin-bottom:10px}
+      .lw-bot-form-dialog .lw-form{gap:10px}
+      .lw-bot-form-dialog .lw-form label{gap:4px}
+      .lw-bot-form-dialog .lw-form textarea{min-height:60px}
+      .lw-bot-create{width:min(39rem,calc(100vw - 1.5rem));padding:16px}
+      .lw-paradigm-set{border:0;margin:0;padding:0;min-width:0}
+      .lw-paradigm-set legend{margin-bottom:6px;font-weight:600}
+      .lw-paradigm-options{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px}
+      .lw-paradigm-option{position:relative;text-align:center;padding:4px;border:1px solid var(--dsw-alias-border-l3,#8885);border-radius:8px;cursor:pointer}
+      .lw-paradigm-option input{position:absolute;opacity:0;width:1px;height:1px}
+      .lw-paradigm-option:has(:checked),.lw-paradigm-option:has(:focus-visible){outline:2px solid var(--dsw-focus-ring-color,#3b82f6);outline-offset:-1px}
+      .lw-paradigm-art{display:grid;place-items:center;min-height:76px;border-radius:5px;background:color-mix(in srgb,var(--lw-paradigm-accent) 14%,transparent);color:var(--lw-paradigm-accent)}
+      .lw-paradigm-art svg{width:37px;height:37px}
+      .lw-paradigm-art .lw-symbol-mark{font-size:30px;line-height:1}
+      .lw-paradigm-options-ext{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:7px}
+      .lw-paradigm-options-ext .lw-paradigm-art{min-height:56px}
+      .lw-paradigm-options-ext .lw-paradigm-art svg{width:26px;height:26px}
+      .lw-paradigm-options-ext .lw-paradigm-art .lw-symbol-mark{font-size:22px}
+      .lw-paradigm-preview-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2,#8883);border-radius:8px;background:var(--dsw-alias-bg-layer-1,#8881)}
+      .lw-paradigm-preview-badge{width:34px;height:34px;border-radius:7px;display:grid;place-items:center;flex:none;background:color-mix(in srgb,var(--lw-paradigm-accent,#638fd5) 14%,transparent);color:var(--lw-paradigm-accent,#638fd5)}
+      .lw-paradigm-preview-badge svg{width:20px;height:20px}
+      .lw-paradigm-avatar-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(32px,1fr));gap:4px;max-height:132px;overflow:auto;padding:6px;border:1px solid var(--dsw-alias-border-l2,#8883);border-radius:8px;background:var(--dsw-alias-bg-base,Canvas)}
+      .lw-paradigm-avatar-grid button{display:grid;place-items:center;height:30px;padding:0;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer}
+      .lw-paradigm-avatar-grid button:hover{background:var(--dsw-alias-interactive-bg-hover,#8882);color:var(--dsw-alias-label-primary)}
+      .lw-paradigm-avatar-grid button[aria-pressed="true"]{border-color:var(--dsw-focus-ring-color,#3b82f6);background:color-mix(in srgb,var(--dsw-focus-ring-color,#3b82f6) 12%,transparent);color:var(--dsw-alias-label-primary)}
+      .lw-row-main[data-paradigm] .lw-icon,.lw-row-main[data-paradigm] .lw-symbol-mark{color:var(--lw-paradigm-accent,currentColor)}
+      .lw-extension-fields{display:grid;gap:8px;min-width:0}
+      .lw-extension-field{display:grid;grid-template-columns:minmax(90px,1.4fr) minmax(68px,1fr) minmax(80px,1fr) auto;align-items:end;gap:6px}
+      .lw-extension-field :is(input,select){min-width:0;width:100%}
+      @media(max-width:490px){.lw-extension-field{grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto}.lw-extension-field>label:first-child{grid-column:1/-1}}
+      .lw-paradigm-view{display:grid;gap:18px;min-width:0;margin-block:4px 12px}
+      .lw-paradigm-view :is(h3,h4,p,ul,ol,dl),.lw-paradigm-fields dd{margin:0}
+      .lw-paradigm-list{list-style:none;padding:0}
+      .lw-paradigm-surface{border:1px solid var(--dsw-alias-border-l2,#8883);border-radius:12px;min-width:0;overflow:hidden}
+      .lw-paradigm-group summary{cursor:pointer;display:flex;align-items:center;gap:9px;padding:10px 14px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1,#8881);font-weight:600}
+      .lw-paradigm-group summary::after{content:'›';margin-inline-start:auto;rotate:90deg}
+      .lw-paradigm-group:not([open]) summary::after{rotate:0deg}
+      .lw-paradigm-group summary .lw-icon,.lw-paradigm-row-icon{color:var(--dsw-alias-label-secondary);flex:none}
+      .lw-paradigm-row{padding:12px 14px;min-width:0}
+      .lw-paradigm-row+.lw-paradigm-row{border-block-start:1px solid var(--dsw-alias-border-l2,#8883)}
+      .lw-paradigm-row-main{display:flex;align-items:flex-start;gap:10px;min-width:0}
+      .lw-paradigm-row-main input{accent-color:var(--dsw-alias-state-business-primary,#3b82f6);inline-size:16px;block-size:16px;flex:none;margin:3px 0 0}
+      .lw-paradigm-row-main .lw-paradigm-row-icon{margin-block-start:3px}
+      .lw-paradigm-record{display:grid;gap:5px;min-width:0;flex:1;overflow-wrap:anywhere}
+      .lw-paradigm-title{background:none;border:0;padding:0;text-align:start;justify-self:start;cursor:pointer;min-width:0;overflow-wrap:anywhere}
+      .lw-paradigm-title:hover{text-decoration:underline;text-underline-offset:3px}
+      .lw-paradigm-title[aria-current=true]{text-decoration:underline;text-decoration-color:var(--lw-paradigm-accent,currentColor);text-underline-offset:4px}
+      [data-done=true]>.lw-paradigm-record>.lw-paradigm-title{color:var(--dsw-alias-label-secondary);text-decoration:line-through}
+      .lw-paradigm-view :is(button,summary,input):focus-visible{outline:2px solid var(--dsw-focus-ring-color,#3b82f6);outline-offset:2px}
+      .lw-paradigm-preview{font-size:var(--lw-ui-sm);color:var(--dsw-alias-label-secondary);line-height:1.55;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+      .lw-paradigm-meta{font-size:var(--lw-ui-xs);color:var(--dsw-alias-label-secondary);line-height:1.4;font-variant-numeric:tabular-nums}
+      .lw-paradigm-fields{display:grid;gap:5px;min-width:0;margin:0;font-size:var(--lw-ui-sm)}
+      .lw-paradigm-fields>div{display:grid;grid-template-columns:minmax(0,min(36%,8em)) minmax(0,1fr);gap:8px;overflow-wrap:anywhere}
+      .lw-paradigm-fields dt{color:var(--dsw-alias-label-secondary)}
+      .lw-paradigm-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px;padding:0;list-style:none}
+      .lw-paradigm-tile{display:grid;align-content:start;gap:8px;padding:15px;min-width:0;border:1px solid var(--dsw-alias-border-l2,#8883);border-radius:12px;background:var(--dsw-alias-bg-layer-1,Canvas)}
+      .lw-paradigm-view[data-layout=branches] .lw-paradigm-tile{border-block-start:2px solid var(--lw-paradigm-accent)}
+      .lw-paradigm-steps{list-style:none;display:grid;gap:0;padding:0;margin:0}
+      .lw-paradigm-step{position:relative;margin-inline-start:6px;border-inline-start:1px solid var(--dsw-alias-border-l3,#8885);padding:5px 0 16px 20px;min-width:0}
+      .lw-paradigm-step::before{content:'';position:absolute;inset-inline-start:-4px;inset-block-start:13px;width:7px;height:7px;border-radius:50%;background:var(--lw-paradigm-accent,var(--dsw-alias-label-secondary))}
+      .lw-paradigm-step:last-child{padding-block-end:4px}
+      .lw-paradigm-tree{--lw-tree-indent:clamp(11px,2.3vw,23px);display:grid;gap:8px;list-style:none;padding:0}
+      .lw-paradigm-tree .lw-paradigm-tree{margin:8px 0 0 var(--lw-tree-indent)}
+      .lw-paradigm-node{position:relative;min-width:0}
+      .lw-paradigm-tree .lw-paradigm-tree>.lw-paradigm-node::before{content:'';position:absolute;inset-inline-start:calc(-1 * var(--lw-tree-indent) + 5px);inset-block:-8px 0;border-inline-start:1px solid var(--dsw-alias-border-l3,#8885)}
+      .lw-paradigm-tree .lw-paradigm-tree>.lw-paradigm-node:last-child::before{inset-block-end:auto;height:28px}
+      .lw-paradigm-tree .lw-paradigm-tree>.lw-paradigm-node::after{content:'';position:absolute;inset-inline-start:calc(-1 * var(--lw-tree-indent) + 5px);inset-block-start:20px;width:calc(var(--lw-tree-indent) - 5px);border-block-start:1px solid var(--dsw-alias-border-l3,#8885)}
+      .lw-paradigm-tree-row{min-width:0;padding:10px 12px;border:1px solid var(--dsw-alias-border-l2,#8883);border-inline-start:2px solid var(--lw-paradigm-accent);border-radius:8px;background:var(--dsw-alias-bg-layer-1,Canvas)}
+      .lw-paradigm-progress{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;font-size:var(--lw-ui-sm)}
+      .lw-paradigm-progress progress{appearance:none;min-width:100px;max-width:100%;height:6px;flex:1;border:0;border-radius:999px;overflow:hidden;background:var(--dsw-alias-interactive-bg-hover,#8883)}
+      .lw-paradigm-progress progress::-webkit-progress-bar{background:var(--dsw-alias-interactive-bg-hover,#8883)}
+      .lw-paradigm-progress progress::-webkit-progress-value{background:var(--lw-paradigm-accent);border-radius:999px}
+      .lw-paradigm-progress progress::-moz-progress-bar{background:var(--lw-paradigm-accent);border-radius:999px}
+      .lw-run-table{overflow-x:auto}
+      .lw-run-table table{width:100%;border-collapse:collapse;text-align:start;font-size:var(--lw-ui-sm);font-variant-numeric:tabular-nums}
+      .lw-run-table :is(th,td){padding:9px 12px;text-align:start;border-block-end:1px solid var(--dsw-alias-border-l2,#8883);overflow-wrap:anywhere}
+      .lw-run-table thead{background:var(--dsw-alias-bg-layer-1,#8881);color:var(--dsw-alias-label-secondary)}
+      .lw-run-table tbody tr:last-child>*{border-block-end:0}
+      .lw-fbot-shell[data-paradigm] .lw-bot-pill{padding:4px 7px 4px 0;border-color:transparent;border-radius:8px;background:transparent;box-shadow:none}
+      .lw-fbot-shell[data-paradigm] .lw-bot-pill:hover{background:var(--dsw-alias-interactive-bg-hover,#8882);transform:none}
+      .lw-fbot-shell[data-paradigm] .lw-bot-pill-name{font-size:var(--lw-ui-md);font-weight:600;letter-spacing:normal}
+      .lw-fbot-shell[data-paradigm] :is(.lw-bot-pill-badge,.lw-empty-emblem){border:0;border-radius:var(--dsw-radius-sm,6px);background:color-mix(in srgb,var(--lw-paradigm-accent) 14%,transparent);color:var(--lw-paradigm-accent);box-shadow:none}
+      @media(max-width:530px){.lw-paradigm-options{grid-template-columns:repeat(6,minmax(0,1fr))}.lw-paradigm-option{grid-column:span 2}.lw-paradigm-option:nth-child(4){grid-column:2/span 2}}
       .lw-symbol-mark{display:inline-grid;place-items:center;min-width:1em;line-height:1}
       .lw-bot-keywords{display:flex;gap:5px;flex-wrap:wrap;align-items:center}.lw-bot-keywords span{font-size:var(--lw-ui-xs);color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-1,rgba(128,128,128,.07));border:.5px solid var(--dsw-alias-border-l1,rgba(128,128,128,.14));border-radius:999px;padding:2px 8px;overflow-wrap:anywhere}
       body{
@@ -519,6 +641,7 @@ window.__ModuleLoader__.load({
       .lw-btn-danger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger,rgba(220,38,38,.1));color:var(--dsw-alias-state-error-primary,#b34835)}
       .lw-dialog-actions .lw-btn-danger{color:var(--dsw-alias-state-error-primary,#b34835);background:var(--dsw-alias-interactive-bg-hover-danger,rgba(220,38,38,.1))}
       .lw-dialog-actions .lw-btn-danger:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#b34835) 18%,transparent)}
+      .lw-dialog-actions .lw-project-delete-btn{margin-inline-end:auto}
 
       .lw-tag{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:1px 8px;font-size:var(--lw-ui-xs);line-height:1.45;font-weight:500;white-space:nowrap}
       .lw-tag[data-tone="neutral"],.lw-tag[data-tone="info"]{background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06));color:var(--dsw-alias-label-secondary)}
@@ -558,14 +681,40 @@ window.__ModuleLoader__.load({
       .lw-brand-assistant[data-active="true"]{color:var(--dsw-alias-label-secondary)}
       [data-sidebar-collapsed="true"] .lw-brand-assistant,[class*="collapsed"] .lw-brand-assistant{display:none}
       [class*="frame"]:not([data-sidebar-collapsed="true"]) [data-slot="sidebar"]>[class*="root"]:not([class*="collapsed"]) [class*="logoRow"]:has(.lw-wordmark){gap:8px;align-items:center}
-      [class*="frame"]:not([data-sidebar-collapsed="true"]) [data-slot="sidebar"]>[class*="root"]:not([class*="collapsed"]) [class*="brandIdentity"]:has(.lw-wordmark){flex:1 1 auto;min-width:0;height:auto!important;gap:12px;align-items:center;overflow:visible}
+      [class*="frame"]:not([data-sidebar-collapsed="true"]) [data-slot="sidebar"]>[class*="root"]:not([class*="collapsed"]) [class*="brandIdentity"]:has(.lw-wordmark){flex:1 1 auto;min-width:0;height:auto!important;gap:var(--lw-brand-gap,12px);align-items:center;overflow:visible;transition:gap var(--lw-brand-motion)}
       [class*="frame"]:not([data-sidebar-collapsed="true"]) [data-slot="sidebar"]>[class*="root"]:not([class*="collapsed"]) [class*="brandName"]:has(.lw-wordmark){flex:1 1 auto;min-width:0;height:auto!important;display:flex;align-items:center;overflow:visible}
       [class*="frame"]:not([data-sidebar-collapsed="true"]) [data-slot="sidebar"]>[class*="root"]:not([class*="collapsed"]) [class*="logoRow"] [class*="brandIdentity"]:has(.lw-wordmark) .lw-brand-mark{width:40px!important;height:40px!important}
       [class*="frame"]:not([data-sidebar-collapsed="true"]) [data-slot="sidebar"]>[class*="root"]:not([class*="collapsed"]) [class*="logoRow"] button[class*="brand"]:has(.lw-wordmark){flex:1 1 auto;min-width:0;height:auto!important;justify-content:flex-start;border-radius:var(--dsw-radius-md,10px);padding:7px 8px 7px 6px;margin-left:-4px;overflow:visible;transition:background-color .14s ease}
       [class*="frame"]:not([data-sidebar-collapsed="true"]) [data-slot="sidebar"]>[class*="root"]:not([class*="collapsed"]) [class*="logoRow"] button[class*="brand"]:has(.lw-wordmark):hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.12))}
+      [data-slot="sidebar"]{--lw-brand-motion:260ms cubic-bezier(.2,.75,.25,1)}
+      [data-slot="sidebar"] [class*="logoRow"]:has(.lw-brand-entry){
+        max-block-size:calc(64px + max(0px,var(--lw-font-delta)));transition:max-block-size var(--lw-brand-motion),padding-block var(--lw-brand-motion)
+      }
+      [data-slot="sidebar"] [class*="brandMark"]:has(.lw-brand-mark){
+        max-inline-size:40px;max-block-size:40px;transition:max-inline-size var(--lw-brand-motion),max-block-size var(--lw-brand-motion)
+      }
+      [data-slot="sidebar"] :is(.lw-brand-mark,.lw-wordmark){
+        transition:opacity var(--lw-brand-motion),translate var(--lw-brand-motion),visibility var(--lw-brand-motion),max-block-size var(--lw-brand-motion)
+      }
+      .lw-wordmark{max-block-size:1.15em}
+      [data-lw-assistant-brand-hidden] [data-slot="sidebar"] [class*="logoRow"]:has(.lw-brand-entry){
+        max-block-size:38px;padding-block:2px
+      }
+      [data-lw-assistant-brand-hidden] [data-slot="sidebar"]{--lw-brand-gap:0px}
+      [data-lw-assistant-brand-hidden] [data-slot="sidebar"] [class*="brandMark"]:has(.lw-brand-mark){max-inline-size:0;max-block-size:0}
+      [data-lw-assistant-brand-hidden] [data-slot="sidebar"] :is(.lw-brand-mark,.lw-wordmark){
+        opacity:0;translate:0 -14px;visibility:hidden
+      }
+      [data-lw-assistant-brand-hidden] [data-slot="sidebar"] .lw-wordmark{max-block-size:0}
+      [data-lw-assistant-brand-hidden] [data-slot="sidebar"] [data-sidebar-toggle] [class*="railMark"]{display:none}
+      [data-lw-assistant-brand-hidden] [data-slot="sidebar"] [data-sidebar-toggle]:has([class*="railMark"]) [class*="panelIcon"]{display:block}
+      @media(prefers-reduced-motion:reduce){
+        [data-slot="sidebar"]{--lw-brand-motion:0ms}
+      }
       [class*="logoRow"] + [class*="newSession"],[data-sidebar-drawer] [class*="newSession"]{display:none!important}
       .lw-brand-mark{display:block;flex:none;object-fit:contain}
       [class*="panelList"] [class*="moreAnchor"],[class*="panelList"] [class*="panelUnpin"],[data-lw-hidden="1"]{display:none!important}
+      [data-subagent-action]{display:none!important}
       [data-shortcut-modal="settings"] [data-slot="settings.action"],[data-shortcut-modal="settings"] [data-slot="settings.general.item"]>*:has([aria-label*="Session Log"]){display:none!important}
       [data-sidebar-drawer]:not([data-sidebar-collapsed="true"]) [class*="panelList"] button{font-size:var(--lw-ui-base);min-height:calc(32px + max(0px,var(--lw-font-delta) * 1.1));height:auto}
       [role="group"][aria-label="模型与推理等级"],[role="menu"][aria-label="模型与推理等级"]:not(:has(.lw-mo-root)):has([role="menuitemradio"]){padding-top:30px}
@@ -605,6 +754,19 @@ window.__ModuleLoader__.load({
       .lw-project-task-list{margin:0;padding:0;list-style:none}
       .lw-project-task-list li+li{border-top:.5px solid var(--dsw-alias-border-l2)}
       .lw-project-task-list .lw-more{display:grid;gap:4px;min-height:44px;overflow-wrap:anywhere}
+      .lw-project-task-content{display:grid;align-content:start;gap:12px}
+      .lw-project-task-group{display:grid;gap:6px}
+      .lw-project-task-group h3{margin:0;font-size:var(--lw-ui-base)}
+      .lw-project-task-item{min-width:0;border:.5px solid var(--dsw-alias-border-l2,#8885);border-radius:10px}
+      .lw-project-task-item summary{list-style:none;display:flex;align-items:flex-start;gap:8px;justify-content:space-between;padding:9px 10px;cursor:pointer}
+      .lw-project-task-item summary::-webkit-details-marker{display:none}
+      .lw-project-task-item summary .lw-icon{flex:none;margin-top:2px}
+      .lw-project-task-item[open] summary .lw-icon{transform:rotate(90deg)}
+      .lw-project-task-item .lw-project-task-title{min-width:0;flex:1;display:grid;gap:3px;overflow-wrap:anywhere}
+      .lw-project-task-item .lw-tag{flex:none}
+      .lw-project-task-detail{display:grid;gap:8px;border-top:.5px solid var(--dsw-alias-border-l2,#8885);padding:10px;overflow-wrap:anywhere}
+      .lw-project-task-detail p{margin:0;white-space:pre-wrap}
+      .lw-project-task-detail .lw-actions{flex-wrap:wrap}
       [data-conversation-header-leading],[data-conversation-header-corner],[data-slot="conversation.header.leading"],[data-slot="conversation.session.header.corner"]{display:inline-flex;align-items:center;min-height:36px}
       [data-conversation-content] :is([class*="headerBar"],[class*="sessionHeader"],[class*="chatHeader"],[class*="topBar"],header):has([data-conversation-header-leading],[data-conversation-header-corner],[data-slot="conversation.header.leading"]){min-height:56px;box-sizing:border-box}
       .lw-session-popover{position:fixed;z-index:96;width:308px;max-width:calc(100vw - 24px);max-height:min(68vh,460px);display:grid;grid-template-rows:auto minmax(0,1fr);gap:6px;padding:10px;border:.5px solid var(--dsw-alias-border-l3,rgba(128,128,128,.25));border-radius:var(--dsw-radius-lg,14px);background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-2,var(--dsw-alias-bg-base,Canvas)));box-shadow:var(--dsw-elevation-panel,0 12px 32px rgba(0,0,0,.14));backdrop-filter:var(--dsw-menu-backdrop-filter,none);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family,inherit);font-size:var(--lw-ui-base)}
@@ -620,15 +782,20 @@ window.__ModuleLoader__.load({
       .lw-session-popover .lw-tool{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:var(--dsw-radius-md,8px);padding:0;flex:none;color:var(--dsw-alias-label-secondary);transition:background-color .14s ease,color .14s ease}
       .lw-session-popover .lw-tool:hover{color:var(--dsw-alias-label-primary)}
       .lw-session-popover .lw-tool-danger:hover{color:var(--dsw-alias-state-error-primary,#dc2626);background:var(--dsw-alias-interactive-bg-hover-danger,rgba(220,38,38,.1))}
-      [data-content-phase="hero"] .lw-corner-identity{display:none!important}
-      .lw-corner-identity{position:fixed;left:0;top:0;transform:translate(-50%,-50%);z-index:40;visibility:hidden;display:inline-flex;align-items:center;gap:14px;margin:0;height:56px;padding:0 20px 0 8px;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:clamp(24px,calc(26px + var(--lw-font-delta) * .5),32px);font-weight:700;letter-spacing:-.03em;line-height:1;cursor:pointer;max-width:min(52vw,420px);flex:none;-webkit-app-region:no-drag;pointer-events:auto}
-      .lw-corner-identity[data-placed="true"]{visibility:visible}
-      .lw-corner-identity:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.13))}
-      .lw-corner-identity-avatar{height:78%;width:auto;aspect-ratio:1;border-radius:50%;object-fit:contain;flex:none}
-      .lw-corner-identity[data-custom="true"] .lw-corner-identity-avatar{object-fit:cover}
-      .lw-corner-identity-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1}
+      header:has(.lw-active-profile-entry){--lw-active-avatar-size:clamp(54px,8.4vh,74px);position:relative;margin-block-end:calc(var(--lw-active-avatar-size) + 46px)}
+      .lw-active-profile-entry{position:absolute;inset-block-start:calc(100% + 4px);left:50%;translate:-50% 0;z-index:5;max-width:calc(100% - 24px);--lw-identity-avatar-size:var(--lw-active-avatar-size);--lw-identity-gap:5px;--lw-identity-padding:4px 14px 6px;--lw-identity-name-size:var(--lw-ui-md);--lw-identity-badge-size:22px}
+      .lw-active-profile-entry .lw-hero-entry-name{max-width:100%}
+      .lw-active-profile-entry .lw-hero-avatar-badge .lw-icon{width:11px;height:11px}
+      .lw-assistant-flight{position:fixed;inset:0;z-index:110;pointer-events:none}
+      .lw-welcome{box-sizing:border-box;display:grid;place-content:center;justify-items:center;gap:clamp(16px,3vh,24px);width:100%;height:100%;padding:24px;text-align:center}
+      .lw-welcome .lw-brand-mark{width:clamp(64px,13vmin,96px);height:auto;aspect-ratio:1}
+      .lw-welcome h1{margin:0;color:var(--dsw-alias-label-primary);font-size:clamp(24px,4vmin,34px);font-weight:600;line-height:1.3}
+      @media(prefers-reduced-motion:no-preference){
+        .lw-welcome>*{animation:lw-welcome-enter .25s ease-out both}
+        @keyframes lw-welcome-enter{from{opacity:0;transform:translateY(6px)}}
+      }
       html[data-lw-room="global"] header [class*="titleGroup"],html[data-lw-room="global"] header [class*="headerTitle"],html[data-lw-room="global"] header [class*="sessionTitle"]{display:none!important}html[data-lw-room="global"] [data-slot="conversation.input.model"],html[data-lw-room="global"] [data-slot="conversation.input.permission"],html[data-lw-room="global"] [data-slot="conversation.input.plan"],html[data-lw-room="global"] [class*="uV2eYG_select"],html[data-lw-room="global"] [class*="uV2eYG_modes"]{display:none!important}
-      html[data-lw-room="global"] [class*="uV2eYG_add"]{display:none!important}
+      html[data-lw-room="global"] [data-composer-card] button[class$="_add"]{display:none!important}
       html[data-lw-room="global"] [data-chat-flow-kind="turn-process"],
       html[data-lw-room="global"] [data-step-process],
       html[data-lw-room="global"] [data-chat-call-id],
@@ -647,8 +814,8 @@ window.__ModuleLoader__.load({
       html[data-lw-room="global"] [data-composer-card] [class*="_trailing"]{grid-column:3;grid-row:2;margin:0;gap:4px}
       html[data-lw-room="global"] [data-composer-card] button[class*="_primary"]{width:32px;height:32px;border-radius:50%;padding:0;transform:none;background:var(--dsw-alias-button-primary-fill,var(--dsw-alias-label-primary,#0f1115));color:var(--dsw-alias-label-primary-foreground,#fff)}
       html[data-lw-room="global"] [data-composer-card] button[class*="_primary"]:disabled{opacity:.26}
-      .lw-assistant-progress{padding-inline:var(--dsh-composer-side-clearance)}
-      [data-conversation-content]:has(.lw-assistant-progress) [data-chat-running]{display:none!important}
+      .lw-add-action.lw-btn,.lw-add-action.lw-corner-btn,.lw-add-action.lw-sidebar-empty-btn{box-sizing:border-box;border:1px solid var(--dsw-alias-border-l4,rgba(128,128,128,.32))}
+      .lw-add-action .lw-icon{width:14px;height:14px;flex:none}
       .lw-turn-progress{box-sizing:border-box;width:100%;max-width:740px;min-width:0;display:flex;align-items:center;gap:8px;margin:0 auto 4px;padding:4px 8px;color:var(--dsw-alias-label-secondary);font-size:var(--lw-ui-sm);line-height:1.4}
       .lw-turn-progress img{width:18px;height:18px;flex:none}
       .lw-turn-progress [role="status"]{display:flex;flex:1;align-items:baseline;gap:6px;min-width:0}
@@ -657,7 +824,9 @@ window.__ModuleLoader__.load({
       .lw-turn-topic{flex:1 1 0;font-size:var(--lw-ui-xs)}
       .lw-turn-progress time{flex:none;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary)}
       .lw-turn-progress button{flex:none}
-      .lw-asst-attach{position:relative;display:inline-flex}
+      [data-chat-running]:has(>.lw-assistant-progress)>:not(.lw-assistant-progress){display:none!important}
+      .lw-assistant-progress{width:100%;min-width:0}
+      .lw-assistant-progress .lw-turn-progress{max-width:none;margin:0;padding:0}
       .lw-asst-settings{display:grid;gap:18px;padding:8px 2px 28px;max-width:640px;font-family:inherit;font-size:14px;line-height:22px;font-weight:400}
       .lw-asst-settings h2{margin:0;font-size:16px;font-weight:500;line-height:24px;color:var(--dsw-alias-label-primary)}
       .lw-asst-settings .lw-hint{margin:0;font-size:12px;line-height:18px;font-weight:400}
@@ -667,6 +836,21 @@ window.__ModuleLoader__.load({
       .lw-asst-choice[data-selected="true"]{border-color:var(--dsw-alias-state-business-primary,#3b82f6);box-shadow:0 0 0 1px var(--dsw-alias-state-business-primary,#3b82f6);background:var(--dsw-alias-bg-layer-1,rgba(38,49,72,.05))}
       .lw-asst-choice strong{font-size:14px;font-weight:500;line-height:22px}
       .lw-asst-choice span{font-size:12px;font-weight:400;color:var(--dsw-alias-label-secondary);line-height:18px}
+      .lw-sel-trigger{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:38px;padding:7px 10px 7px 12px;border:0;border-radius:var(--dsw-radius-md,10px);background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.1));color:var(--dsw-alias-label-primary,inherit);font:inherit;font-size:var(--lw-ui-base);font-weight:400;line-height:1.5;text-align:start;cursor:pointer;transition:background-color .14s ease}
+      .lw-sel-trigger:hover:not(:disabled),.lw-sel-trigger[aria-expanded="true"]{background:var(--dsw-alias-interactive-bg-active,rgba(128,128,128,.17))}
+      .lw-sel-trigger:focus-visible{outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary,#3b82f6));outline-offset:1px}
+      .lw-sel-trigger:disabled{opacity:.5;cursor:not-allowed}
+      .lw-sel-trigger[data-inline="true"]{width:auto;min-height:32px;padding:4px 8px 4px 12px}
+      .lw-sel-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .lw-sel-text[data-placeholder="true"]{color:var(--dsw-alias-label-tertiary,GrayText)}
+      .lw-sel-trigger .lw-icon{width:16px;height:16px;flex:none;color:var(--dsw-alias-label-secondary,GrayText)}
+      .lw-sel-menu{position:fixed;z-index:10000;box-sizing:border-box;display:grid;gap:2px;align-content:start;overflow:auto;padding:6px;border:.5px solid var(--dsw-alias-border-l3,rgba(128,128,128,.25));border-radius:var(--dsw-radius-lg,14px);background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-2,var(--dsw-alias-bg-base,Canvas)));box-shadow:var(--dsw-elevation-panel,0 12px 32px rgba(0,0,0,.14));backdrop-filter:var(--dsw-menu-backdrop-filter,none);color:var(--dsw-alias-label-primary,inherit);font-family:var(--dsw-font-family,inherit);font-size:var(--lw-ui-base);font-weight:400;line-height:1.5}
+      .lw-sel-option{display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:36px;padding:6px 10px;border-radius:var(--dsw-radius-md,8px);cursor:pointer;user-select:none}
+      .lw-sel-option>span{min-width:0;overflow-wrap:anywhere}
+      .lw-sel-option[data-active="true"]{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.13))}
+      .lw-sel-option[aria-disabled="true"]{opacity:.45;cursor:default}
+      .lw-sel-option .lw-icon{width:16px;height:16px;flex:none}
+      .lw-asst-select .lw-sel-trigger{font-size:14px;min-height:36px;border-radius:10px}
       .lw-asst-select{display:grid;gap:6px;font-size:12px;font-weight:500;line-height:18px;color:var(--dsw-alias-label-primary)}
       .lw-asst-select select{box-sizing:border-box;width:100%;font:inherit;font-size:14px;font-weight:400;line-height:22px;min-height:36px;border-radius:10px;padding:6px 10px;border:.5px solid var(--dsw-alias-border-l3,rgba(128,128,128,.22));background:var(--dsw-alias-bg-base,Canvas);color:inherit}
 
@@ -686,24 +870,22 @@ window.__ModuleLoader__.load({
       [data-content-phase="hero"] [class*="scrollBody"]:has(.lw-hero-profile-entry){justify-content:flex-start!important;padding-top:clamp(22px,8.5vh,84px)}
       [data-content-phase="hero"] [class*="composerHero"]:has(.lw-hero-profile-entry){gap:clamp(16px,3.8vh,36px)}
       [data-content-phase="hero"] [class*="headline"]:has(.lw-hero-profile-entry) [class*="titleGroup"]{display:none!important}
-      .lw-hero-profile-entry{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:14px 28px 12px;border:0;border-radius:24px;corner-shape:round;background:transparent;color:inherit;font-family:inherit;cursor:pointer;text-align:center;transition:background-color .16s ease,transform .16s ease}
-      .lw-hero-profile-entry:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.07))}
-      .lw-hero-profile-entry:active{transform:scale(.99)}
-      .lw-hero-profile-entry:focus-visible{outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary,#3b82f6));outline-offset:4px}
-      .lw-hero-avatar-frame{position:relative;width:92px;height:92px;border-radius:50%;corner-shape:round;display:grid;place-items:center;flex:none;background:var(--dsw-alias-bg-layer-1,rgba(128,128,128,.06));border:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.18));box-shadow:0 6px 22px rgba(0,0,0,.06);transition:box-shadow .18s ease,border-color .18s ease,transform .18s ease}
-      .lw-hero-profile-entry:hover .lw-hero-avatar-frame{border-color:var(--dsw-alias-border-l4,rgba(128,128,128,.35));box-shadow:0 10px 28px rgba(0,0,0,.1);transform:translateY(-1px)}
-      .lw-hero-avatar-frame[data-custom="false"] .lw-hero-avatar-img{width:68px;height:68px;object-fit:contain}
-      .lw-hero-avatar-frame[data-custom="true"] .lw-hero-avatar-img{width:90px;height:90px;border-radius:50%;corner-shape:round;object-fit:cover}
-      .lw-hero-avatar-badge{position:absolute;right:0;bottom:0;width:26px;height:26px;border-radius:50%;corner-shape:round;display:grid;place-items:center;background:var(--dsw-alias-bg-base,Canvas);border:.5px solid var(--dsw-alias-border-l3,rgba(128,128,128,.28));box-shadow:0 2px 8px rgba(0,0,0,.12);color:var(--dsw-alias-label-secondary);opacity:.85;transition:opacity .15s ease,color .15s ease,transform .15s ease}
+      .lw-assistant-identity{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--lw-identity-gap,12px);padding:var(--lw-identity-padding,14px 28px 12px);border:0;border-radius:24px;corner-shape:round;background:transparent;color:inherit;font-family:inherit;cursor:pointer;text-align:center;transition:background-color .16s ease,transform .16s ease}
+      .lw-assistant-identity:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.07))}
+      .lw-assistant-identity:active{transform:scale(.99)}
+      .lw-assistant-identity:focus-visible{outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary,#3b82f6));outline-offset:4px}
+      .lw-hero-avatar-frame{position:relative;width:var(--lw-identity-avatar-size,92px);height:var(--lw-identity-avatar-size,92px);border-radius:50%;corner-shape:round;display:grid;place-items:center;flex:none;background:var(--dsw-alias-bg-layer-1,rgba(128,128,128,.06));border:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.18));box-shadow:0 6px 22px rgba(0,0,0,.06);transition:box-shadow .18s ease,border-color .18s ease,transform .18s ease}
+      .lw-assistant-identity:hover .lw-hero-avatar-frame{border-color:var(--dsw-alias-border-l4,rgba(128,128,128,.35));box-shadow:0 10px 28px rgba(0,0,0,.1);transform:translateY(-1px)}
+      .lw-hero-avatar-frame[data-custom="false"] .lw-hero-avatar-img{width:74%;height:74%;object-fit:contain}
+      .lw-hero-avatar-frame[data-custom="true"] .lw-hero-avatar-img{width:calc(100% - 2px);height:calc(100% - 2px);border-radius:50%;corner-shape:round;object-fit:cover}
+      .lw-hero-avatar-badge{position:absolute;right:0;bottom:0;width:var(--lw-identity-badge-size,26px);height:var(--lw-identity-badge-size,26px);border-radius:50%;corner-shape:round;display:grid;place-items:center;background:var(--dsw-alias-bg-base,Canvas);border:.5px solid var(--dsw-alias-border-l3,rgba(128,128,128,.28));box-shadow:0 2px 8px rgba(0,0,0,.12);color:var(--dsw-alias-label-secondary);opacity:.85;transition:opacity .15s ease,color .15s ease,transform .15s ease}
       .lw-hero-avatar-badge .lw-icon{width:13px;height:13px}
-      .lw-hero-profile-entry:hover .lw-hero-avatar-badge{opacity:1;color:var(--dsw-alias-label-primary);transform:scale(1.06)}
-      .lw-hero-entry-name{font-size:clamp(28px,calc(28px + var(--lw-font-delta) * .85),36px);line-height:1.22;font-weight:600;letter-spacing:-.02em;color:var(--dsw-alias-label-primary);max-width:min(520px,80vw);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .lw-assistant-identity:hover .lw-hero-avatar-badge{opacity:1;color:var(--dsw-alias-label-primary);transform:scale(1.06)}
+      .lw-hero-entry-name{font-size:var(--lw-identity-name-size,clamp(28px,calc(28px + var(--lw-font-delta) * .85),36px));line-height:1.22;font-weight:600;letter-spacing:-.02em;color:var(--dsw-alias-label-primary);max-width:min(520px,80vw);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       .lw-hero-entry-tagline{font-size:var(--lw-ui-base);line-height:1.45;font-weight:400;color:var(--dsw-alias-label-tertiary);max-width:min(460px,78vw);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       @media(max-height:620px){
         [data-content-phase="hero"] [class*="scrollBody"]:has(.lw-hero-profile-entry){padding-top:16px}
-        .lw-hero-avatar-frame{width:76px;height:76px}
-        .lw-hero-avatar-frame[data-custom="false"] .lw-hero-avatar-img{width:56px;height:56px}
-        .lw-hero-avatar-frame[data-custom="true"] .lw-hero-avatar-img{width:74px;height:74px}
+        .lw-hero-profile-entry{--lw-identity-avatar-size:76px}
       }
 
       .lw-side-dialog{--lw-side-inset:12px;box-sizing:border-box;position:fixed;inset:var(--lw-side-inset) var(--lw-side-inset) var(--lw-side-inset) auto;margin:0;width:min(440px,calc(100% - 2 * var(--lw-side-inset)));max-width:none;height:auto;max-height:none;overflow:hidden;padding:0;border:.5px solid var(--dsw-alias-border-l2,rgba(128,128,128,.22));border-radius:22px;corner-shape:round;color:var(--dsw-alias-label-primary,CanvasText);background:var(--dsw-alias-bg-base,Canvas);box-shadow:var(--dsw-elevation-prominent,0 20px 48px rgba(0,0,0,.22));font-family:var(--dsw-font-family,inherit);font-size:var(--lw-ui-base);line-height:1.5}
@@ -723,6 +905,9 @@ window.__ModuleLoader__.load({
       .lw-source-picker{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
       .lw-source-picker input{flex:1 1 160px;min-width:0}
       .lw-source-picker button{flex:none}
+      .lw-create-sources{display:grid;gap:8px;min-width:0;margin:0;padding:0;border:0}
+      .lw-create-sources legend{margin-bottom:4px;padding:0;color:var(--dsw-alias-label-secondary,GrayText)}
+      .lw-create-sources .lw-hint{margin:0}
       @media(max-width:480px){.lw-side-dialog{--lw-side-inset:8px}.lw-side-dialog-chrome,.lw-side-dialog-content{padding-inline:16px}}
       .lw-ap-dialog{--lw-ap-avatar-size:96px}
       @media(max-height:560px){.lw-ap-dialog{--lw-ap-avatar-size:56px}.lw-ap-chrome{padding-block:6px}.lw-ap-dialog .lw-ap-tabs{margin-top:8px}}
@@ -875,7 +1060,6 @@ window.__ModuleLoader__.load({
       .lw-stream-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:5px}
       .lw-stream-title{font-size:var(--lw-ui-body);line-height:1.45;font-weight:600;color:var(--dsw-alias-label-primary);text-decoration:none}
       a.lw-stream-title:hover{text-decoration:underline;text-underline-offset:3px}
-      .lw-stream-body{font-size:var(--lw-ui-base);line-height:1.65;color:var(--dsw-alias-label-secondary);white-space:pre-wrap;overflow-wrap:anywhere}
       .lw-stream-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}
 
       .lw-ideas-layout{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(250px,.95fr);gap:24px;align-items:start}
@@ -989,7 +1173,79 @@ window.__ModuleLoader__.load({
       .lw-pane-close .lw-icon{width:16px;height:16px}
 
       .lw-fbot-shell{flex:1;min-height:0;min-width:0;display:grid;grid-template-columns:minmax(0,1fr);position:relative;overflow:hidden}
-      .lw-fbot-main{display:flex;flex-direction:column;min-width:0;min-height:0;height:100%}
+      .lw-fbot-main{display:flex;flex-direction:column;min-width:0;min-height:0;height:100%;font-family:var(--dsw-font-family,inherit);--lw-bot-gutter:clamp(14px,3vw,28px)}
+      .lw-fbot-main .lw-fbot-scroll{flex:0 0 clamp(110px,var(--lw-board-size,58%),calc(100% - 110px));min-height:0;display:flex;flex-direction:column;overflow:hidden;padding:0}
+      .lw-fbot-scroll>.lw-fbot-center{display:flex;flex:1;flex-direction:column;min-height:0;max-width:none;gap:0}
+      .lw-fbot-scroll .lw-fbot-head{padding:6px var(--lw-bot-gutter);flex:none}
+      .lw-bot-board{flex:1;min-height:0;overflow:auto;scrollbar-gutter:stable;padding:10px var(--lw-bot-gutter);container-type:size}
+      .lw-bot-conversation{display:flex;flex:1 1 0;min-height:0;flex-direction:column;background:var(--dsw-alias-bg-base,Canvas)}
+      .lw-bot-divider{position:relative;flex:0 0 8px;cursor:ns-resize;touch-action:none;outline-offset:-2px}
+      .lw-bot-divider::after{content:'';position:absolute;inset:3px 0 auto;border-block-start:.5px solid var(--dsw-alias-border-l2,#8884)}
+      .lw-bot-divider:is(:hover,:focus-visible)::after{border-color:var(--dsw-alias-border-l4,#8888)}
+      .lw-bot-conversation-log{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:4px var(--lw-bot-gutter) 8px}
+      .lw-bot-conversation-log-inner{max-width:var(--dsh-composer-card-max-width,740px);margin:0 auto}
+      .lw-bot-conversation .lw-bot-turns{margin:0}
+      .lw-bot-conversation .lw-bot-msg[data-role=assistant]{padding-inline:0;background:none;border:0}
+      .lw-bot-conversation .lw-bot-msg[data-role=user]{border-radius:var(--dsw-radius-lg,14px)}
+      .lw-bot-conversation .lw-fbot-composer-wrap{padding-block:4px 9px}
+      .lw-bot-conversation .lw-fbot-composer{max-width:var(--dsh-composer-card-max-width,740px);border-radius:var(--dsw-radius-lg,14px);box-shadow:none}
+      .lw-bot-canvas{box-sizing:border-box;display:flex;flex-direction:column;min-width:0;overflow:hidden;border:.5px solid var(--dsw-alias-border-l2,#8883);border-radius:var(--dsw-radius-md,10px);background:var(--dsw-alias-bg-layer-1,Canvas)}
+      .lw-bot-board .lw-bot-canvas{height:max(155px,100cqh)}
+      .lw-canvas-toolbar{display:flex;align-items:center;gap:8px;min-width:0;flex:none;padding:5px 10px;border-block-end:.5px solid var(--dsw-alias-border-l2,#8883)}
+      .lw-canvas-categories{display:flex;gap:6px;overflow:auto;flex:1;min-width:0;padding:2px}
+      .lw-canvas-controls{display:flex;align-items:center;gap:2px;flex:none;margin-inline-start:auto;font-size:var(--lw-ui-xs);font-variant-numeric:tabular-nums}
+      .lw-canvas-controls button{min-width:26px;min-height:26px;padding:3px 6px}
+      .lw-canvas-categories button{flex:none;border:0;border-radius:var(--dsw-radius-sm,6px);padding:4px 9px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:var(--lw-ui-sm);line-height:1.45;cursor:pointer}
+      .lw-canvas-categories button:hover{background:var(--dsw-alias-interactive-bg-hover,#8881)}
+      .lw-canvas-categories button[aria-pressed=true]{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,#8882);font-weight:500}
+      .lw-canvas-viewport{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;cursor:grab;touch-action:none}
+      .lw-canvas-viewport[data-panning=true]{cursor:grabbing;user-select:none}
+      .lw-canvas-frame{position:relative;overflow:clip}
+      .lw-canvas-stage{box-sizing:border-box;position:absolute;inset:0 auto auto 0;display:grid;grid-auto-flow:column;grid-auto-columns:240px;gap:36px;width:max-content;min-height:188px;padding:20px 24px;align-items:center;transform-origin:top left}
+      .lw-dialog.lw-canvas-full{inset:0;margin:0;width:100%;height:100%;max-width:none;max-height:none;padding:12px;border:0;border-radius:0;display:flex;flex-direction:column}
+      .lw-canvas-full .lw-bot-canvas{flex:1;min-height:0}
+      .lw-canvas-card[data-draft=true]{border-style:dashed}
+      .lw-canvas-node-actions{display:flex;gap:4px;justify-content:flex-end;padding:0 7px 6px}
+      .lw-canvas-node-actions button{min-width:26px;font-size:var(--lw-ui-base)}
+      .lw-canvas-live{margin:0;padding:5px 9px;color:var(--dsw-alias-label-secondary);font-size:var(--lw-ui-xs)}
+      .lw-canvas-lane{display:grid;align-content:center;gap:13px;min-width:0;z-index:1}
+      .lw-canvas-lane h3{margin:0;font-size:var(--lw-ui-sm);font-weight:500;color:var(--dsw-alias-label-secondary)}
+      .lw-canvas-card{box-sizing:border-box;position:relative;min-width:0;width:100%;max-width:360px;align-self:start;border:.5px solid var(--dsw-alias-border-l3,#8884);border-radius:var(--dsw-radius-md,10px);background:var(--dsw-alias-bg-base,Canvas)}
+      .lw-canvas-card:has(button):hover,.lw-canvas-card[data-current=true]{border-color:var(--dsw-alias-border-l4,#8887);background:var(--dsw-alias-bg-layer-2,Canvas)}
+      .lw-canvas-card-body{box-sizing:border-box;display:grid;gap:5px;width:100%;min-width:0;border:0;padding:10px 11px;background:none;color:inherit;text-align:start;font:inherit;border-radius:7px;overflow-wrap:anywhere}
+      button.lw-canvas-card-body{cursor:pointer}
+      .lw-canvas-card strong{font-size:var(--lw-ui-base);font-weight:550;line-height:1.45}
+      .lw-canvas-thumb{width:100%;height:74px;object-fit:contain;border-radius:var(--dsw-radius-sm,6px);background:var(--dsw-alias-bg-layer-1,Canvas)}
+      .lw-canvas-card :is(button,input):focus-visible,.lw-canvas-categories button:focus-visible{outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,#3b82f6);outline-offset:2px}
+      .lw-canvas-card-meta{display:flex;flex-wrap:wrap;gap:4px 8px;font-size:var(--lw-ui-xs);color:var(--dsw-alias-label-secondary)}
+      .lw-canvas-edges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;color:color-mix(in srgb,var(--lw-paradigm-accent,#7891ba) 74%,var(--dsw-alias-label-secondary))}
+      .lw-canvas-edges path{fill:none;stroke:currentColor;stroke-width:1.35}
+      .lw-canvas-edges circle{fill:currentColor}
+      .lw-canvas-attachment{margin:0;border:1px solid var(--dsw-alias-border-l2,#8883);border-radius:8px;padding:8px 10px;justify-content:space-between;overflow-wrap:anywhere}
+      .lw-canvas-detail-body{display:grid;gap:12px;min-width:0}
+      .lw-record-dialog .lw-dialog-head{align-items:flex-start;margin-bottom:0}
+      .lw-record-heading{min-width:0;display:grid;gap:10px}
+      .lw-record-meta{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;color:var(--dsw-alias-label-secondary)}
+      .lw-record-dialog .lw-record-heading h2{margin:0;max-inline-size:38ch;font-size:clamp(1.22rem,3.1vw,1.68rem);line-height:1.32;font-weight:650;letter-spacing:-.025em;text-wrap:balance;overflow-wrap:anywhere}
+      .lw-record-dialog .lw-canvas-detail-body{gap:0}
+      .lw-record-content{display:grid;gap:16px;min-width:0;padding-block:18px 4px}
+      .lw-record-markdown{color:var(--dsw-alias-label-primary,CanvasText);font-size:var(--lw-ui-base);line-height:1.72}
+      .lw-record-markdown p{margin-bottom:12px}
+      .lw-record-markdown h2,.lw-record-markdown h3{margin-block:16px 7px}
+      .lw-record-markdown pre{padding:11px 13px;border-radius:8px;background:var(--dsw-alias-markdown-code-block,var(--dsw-alias-bg-layer-1,#8881))}
+      .lw-record-sections{display:grid;gap:4px}
+      .lw-record-section{min-width:0;display:grid;grid-template-columns:minmax(74px,14%) minmax(0,1fr);gap:6px 14px;padding:11px 0;border-top:.5px solid var(--dsw-alias-border-l2,#8883)}
+      .lw-record-section h3{margin:2px 0 0;font-size:var(--lw-ui-sm);line-height:1.45;font-weight:650;color:var(--dsw-alias-label-secondary,GrayText)}
+      .lw-record-section[data-kind="finding"]{padding-inline:12px;border-top-color:transparent;border-radius:9px;background:color-mix(in srgb,var(--dsw-alias-state-business-primary,#4474be) 8%,var(--dsw-alias-bg-layer-2,Canvas))}
+      .lw-record-section[data-kind="finding"] h3{color:var(--dsw-alias-state-business-primary,#4474be)}
+      .lw-record-content .lw-paradigm-fields{margin:0;grid-template-columns:repeat(auto-fit,minmax(min(100%,195px),1fr))}
+      .lw-record-content .lw-fbot-detail-figure{margin:0}
+      .lw-record-content .lw-push-source{margin:0;padding-block:12px 0}
+      .lw-record-actions{padding-block-start:4px}
+      .lw-record-delete{margin-inline-end:auto}
+      .lw-record-delete-confirm{padding:9px 10px;border-radius:8px;background:var(--dsw-alias-interactive-bg-hover-danger,#b3483511)}
+      @media(max-width:560px){.lw-record-section{grid-template-columns:1fr}.lw-record-content{gap:13px;padding-block-start:14px}.lw-record-section h3{margin:0}}
+      .lw-dynamic-browser{display:block;width:100%;height:min(60vh,620px);border:1px solid var(--dsw-alias-border-l2,#8883);border-radius:var(--dsw-radius-md,10px);background:var(--dsw-alias-bg-base,Canvas)}
       .lw-fbot-tasks-toggle[aria-pressed="true"],.lw-fbot-tasks-toggle[aria-expanded="true"]{background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06));color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l4)}
       .lw-bot-workbench{width:min(500px,calc(100% - 2 * var(--lw-side-inset)))}
       .lw-bot-workbench-head{display:flex;align-items:center;gap:10px;min-width:0}
@@ -1068,11 +1324,6 @@ window.__ModuleLoader__.load({
 
       .lw-fbot-stats{display:grid;gap:8px;padding:10px 14px;border-radius:14px;background:var(--dsw-alias-bg-layer-1,rgba(128,128,128,.035));border:.5px solid var(--dsw-alias-border-l1,rgba(128,128,128,.12))}
       .lw-fbot-stats-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-      .lw-fbot-stat-pills{display:flex;align-items:center;flex-wrap:wrap;gap:10px;font-size:var(--lw-ui-xs);color:var(--dsw-alias-label-secondary)}
-      .lw-stat-chip{display:inline-flex;align-items:center;gap:5px;font-variant-numeric:tabular-nums}
-      .lw-stat-dot{width:7px;height:7px;border-radius:999px;flex:none}
-      .lw-stat-track{display:flex;gap:2px;height:5px;width:100%;border-radius:999px;overflow:hidden;background:var(--dsw-alias-border-l1,rgba(128,128,128,.12))}
-      .lw-stat-seg{height:100%;min-width:6px;border-radius:999px;transition:width .24s ease}
       .lw-goal-ring-wrap{display:inline-flex;align-items:center;gap:10px}
       .lw-goal-ring{width:34px;height:34px;flex:none;transform:rotate(-90deg)}
       .lw-goal-ring-bg{fill:none;stroke:var(--dsw-alias-border-l2,rgba(128,128,128,.2));stroke-width:3.2}
@@ -1080,7 +1331,6 @@ window.__ModuleLoader__.load({
 
       .lw-fbot-detail{border:.5px solid var(--dsw-alias-border-l3,rgba(128,128,128,.22));border-radius:16px;background:var(--dsw-alias-bg-layer-1,rgba(128,128,128,.03));padding:14px 16px;display:grid;gap:12px;min-width:0}
       .lw-fbot-detail-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
-      .lw-fbot-detail-title{margin:0;font-size:var(--lw-ui-lg);font-weight:650;line-height:1.35;color:var(--dsw-alias-label-primary);overflow-wrap:anywhere}
       .lw-fbot-detail-figure{margin:0;border-radius:12px;overflow:hidden;border:.5px solid var(--dsw-alias-border-l2,rgba(128,128,128,.18));background:var(--dsw-alias-bg-layer-2,rgba(128,128,128,.05))}
       .lw-fbot-detail-media{width:100%;min-width:0;display:grid;place-items:center}
       .lw-fbot-detail-media[data-svg="true"]{background:#f8fafc}
@@ -1120,16 +1370,28 @@ window.__ModuleLoader__.load({
       .lw-fbot-composer textarea{flex:1;min-width:0;border:0;background:transparent;padding:5px 4px;min-height:32px;max-height:120px;resize:none;font:inherit;font-size:var(--lw-ui-body);line-height:22px;color:var(--dsw-alias-label-primary);align-self:center}
       .lw-fbot-composer textarea::placeholder{color:var(--dsw-alias-label-tertiary)}
       .lw-fbot-composer textarea:focus{outline:none}
+      .lw-fbot-composer{position:relative}
+      .lw-composer-menu{position:absolute;z-index:5;inset:auto 5px calc(100% + 6px);max-height:min(42vh,280px);overflow:auto;padding:5px;border:1px solid var(--dsw-alias-border-l2,#8884);border-radius:12px;background:var(--dsw-alias-bg-base,Canvas);box-shadow:0 8px 24px #0002}
+      .lw-composer-menu-label{padding:4px 8px;color:var(--dsw-alias-label-secondary,GrayText);font-size:12px}
+      .lw-composer-menu button{display:flex;width:100%;min-width:0;align-items:center;justify-content:space-between;gap:10px;padding:7px 8px;text-align:start;border:0;border-radius:6px;color:inherit;background:transparent;cursor:pointer}
+      .lw-composer-menu button[aria-selected=true]{background:var(--dsw-alias-interactive-bg-hover,#8882)}
+      .lw-composer-menu button small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-secondary,GrayText)}
+      .lw-speaker-reply{margin:8px auto;padding:10px 14px;max-width:740px;border-inline-start:2px solid var(--dsw-alias-border-l2,#8885);white-space:pre-wrap;overflow-wrap:anywhere}
+      .lw-speaker-reply strong{display:block;margin-bottom:4px;font-size:var(--lw-ui-xs)}
+      .lw-project-handoffs{position:fixed;z-index:12;inset:auto 14px 18px auto;width:min(420px,calc(100vw - 28px));max-height:min(42vh,360px);overflow:auto;border:1px solid var(--dsw-alias-border-l2,#8884);border-radius:12px;background:var(--dsw-alias-bg-base,Canvas);box-shadow:0 8px 24px #0002}
+      .lw-project-handoffs p{max-height:8em;overflow:auto}
       .lw-fbot-plus-btn,.lw-fbot-send-btn{width:32px;height:32px;flex:none;border:0;border-radius:50%;corner-shape:round;display:inline-grid;place-items:center;cursor:pointer;transition:background-color .14s ease,color .14s ease,opacity .14s ease,transform .12s ease}
-      .lw-fbot-plus-btn{background:transparent;color:var(--dsw-alias-label-secondary)}
-      .lw-fbot-plus-btn:hover,.lw-fbot-plus-btn[aria-expanded="true"]{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.14));color:var(--dsw-alias-label-primary)}
+      .lw-composer-attach{position:relative;display:inline-flex;flex:none}
+      .lw-fbot-plus-btn{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.14));color:var(--dsw-alias-label-primary)}
+      .lw-fbot-plus-btn:hover:not(:disabled),.lw-fbot-plus-btn[aria-expanded="true"]{background:var(--dsw-alias-interactive-bg-active,rgba(128,128,128,.24))}
+      .lw-fbot-plus-btn:disabled{opacity:.4;cursor:default}
       .lw-fbot-plus-btn .lw-icon{width:17px;height:17px}
       .lw-fbot-send-btn{background:var(--dsw-alias-button-primary-fill,var(--dsw-alias-label-primary,#0f1115));color:var(--dsw-alias-label-primary-foreground,#fff)}
       .lw-fbot-send-btn:hover:not(:disabled){opacity:.86;transform:scale(1.03)}
       .lw-fbot-send-btn:disabled{opacity:.26;cursor:not-allowed}
       .lw-fbot-send-btn .lw-icon{width:16px;height:16px}
       .lw-fbot-plus-btn:focus-visible,.lw-fbot-send-btn:focus-visible,.lw-empty-chip:focus-visible,.lw-fbot-rename-btn:focus-visible{outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary,#3b82f6));outline-offset:2px}
-      .lw-fbot-plus-menu{position:absolute;left:6px;bottom:calc(100% + 8px);z-index:30;min-width:154px;padding:6px;border:.5px solid var(--dsw-alias-border-l3,rgba(128,128,128,.24));border-radius:14px;background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-2,var(--dsw-alias-bg-base,Canvas)));box-shadow:var(--dsw-elevation-panel,0 12px 30px rgba(0,0,0,.14));backdrop-filter:var(--dsw-menu-backdrop-filter,none);display:grid;gap:2px}
+      .lw-fbot-plus-menu{position:absolute;inset-inline-start:0;bottom:calc(100% + 8px);z-index:30;min-width:154px;padding:6px;border:.5px solid var(--dsw-alias-border-l3,rgba(128,128,128,.24));border-radius:14px;background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-2,var(--dsw-alias-bg-base,Canvas)));box-shadow:var(--dsw-elevation-panel,0 12px 30px rgba(0,0,0,.14));backdrop-filter:var(--dsw-menu-backdrop-filter,none);display:grid;gap:2px}
       .lw-fbot-plus-menu button{width:100%;display:flex;align-items:center;gap:8px;padding:8px 10px;border:0;border-radius:9px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:var(--lw-ui-sm);font-weight:500;text-align:start;cursor:pointer}
       .lw-fbot-plus-menu button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
       .lw-fbot-plus-menu button .lw-icon{width:15px;height:15px;color:var(--dsw-alias-label-secondary)}
@@ -1161,11 +1423,7 @@ window.__ModuleLoader__.load({
         .lw-split-grid{grid-auto-flow:row;grid-auto-columns:unset;overflow-y:auto}
         .lw-split-grid>.lw-page+.lw-page{border-left:0;border-top:.5px solid var(--dsw-alias-border-l3)}
       }
-      .lw-receipts{display:grid;gap:4px;max-height:32vh;overflow:auto;font-size:var(--lw-ui-sm,13px)}
-      .lw-receipt-toggle{width:100%;display:flex;align-items:baseline;gap:12px;justify-content:space-between;background:transparent;color:inherit;border:0;border-bottom:1px solid var(--dsw-alias-border-l3);padding:6px 2px;text-align:start;cursor:pointer}
-      .lw-receipt-detail{padding:6px 2px}
-      .lw-receipt-detail pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:4px 0}
-      .lw-receipt-detail button,.lw-receipts summary{cursor:pointer}
+      .lw-receipts{display:grid;gap:6px;max-width:760px;width:calc(100% - 32px);margin:0 auto 8px;max-height:32vh;overflow:auto;font-size:var(--lw-ui-sm,13px)}
       @media(max-width:680px){
         .lw-fbot-scroll{padding:16px 12px 20px}
         .lw-fbot-composer-wrap{padding:8px 12px 12px}
@@ -1187,25 +1445,41 @@ window.__ModuleLoader__.load({
     }
     const project = (workspaceId, action, args = {}, signal) => api('workspace-page', { workspaceId, action, args }, signal)
 
+    async function fileUploadData(file) {
+      if (!file?.size || file.size > 25 * 1024 * 1024) throw Error(LW('请选择 1 字节至 25 MiB 的文件。'))
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result.split(',')[1])
+        reader.onerror = () => reject(Error(LW('无法读取本地文件。')))
+        reader.readAsDataURL(file)
+      })
+    }
+
     const projectCache = new Map()
-    function useProject(workspaceId, action = 'view') {
-      const cacheKey = workspaceId + ':' + action
+    function useProject(workspaceId, action = 'view', featureId = '', poll = 0) {
+      const cacheKey = workspaceId + ':' + action + ':' + featureId
       const [state, setState] = React.useState(() => projectCache.has(cacheKey) ? { workspaceId, value: projectCache.get(cacheKey) } : {})
       React.useEffect(() => {
-        let controller, timer = null
+        if (action === 'bot_canvas' && !featureId) return
+        let controller, timer = null, inFlight = false
         if (projectCache.has(cacheKey)) setState({ workspaceId, value: projectCache.get(cacheKey) })
         const refresh = () => {
           clearTimeout(timer); timer = null
           controller?.abort()
           controller = new AbortController()
           const signal = controller.signal
-          project(workspaceId, action, {}, signal).then(value => {
-            projectCache.set(cacheKey, value)
-            if (!signal.aborted) setState({ workspaceId, value })
+          inFlight = true
+          project(workspaceId, action, featureId ? { featureId } : {}, signal).then(value => {
+            if (!signal.aborted) {
+              projectCache.set(cacheKey, value)
+              setState({ workspaceId, value })
+            }
           }).catch(error => {
             if (signal.aborted) return
             const cached = projectCache.get(cacheKey)
             setState(prev => ({ workspaceId, ...(cached ? { value: cached } : (prev?.value ? { value: prev.value } : {})), error: error.message }))
+          }).finally(() => {
+            if (controller?.signal === signal) inFlight = false
           })
         }
         const scheduleRefresh = () => {
@@ -1213,10 +1487,12 @@ window.__ModuleLoader__.load({
           timer = setTimeout(refresh, 24)
         }
         refresh()
+        const interval = poll || (action === 'files/list' ? 5000 : 0)
+        const refreshTimer = interval ? setInterval(() => { if (!document.hidden && !inFlight) scheduleRefresh() }, interval) : null
         window.addEventListener(updated, scheduleRefresh)
         window.addEventListener('focus', scheduleRefresh)
-        return () => { clearTimeout(timer); controller?.abort(); window.removeEventListener(updated, scheduleRefresh); window.removeEventListener('focus', scheduleRefresh) }
-      }, [workspaceId, action, cacheKey])
+        return () => { clearTimeout(timer); clearInterval(refreshTimer); controller?.abort(); window.removeEventListener(updated, scheduleRefresh); window.removeEventListener('focus', scheduleRefresh) }
+      }, [workspaceId, action, featureId, poll, cacheKey])
       return state.workspaceId === workspaceId ? state : (projectCache.has(cacheKey) ? { workspaceId, value: projectCache.get(cacheKey) } : {})
     }
 
@@ -1330,6 +1606,102 @@ window.__ModuleLoader__.load({
             onClick: close,
           }, h(Icon, { name: 'close' }))),
         side ? h('div', { className: 'lw-side-dialog-content' }, children) : children)
+    }
+
+    // DSH-style dropdown: pill trigger + floating menu with a check on the selected item.
+    // Replaces every native <select> so the open list is always themed, never the OS list.
+    function Select({ value, options = [], onChange, disabled = false, ariaLabel, placeholder = '', className = '', inline = false, innerRef }) {
+      const [open, setOpen] = React.useState(false)
+      const [active, setActive] = React.useState(-1)
+      const triggerRef = React.useRef(null)
+      const listRef = React.useRef(null)
+      const listId = React.useId()
+      const selectedIndex = options.findIndex(item => String(item.value) === String(value ?? ''))
+      const selected = selectedIndex >= 0 ? options[selectedIndex] : null
+      const enabled = index => index >= 0 && index < options.length && !options[index].disabled
+      const step = (from, dir) => {
+        for (let i = from + dir; i >= 0 && i < options.length; i += dir) if (enabled(i)) return i
+        return from
+      }
+      React.useLayoutEffect(() => { if (innerRef) innerRef.current = triggerRef.current })
+      React.useLayoutEffect(() => {
+        if (!open) return undefined
+        const place = () => {
+          const trigger = triggerRef.current, menu = listRef.current
+          if (!trigger || !menu) return
+          const box = trigger.getBoundingClientRect()
+          const below = window.innerHeight - box.bottom - 14, above = box.top - 14
+          menu.style.left = '0px'; menu.style.top = '0px'
+          menu.style.minWidth = Math.max(box.width, 168) + 'px'
+          menu.style.maxHeight = Math.min(360, Math.max(160, Math.max(below, above))) + 'px'
+          // A transformed ancestor re-bases position:fixed, so measure the real origin first.
+          const origin = menu.getBoundingClientRect()
+          const height = menu.offsetHeight, width = menu.offsetWidth
+          let top = height > below && above > below ? box.top - height - 6 : box.bottom + 6
+          top = Math.max(8, Math.min(top, window.innerHeight - height - 8))
+          const left = Math.max(8, Math.min(box.left, window.innerWidth - width - 8))
+          menu.style.left = (left - origin.left) + 'px'
+          menu.style.top = (top - origin.top) + 'px'
+        }
+        place()
+        const outside = event => {
+          if (listRef.current?.contains(event.target) || triggerRef.current?.contains(event.target)) return
+          setOpen(false)
+        }
+        document.addEventListener('pointerdown', outside, true)
+        window.addEventListener('resize', place)
+        window.addEventListener('scroll', place, true)
+        return () => {
+          document.removeEventListener('pointerdown', outside, true)
+          window.removeEventListener('resize', place)
+          window.removeEventListener('scroll', place, true)
+        }
+      }, [open, options.length])
+      React.useEffect(() => {
+        if (open && active >= 0) listRef.current?.children[active]?.scrollIntoView({ block: 'nearest' })
+      }, [open, active])
+      const show = () => { if (disabled) return; setActive(enabled(selectedIndex) ? selectedIndex : step(-1, 1)); setOpen(true) }
+      const choose = index => {
+        if (!enabled(index)) return
+        setOpen(false)
+        triggerRef.current?.focus()
+        if (index !== selectedIndex) onChange?.(options[index].value)
+      }
+      const onKeyDown = event => {
+        const key = event.key
+        if (!open) {
+          if (key === 'ArrowDown' || key === 'ArrowUp' || key === 'Enter' || key === ' ') { event.preventDefault(); show() }
+          return
+        }
+        if (key === 'Escape') { event.preventDefault(); event.stopPropagation(); setOpen(false) }
+        else if (key === 'Tab') setOpen(false)
+        else if (key === 'ArrowDown') { event.preventDefault(); setActive(current => step(current, 1)) }
+        else if (key === 'ArrowUp') { event.preventDefault(); setActive(current => step(current, -1)) }
+        else if (key === 'Home') { event.preventDefault(); setActive(step(-1, 1)) }
+        else if (key === 'End') { event.preventDefault(); setActive(step(options.length, -1)) }
+        else if (key === 'Enter' || key === ' ') { event.preventDefault(); choose(active) }
+      }
+      const host = open ? (triggerRef.current?.closest('dialog[open],[role="dialog"],[data-shortcut-modal]') || document.body) : null
+      return h(React.Fragment, null,
+        h('button', {
+          ref: triggerRef, type: 'button', role: 'combobox', className: ['lw-sel-trigger', className].filter(Boolean).join(' '),
+          'data-inline': inline ? 'true' : undefined, 'aria-label': ariaLabel, 'aria-haspopup': 'listbox',
+          'aria-expanded': open, 'aria-controls': open ? listId : undefined,
+          'aria-activedescendant': open && active >= 0 ? listId + '-' + active : undefined,
+          disabled, onClick: () => (open ? setOpen(false) : show()), onKeyDown,
+        },
+          h('span', { className: 'lw-sel-text', 'data-placeholder': selected ? undefined : 'true' }, selected ? selected.label : placeholder),
+          h(Icon, { name: 'down' })),
+        host && ReactDOM.createPortal(
+          h('div', { ref: listRef, id: listId, className: 'lw-sel-menu', role: 'listbox' },
+            options.map((item, index) => h('div', {
+              key: String(item.value), id: listId + '-' + index, role: 'option', className: 'lw-sel-option', 'data-value': String(item.value),
+              'aria-selected': index === selectedIndex, 'aria-disabled': item.disabled ? 'true' : undefined,
+              'data-active': index === active ? 'true' : undefined,
+              onPointerMove: () => { if (enabled(index) && active !== index) setActive(index) },
+              onClick: () => choose(index),
+            }, h('span', null, item.label), index === selectedIndex && h(Icon, { name: 'check' })))),
+          host))
     }
 
     const rewindLabel = role => role === 'user' ? LW('撤回提问') : LW('撤回答复')
@@ -1468,15 +1840,14 @@ window.__ModuleLoader__.load({
             Btn({ onClick: () => { void controller.load() } }, t('retry')),
             Btn({ onClick: close }, t('onboardingLater')))
           : h('form', { className: 'lw-form', onSubmit: save },
-            h('label', null, t('onboardingProvider'), h('select', { value: provider, required: true, ref: providerInput,
-              'aria-label': t('onboardingProvider'),
+            h('label', null, t('onboardingProvider'), h(Select, { value: provider, innerRef: providerInput,
+              ariaLabel: t('onboardingProvider'), placeholder: t('onboardingChooseProvider'),
               disabled: busy || progress.current.profile || !state.writable,
-              onChange: event => { setProvider(event.target.value); setApiKey(''); setError('') } },
-              h('option', { value: '', disabled: true }, t('onboardingChooseProvider')),
-              suppliers.map(row => {
+              onChange: next => { setProvider(next); setApiKey(''); setError('') },
+              options: suppliers.map(row => {
                 const profile = schema.getPath(state.namespaces.get(row.entry.settingsNs).value, row.entry.settingsPath)
-                return h('option', { key: row.entry.provider, value: row.entry.provider }, profile?.displayName || row.entry.displayName)
-              }))),
+                return { value: row.entry.provider, label: profile?.displayName || row.entry.displayName }
+              }) })),
             h('label', null, 'API Key', h('input', { type: 'password', value: apiKey, required: true,
               autoComplete: 'new-password', disabled: busy || progress.current.credential || !selected || !state.writable,
               placeholder: t('keyPlaceholder'), onChange: event => setApiKey(event.target.value) })),
@@ -1603,9 +1974,8 @@ window.__ModuleLoader__.load({
           h('textarea', { rows: 2, maxLength: 4000, value: memText, disabled: busy, placeholder,
             onChange: e => setMemText(e.target.value) }),
           h('div', { className: 'lw-actions', style: { justifyContent: 'space-between' } },
-            h('select', { className: 'lw-select', style: { width: 'auto', minHeight: 32, padding: '4px 10px' }, value: memCat, disabled: busy,
-              'aria-label': LW('记忆分类'), onChange: e => setMemCat(e.target.value) },
-              Object.entries(addCategories).map(([k, lbl]) => h('option', { key: k, value: k }, lbl))),
+            h(Select, { inline: true, value: memCat, disabled: busy, ariaLabel: LW('记忆分类'), onChange: setMemCat,
+              options: Object.entries(addCategories).map(([k, lbl]) => ({ value: k, label: lbl })) }),
             Btn({ variant: 'primary', size: 'sm', type: 'submit', disabled: busy || !memText.trim() }, LW('添加记忆')))),
         onSearch && h('div', { className: 'lw-ap-mem-search lw-form' },
           h('input', { type: 'search', 'aria-label': LW('搜索记忆'), placeholder: LW('检索记忆关键词（支持中文/英文）…'),
@@ -1643,11 +2013,38 @@ window.__ModuleLoader__.load({
                   : h('div', { style: { fontSize: 'var(--lw-ui-sm)', lineHeight: 1.55, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } }, m.content)))))
     }
 
-    function ProjectSettingsDialog({ row, close, refresh, pickDirectory }) {
+    function DeleteProjectDialog({ row, removeProject, onCancel, onDeleted }) {
+      const [busy, setBusy] = React.useState(false)
+      const [error, setError] = React.useState('')
+      const dismiss = () => { if (!busy) onCancel() }
+      async function confirm() {
+        if (busy) return
+        setBusy(true)
+        setError('')
+        try {
+          await removeProject(row)
+          onDeleted()
+        } catch (failure) {
+          setError(failure.message)
+          setBusy(false)
+        }
+      }
+      return h(Dialog, { title: LW('删除项目'), close: dismiss },
+        h('div', { className: 'lw-form' },
+          h('p', { style: { margin: 0, fontSize: 13, color: 'var(--dsw-alias-label-secondary)' } },
+            `确定删除「${row.name}」及其对话和生成文件吗？对话日志将在 Weave 停止时永久清理。导入文件、关联的本机来源和代码仓库会保留。请先停止运行中的实验。`),
+          error && h('p', { role: 'alert', className: 'lw-error' }, error),
+          h('div', { className: 'lw-actions lw-dialog-actions' },
+            Btn({ variant: 'ghost', onClick: dismiss, disabled: busy }, LW('取消')),
+            Btn({ variant: 'danger', disabled: busy, onClick: confirm }, busy ? LW('删除中…') : LW('确认删除')))))
+    }
+
+    function ProjectSettingsDialog({ row, close, refresh, pickDirectory, removeProject }) {
       const [section, setSection] = React.useState('info')
       const [settings, setSettings] = React.useState(null)
       const [info, setInfo] = React.useState(null)
       const [folder, setFolder] = React.useState(null)
+      const [confirmingDelete, setConfirmingDelete] = React.useState(false)
       const folderInput = React.useRef(null)
       const [busy, setBusy] = React.useState(false)
       const [error, setError] = React.useState('')
@@ -1694,7 +2091,9 @@ window.__ModuleLoader__.load({
           if (path) setFolder(previous => ({ ...previous, path }))
         } catch { throw Error(LW('无法打开目录选择器，可以直接粘贴文件夹路径。')) }
       })
-      return h(Dialog, { title: LW('项目设置'), close: () => { if (!busy) close() } },
+      const deleteButton = Btn({ variant: 'danger', className: 'lw-project-delete-btn', disabled: busy,
+        onClick: () => setConfirmingDelete(true) }, LW('删除项目'))
+      const settingsDialog = h(Dialog, { title: LW('项目设置'), close: () => { if (!busy && !confirmingDelete) close() } },
         h('div', { className: 'lw-project-settings' },
           h('nav', { className: 'lw-segmented', 'aria-label': LW('项目设置栏目') },
             [['info', LW('基本信息')], ['sources', LW('来源文件夹')]].map(([key, label]) =>
@@ -1718,6 +2117,7 @@ window.__ModuleLoader__.load({
           infoField('description', LW('项目简介'), true, { rows: 4, maxLength: 2000 }),
           infoField('topic', LW('研究主题'), false, { maxLength: 2000 }),
           h('div', { className: 'lw-actions lw-dialog-actions' },
+            deleteButton,
             Btn({ variant: 'primary', type: 'submit', disabled: busy || !info.name.trim() || !Object.keys(edits).length }, LW('保存')))),
           section === 'sources' && settings && h(React.Fragment, null,
             h('p', { className: 'lw-hint', style: { margin: 0 } }, LW('来源文件留在原处，供本项目的助手和 Bot 按需读取。')),
@@ -1737,8 +2137,8 @@ window.__ModuleLoader__.load({
                       setSettings(await readSettings())
                       if (folder?.id === source.id) setFolder(null)
                     }, LW('已移除来源。')) }, LW('移除')))))),
-            !folder && h('div', { className: 'lw-actions' }, Btn({
-              variant: 'secondary', disabled: busy, onClick: () => editFolder(null),
+            !folder && h('div', { className: 'lw-actions lw-dialog-actions' }, deleteButton, Btn({
+              variant: 'secondary', className: 'lw-add-action', disabled: busy, onClick: () => editFolder(null),
             }, h(Icon, { name: 'plus' }), LW('添加文件夹'))),
             folder && h('form', { className: 'lw-form', onSubmit: event => {
               event.preventDefault()
@@ -1759,9 +2159,14 @@ window.__ModuleLoader__.load({
               h('input', { value: folder.name, maxLength: 80, disabled: busy,
                 onChange: event => setFolder(previous => ({ ...previous, name: event.target.value })) })),
             h('div', { className: 'lw-actions lw-dialog-actions' },
+              deleteButton,
               Btn({ variant: 'ghost', disabled: busy, onClick: () => { setFolder(null); setError('') } }, LW('取消')),
               Btn({ variant: 'primary', type: 'submit', disabled: busy || !folder.path.trim() },
                 folder.id ? LW('保存来源') : LW('添加来源')))))))
+      return h(React.Fragment, null, settingsDialog, confirmingDelete && h(DeleteProjectDialog, {
+        row: { ...row, name: settings?.name || row.name }, removeProject,
+        onCancel: () => setConfirmingDelete(false), onDeleted: close,
+      }))
     }
 
     function AssistantProfileModal({ close, refresh, initialRow, openSettings, openSchedules, startGlobalChat }) {
@@ -2006,104 +2411,273 @@ window.__ModuleLoader__.load({
     }
 
     const botSymbols = ['✦','◎','△','◇','✚','☷','⚑','⌘','Σ','λ','∞','✎']
-    let avatarCatalog
-    function AvatarPicker({value,onChange,allowDefault}) {
-      const [groups,setGroups]=React.useState(avatarCatalog || [])
-      const [group,setGroup]=React.useState(LW('全部')),[query,setQuery]=React.useState('')
-      const [error,setError]=React.useState(false),[attempt,retry]=React.useReducer(n=>n+1,0)
-      React.useEffect(()=>{
-        if(avatarCatalog){setGroups(avatarCatalog);return}
-        const ctrl=new AbortController()
-        fetch(new URL('./labweave-bot-avatars.json',document.baseURI),{signal:ctrl.signal}).then(r=>{
-          if(!r.ok)throw Error()
-          return r.json()
-        }).then(g=>{if(!ctrl.signal.aborted){avatarCatalog=g;setGroups(g);setError(false)}})
-          .catch(()=>{if(!ctrl.signal.aborted)setError(true)})
-        return ()=>ctrl.abort()
-      },[attempt])
-      const catalog=groups.length?groups:[{name:LW('经典'),items:botSymbols.map(id=>({id,label:id}))}]
-      const search=query.trim().toLowerCase()
-      const options=catalog.filter(g=>search || group===LW('全部') || group===g.name).flatMap(g=>
-        g.items.filter(i=>(g.name+' '+i.id+' '+i.label).toLowerCase().includes(search)))
-      return h('div',{role:'group','aria-label':LW('符号头像')},
-        h('div',{className:'lw-avatar-label'},LW('符号头像'),value&&h(Icon,{name:value})),
-        h('div',{className:'lw-avatar-filter'},
-          h('select',{'aria-label':LW('头像分类'),value:group,onChange:e=>{setGroup(e.target.value);setQuery('')}},
-            [LW('全部'),...catalog.map(g=>g.name)].map(n=>h('option',{key:n,value:n},n))),
-          h('input',{'aria-label':LW('搜索头像'),placeholder:LW('搜索头像，如 显微镜 / microscope'),value:query,onChange:e=>setQuery(e.target.value)})),
-        h('div',{className:'lw-bot-symbols'},
-          allowDefault&&!search&&h('button',{type:'button','aria-label':LW('默认符号'),'aria-pressed':!value,onClick:()=>onChange('')},LW('默认')),
-          options.map(({id,label})=>h('button',{type:'button',key:id,title:label,
-            'aria-label':botSymbols.includes(id)?LW('符号 ')+id:LW('头像 ')+label,'aria-pressed':id===value,onClick:()=>onChange(id)},h(Icon,{name:id})))),
-        !options.length&&h('span',{role:'status',className:'lw-hint'},LW('没有匹配的头像')),
-        error&&h('button',{type:'button',onClick:retry},LW('重新加载头像库')))
+    const botParadigms = {
+      goals: { label: '目标', icon: 'goals', accent: '#638fd5' },
+      notes: { label: '笔记', icon: 'library', accent: '#489781' },
+      mindmap: { label: '思维导图', icon: 'mindmap', accent: '#9473c1' },
+      ideas: { label: '点子', icon: 'ideas', accent: '#b47f3d' },
+      engineering: { label: '工程台', icon: 'activity', accent: '#558fa7' },
     }
-    function FeatureBotFormDialog({
-      title,
-      subtitle,
-      submitLabel,
-      busyLabel,
-      initialLabel = '',
-      initialHint = '',
-      initialSymbol = botSymbols[0],
-      initialKeywords = [],
-      allowDefaultSymbol = false,
-      onSubmit,
-      onCancel,
-    }) {
-      const [label, setLabel] = React.useState(initialLabel)
-      const [hint, setHint] = React.useState(initialHint)
-      const [symbol, setSymbol] = React.useState(initialSymbol)
-      const [tags, setTags] = React.useState((initialKeywords || []).join('、'))
+    const paradigmAvatarRules = [
+      [/缺陷|bug|故障|报错|异常|排查|调试|defect|debug|issue|error|fix/i, 'lucide:bug'],
+      [/文献|论文|综述|阅读|paper|arxiv|literature|reading|survey|journal/i, 'lucide:book-open'],
+      [/引用|参考文献|引文|出处|citation|reference|quote|\bbib\b/i, 'lucide:quote'],
+      [/核查|审核|审查|证据|合规|验证|audit|verify|review|evidence|fact/i, 'lucide:shield-check'],
+      [/数据集|数据库|语料|样本库|dataset|database|corpus|\bsql\b/i, 'lucide:database'],
+      [/表格|对比表|对照|基准|评测|评估|benchmark|table|matrix|comparison|eval/i, 'lucide:table'],
+      [/折线|趋势|曲线|监控|指标|metric|trend|curve|loss|accuracy/i, 'lucide:chart-line'],
+      [/统计|分布|柱状|直方|stat|histogram|\bbar\b/i, 'lucide:chart-bar'],
+      [/散点|回归|聚类|相关|scatter|cluster|correlation/i, 'lucide:chart-scatter'],
+      [/知识图谱|引证网|关系图|拓扑|网络|graph|network|ontology/i, 'lucide:chart-network'],
+      [/脉络|路线|演进|演化|谱系|lineage|roadmap|route/i, 'lucide:route'],
+      [/流程|工作流|流水线|管线|步骤|workflow|pipeline|process/i, 'lucide:workflow'],
+      [/实验|试跑|消融|化学|烧瓶|试剂|experiment|chemistry|flask|trial|ablation/i, 'lucide:flask-conical'],
+      [/生物|细胞|显微|病理|组织|microscope|biology|cell/i, 'lucide:microscope'],
+      [/基因|蛋白|序列|基因组|\bdna\b|\brna\b|gene|genome|protein/i, 'lucide:dna'],
+      [/物理|量子|原子|粒子|physics|quantum|atom|particle/i, 'lucide:atom'],
+      [/天文|望远镜|轨道|宇宙|astro|telescope|orbit|space/i, 'lucide:telescope'],
+      [/数学|公式|定理|证明|推导|math|formula|theorem|proof|equation|sigma/i, 'lucide:sigma'],
+      [/代码|编程|脚本|实现|coding|code|script|program|\bapi\b/i, 'lucide:code'],
+      [/仓库|开源|github|repo|repository/i, 'lucide:github'],
+      [/分支|版本|发布|\bgit\b|branch|version|release/i, 'lucide:git-branch'],
+      [/终端|命令|部署|运维|terminal|\bcli\b|shell|deploy/i, 'lucide:terminal'],
+      [/算力|硬件|芯片|\bgpu\b|\bcuda\b|\bcpu\b|hardware|chip/i, 'lucide:cpu'],
+      [/服务器|集群|节点|server|infra|cloud/i, 'lucide:server'],
+      [/检索|搜索|查重|专利|search|query|retrieval|patent/i, 'lucide:file-search'],
+      [/动态|资讯|新闻|快讯|周报|日报|news|digest|feed|weekly|report/i, 'lucide:newspaper'],
+      [/日程|排期|会议|截止|\bddl\b|calendar|schedule|meeting|deadline/i, 'lucide:calendar'],
+      [/时间线|编年|历史|日志|timeline|history|changelog|\blog\b/i, 'lucide:history'],
+      [/清单|待办|检查表|任务|checklist|todo|task/i, 'lucide:list-checks'],
+      [/里程碑|阶段|目标|milestone|goal|\bokr\b|\bkpi\b/i, 'lucide:milestone'],
+      [/假设|认知|推理|推演|思考|brain|hypothesis|reasoning|cognition/i, 'lucide:brain'],
+      [/灵感|点子|创意|脑暴|idea|spark|brainstorm|insight/i, 'lucide:lightbulb'],
+      [/笔记|备忘|摘录|notebook|note|memo|diary/i, 'lucide:notebook'],
+      [/书签|收藏|资料|bookmark|collection|archive/i, 'lucide:book-marked'],
+      [/文档|写作|草稿|投稿|稿件|draft|writing|manuscript|submission|\bdoc\b/i, 'lucide:file-text'],
+      [/链接|网站|网址|\burl\b|link|web/i, 'lucide:link'],
+      [/模块|组件|架构|系统|architecture|module|component/i, 'lucide:blocks'],
+      [/插件|工具|扩展|plugin|tool|extension/i, 'lucide:puzzle'],
+      [/绘图|可视化|插图|视觉|figure|plot|visual|draw|design/i, 'lucide:paintbrush'],
+    ]
+    const paradigmBaseFallback = {
+      goals: 'lucide:milestone',
+      notes: 'lucide:book-marked',
+      mindmap: 'lucide:chart-network',
+      ideas: 'lucide:brain',
+      engineering: 'lucide:flask-conical',
+    }
+    function inferParadigmSymbol(name, desc, base, fieldList) {
+      const corpus = [name || '', desc || '', ...(fieldList || []).map(f => f.name || '')].join(' ')
+      for (const [pattern, icon] of paradigmAvatarRules) {
+        if (pattern.test(corpus)) return icon
+      }
+      return paradigmBaseFallback[base] || 'lucide:book-marked'
+    }
+    let avatarCatalogCache = null
+    function useAvatarCatalog(enabled) {
+      const [groups, setGroups] = React.useState(() => avatarCatalogCache || [])
+      React.useEffect(() => {
+        if (!enabled || avatarCatalogCache) return
+        let alive = true
+        fetch('./labweave-bot-avatars.json').then(r => r.ok ? r.json() : []).then(data => {
+          if (Array.isArray(data) && data.length) {
+            avatarCatalogCache = data
+            if (alive) setGroups(data)
+          }
+        }).catch(() => {})
+        return () => { alive = false }
+      }, [enabled])
+      return groups
+    }
+    const paradigmIconFor = feat => {
+      if (!feat) return 'bot'
+      if (feat.extension?.symbol) return feat.extension.symbol
+      if (feat.builtin && paths[feat.id]) return feat.id
+      if (feat.paradigm && botParadigms[feat.paradigm]) return botParadigms[feat.paradigm].icon
+      return featureIcon(feat.id)
+    }
+    const botDisplayIcon = feat => (feat?.symbol || paradigmIconFor(feat))
+    const paradigmKeyFor = feat => {
+      const base = feat?.extension?.base || feat?.paradigm
+      return (base && botParadigms[base]) ? base : undefined
+    }
+    const paradigmAccentFor = feat => {
+      const key = paradigmKeyFor(feat)
+      return key ? botParadigms[key].accent : undefined
+    }
+    const botLayoutLabels = {
+      checklist: '目标清单', path: '目标路径', library: '资料库', timeline: '文件动态',
+      graph: '关系图', lineage: '文献脉络', branches: '发散探索', reasoning: '线性推演',
+      sequence: '实验流程', matrix: '并行实验',
+    }
+    const extensionLayouts = {
+      goals: ['checklist', 'path'], notes: ['library', 'timeline'], mindmap: ['graph', 'lineage'],
+      ideas: ['branches', 'reasoning'], engineering: ['sequence', 'matrix'],
+    }
+    const fieldTypeLabels = { text: '文本', number: '数字', date: '日期', boolean: '是／否', url: '链接', reference: '记录引用' }
+    const fieldRoles = {
+      detail: ['详情', ['text', 'number', 'date', 'boolean', 'url']],
+      title: ['主标题', ['text']], summary: ['摘要', ['text']], group: ['分组', ['text']],
+      date: ['时间位置', ['date']], status: ['状态', ['text', 'boolean']],
+      source: ['原始来源', ['url']], relation: ['关联记录', ['reference']],
+    }
+    const blankExtensionField = () => ({ id: requestId(), name: '', type: 'text', role: 'detail' })
+
+    function CreateFeatureBot({ row, close, created }) {
+      const [id] = React.useState(requestId)
+      const [label, setLabel] = React.useState('')
+      const [paradigm, select] = React.useState('')
       const [busy, setBusy] = React.useState(false)
       const [error, setError] = React.useState('')
-      const dismiss = () => { if (!busy) onCancel() }
-      async function submit(e) {
-        e.preventDefault()
-        if (busy || !label.trim()) return
-        const keywords = [...new Set(tags.split(/[,，、;；\n]+/).map(w => w.trim()).filter(Boolean))]
-        setBusy(true); setError('')
+      const [extensions, setExtensions] = React.useState([])
+      const [editing, setEditing] = React.useState(false)
+      const [extensionName, setExtensionName] = React.useState('')
+      const [description, setDescription] = React.useState('')
+      const [fields, setFields] = React.useState(() => [blankExtensionField()])
+      const [extensionLayout, setExtensionLayout] = React.useState('timeline')
+      const [extensionSymbol, setExtensionSymbol] = React.useState('')
+      const [showAvatarPicker, setShowAvatarPicker] = React.useState(false)
+      const [avatarQuery, setAvatarQuery] = React.useState('')
+      const avatarGroups = useAvatarCatalog(editing && showAvatarPicker)
+      const extensionBase = Object.keys(extensionLayouts).find(key => extensionLayouts[key].includes(extensionLayout)) || 'notes'
+      const previewExtensionSymbol = extensionSymbol || inferParadigmSymbol(extensionName, description, extensionBase, fields)
+      const filteredAvatars = React.useMemo(() => {
+        const q = avatarQuery.trim().toLowerCase()
+        return avatarGroups
+          .filter(g => g.name !== '经典')
+          .flatMap(g => g.items.filter(item => !q || (g.name + ' ' + item.id + ' ' + item.label).toLowerCase().includes(q)))
+      }, [avatarGroups, avatarQuery])
+      React.useEffect(() => {
+        const controller = new AbortController()
+        project(row.workspaceId, 'project_paradigms', {}, controller.signal).then(setExtensions).catch(failure => {
+          if (!controller.signal.aborted) setError(failure.message)
+        })
+        return () => controller.abort()
+      }, [row.workspaceId])
+      const selectedExtension = extensions.find(item => item.id === paradigm)
+      function updateField(id, patch) {
+        setFields(items => items.map(item => item.id === id ? { ...item, ...patch } : item))
+      }
+      async function saveExtension() {
+        setBusy(true)
+        setError('')
+        const base = Object.keys(extensionLayouts).find(key => extensionLayouts[key].includes(extensionLayout))
         try {
-          await onSubmit({ label: label.trim(), hint: hint.trim(), symbol, keywords })
-        } catch (err) {
-          setError(err.message)
+          const definition = await project(row.workspaceId, 'create_project_paradigm', {
+            label: extensionName.trim(), description: description.trim(), base, layout: extensionLayout,
+            ...(extensionSymbol ? { symbol: extensionSymbol } : {}),
+            fields: fields.map(({ name, type, role }) => ({ name: name.trim(), type, role })),
+          })
+          setExtensions(items => [...items.filter(item => item.id !== definition.id), definition])
+          select(definition.id)
+          setEditing(false)
+          setExtensionName('')
+          setDescription('')
+          setExtensionSymbol('')
+          setShowAvatarPicker(false)
+          setAvatarQuery('')
+          setFields([blankExtensionField()])
+        } catch (failure) {
+          setError(failure.message)
+        } finally {
           setBusy(false)
         }
       }
-      return h(Dialog, { title, close: dismiss }, h('form', { className: 'lw-form', onSubmit: submit },
-        subtitle && h('p', { className: 'lw-hint', style: { margin: 0 } }, subtitle),
-        h(AvatarPicker,{value:symbol,onChange:setSymbol,allowDefault:allowDefaultSymbol}),
-        h('label', null, LW('名字'), h('input', { required: true, autoFocus: true, maxLength: 80, value: label, onChange: e => setLabel(e.target.value) })),
-        h('label', null, LW('备注'), h('textarea', { rows: 2, maxLength: 200, value: hint, placeholder: LW('这个 Bot 负责什么？'), onChange: e => setHint(e.target.value) })),
-        h('label', null, LW('关键词'), h('input', { value: tags, placeholder: LW('例如：文献、引用、核查'), onChange: e => setTags(e.target.value) })),
-        error && h('p', { role: 'alert' }, error),
-        h('div', { className: 'lw-actions lw-dialog-actions' },
-          Btn({ variant: 'ghost', disabled: busy, onClick: dismiss }, LW('取消')),
-          Btn({ type: 'submit', variant: 'primary', disabled: busy || !label.trim() }, busy ? busyLabel : submitLabel))))
-    }
-    function CreateFeatureBot({ row, close, created }) {
-      const [id] = React.useState(requestId)
-      return h(FeatureBotFormDialog, {
-        title: LW('创建功能 Bot'),
-        subtitle: row.name,
-        submitLabel: LW('创建'),
-        busyLabel: LW('创建中…'),
-        initialSymbol: botSymbols[0],
-        onSubmit: async ({ label, hint, symbol, keywords }) => {
-          const result = await project(row.workspaceId, 'create_feature_bot', { label, hint, symbol, keywords, requestId: id })
+      async function submit(event) {
+        event.preventDefault()
+        if (busy || editing || !paradigm || !label.trim()) return
+        setBusy(true)
+        setError('')
+        try {
+          const result = await project(row.workspaceId, 'create_feature_bot', { label: label.trim(), paradigm, requestId: id })
           await created(row, result.feature)
-        },
-        onCancel: close,
-      })
+        } catch (failure) {
+          setError(failure.message)
+          setBusy(false)
+        }
+      }
+      return h(Dialog, { title: LW('创建功能 Bot'), className: 'lw-bot-create', close: () => { if (!busy) close() } },
+        h('form', { className: 'lw-form', onSubmit: submit },
+          h('fieldset', { className: 'lw-paradigm-set', disabled: busy },
+            h('legend', null, LW('范式')),
+            h('div', { className: 'lw-paradigm-options' }, Object.entries(botParadigms).map(([key, meta]) =>
+              h('label', { key, className: 'lw-paradigm-option' },
+                h('input', { type: 'radio', name: 'paradigm', value: key, checked: paradigm === key, onChange: () => select(key) }),
+                h('span', { className: 'lw-paradigm-art', style: { '--lw-paradigm-accent': meta.accent }, 'aria-hidden': true }, h(Icon, { name: meta.icon })),
+                h('span', null, LW(meta.label)))))),
+          h('fieldset', { className: 'lw-paradigm-set', disabled: busy },
+            h('legend', null, LW('项目扩展范式')),
+            extensions.length > 0 && h('div', { className: 'lw-paradigm-options-ext' }, extensions.map(item => {
+              const extAccent = botParadigms[item.base]?.accent || '#638fd5'
+              const extIcon = item.symbol || botParadigms[item.base]?.icon || 'bot'
+              return h('label', { key: item.id, className: 'lw-paradigm-option', title: item.description },
+                h('input', { type: 'radio', name: 'paradigm', value: item.id, checked: paradigm === item.id, onChange: () => select(item.id) }),
+                h('span', { className: 'lw-paradigm-art', style: { '--lw-paradigm-accent': extAccent }, 'aria-hidden': true }, h(Icon, { name: extIcon })),
+                h('span', null, item.label))
+            })),
+            selectedExtension && h('p', { className: 'lw-hint' }, selectedExtension.description),
+            !editing && Btn({ variant: 'ghost', size: 'xs', type: 'button', onClick: () => setEditing(true) }, LW('新增扩展范式')),
+            editing && h('div', { className: 'lw-form' },
+              h('label', null, LW('范式名称'), h('input', { value: extensionName, maxLength: 80, onChange: e => setExtensionName(e.target.value) })),
+              h('label', null, LW('语义描述'), h('textarea', { rows: 2, value: description, maxLength: 2000,
+                placeholder: LW('描述要展示的内容、何时记录、如何组织。例如按更新时间追踪数据集版本及授权变化。'),
+                onChange: e => setDescription(e.target.value) })),
+              h('label', null, LW('展示排布'), h(Select, { value: extensionLayout, ariaLabel: LW('展示排布'), onChange: setExtensionLayout,
+                options: Object.entries(botLayoutLabels).map(([key, title]) => ({ value: key, label: title })) })),
+              h('div', { className: 'lw-paradigm-preview-row' },
+                h('span', { className: 'lw-paradigm-preview-badge', style: { '--lw-paradigm-accent': botParadigms[extensionBase]?.accent || '#638fd5' }, 'aria-hidden': true },
+                  h(Icon, { name: previewExtensionSymbol })),
+                h('div', { style: { flex: 1, minWidth: 0 } },
+                  h('strong', { style: { fontSize: 'var(--lw-ui-sm)', display: 'block' } }, LW('范式头像标识')),
+                  h('span', { className: 'lw-hint', style: { fontSize: 'var(--lw-ui-xs)' } },
+                    extensionSymbol ? LW('已手动选择头像') : LW('已按名称与描述自动匹配，创建 Bot 后将显示此头像'))),
+                extensionSymbol && Btn({ variant: 'ghost', size: 'xs', type: 'button', onClick: () => setExtensionSymbol('') }, LW('自动匹配')),
+                Btn({ variant: 'ghost', size: 'xs', type: 'button', onClick: () => setShowAvatarPicker(v => !v) }, LW(showAvatarPicker ? '收起头像' : '更换头像'))),
+              showAvatarPicker && h('div', { className: 'lw-form', style: { gap: 6 } },
+                h('input', {
+                  type: 'search', value: avatarQuery, placeholder: LW('搜索头像，如 缺陷 / 论文 / 实验 / microscope'),
+                  'aria-label': LW('搜索范式头像'), onChange: e => setAvatarQuery(e.target.value),
+                }),
+                h('div', { className: 'lw-paradigm-avatar-grid', role: 'group', 'aria-label': LW('选择范式头像') },
+                  filteredAvatars.map(item => h('button', {
+                    key: item.id, type: 'button', title: item.label, 'aria-label': LW('头像 ') + item.label,
+                    'aria-pressed': previewExtensionSymbol === item.id,
+                    onClick: () => setExtensionSymbol(item.id),
+                  }, h(Icon, { name: item.id }))))),
+              h('div', { className: 'lw-extension-fields' }, fields.map(field =>
+                h('div', { key: field.id, className: 'lw-extension-field' },
+                  h('label', null, LW('字段名'), h('input', { value: field.name, maxLength: 40,
+                    onChange: e => updateField(field.id, { name: e.target.value }) })),
+                  h('label', null, LW('展示用途'), h(Select, { value: field.role, ariaLabel: LW('展示用途'),
+                    onChange: role => {
+                      const types = fieldRoles[role][1]
+                      updateField(field.id, { role, type: types.includes(field.type) ? field.type : types[0] })
+                    },
+                    options: Object.entries(fieldRoles).map(([role, [title]]) => ({
+                      value: role, label: title, disabled: role !== 'detail' && fields.some(other => other.id !== field.id && other.role === role),
+                    })) })),
+                  h('label', null, LW('字段类型'), h(Select, { value: field.type, ariaLabel: LW('字段类型'),
+                    onChange: type => updateField(field.id, { type }),
+                    options: fieldRoles[field.role][1].map(type => ({ value: type, label: fieldTypeLabels[type] })) })),
+                  Btn({ variant: 'ghost', size: 'xs', type: 'button', disabled: fields.length === 1,
+                    'aria-label': LW('移除字段 ') + field.name, onClick: () => setFields(items => items.filter(item => item.id !== field.id)) }, h(Icon, { name: 'close' }))))),
+              Btn({ variant: 'ghost', size: 'xs', type: 'button', disabled: fields.length >= 12,
+                onClick: () => setFields(items => [...items, blankExtensionField()]) }, LW('添加字段')),
+              h('div', { className: 'lw-actions' },
+                Btn({ variant: 'ghost', type: 'button', onClick: () => setEditing(false) }, LW('收起')),
+                Btn({ type: 'button', disabled: !extensionName.trim() || !description.trim() || fields.some(field => !field.name.trim()),
+                  onClick: saveExtension }, LW('保存扩展范式'))))),
+          h('label', null, LW('名字'), h('input', { required: true, maxLength: 80, value: label, disabled: busy,
+            onChange: e => setLabel(e.target.value) })),
+          error && h('p', { role: 'alert' }, error),
+          h('div', { className: 'lw-actions lw-dialog-actions' },
+            Btn({ variant: 'ghost', disabled: busy, onClick: close }, LW('取消')),
+            Btn({ variant: 'primary', type: 'submit', disabled: busy || editing || !paradigm || !label.trim() }, LW(busy ? '创建中…' : '创建')))))
     }
     function FeatureBotEditDialog({ workspaceId, projectName, featureId, featMeta, currentLabel, currentHint, onSaved, onCancel }) {
-      const isBuiltin = Boolean(featMeta?.builtin)
       const autoCustomHint = `围绕「${currentLabel}」沉淀推送消息与文件资源`
       const initialHint = currentHint === autoCustomHint ? '' : (currentHint || '')
-      const initialSymbol = isBuiltin ? (featMeta?.symbol || '') : (featMeta?.symbol || botSymbols[0])
-      const [label, setLabel] = React.useState(currentLabel || '')
       const [hint, setHint] = React.useState(initialHint)
-      const [symbol, setSymbol] = React.useState(initialSymbol)
       const [tags, setTags] = React.useState((featMeta?.keywords || []).join('、'))
       const [busy, setBusy] = React.useState(false)
       const [error, setError] = React.useState('')
@@ -2116,11 +2690,11 @@ window.__ModuleLoader__.load({
       const parsedKeywords = [...new Set(tags.split(/[,，、;；\n]+/).map(w => w.trim()).filter(Boolean))]
       const submit = async e => {
         e.preventDefault()
-        if (busy || !label.trim()) return
+        if (busy) return
         setBusy(true); setError('')
         try {
           const result = await project(workspaceId, 'feature_update', {
-            featureId, label: label.trim(), hint: hint.trim(), symbol, keywords: parsedKeywords,
+            featureId, hint: hint.trim(), keywords: parsedKeywords,
           })
           await onSaved?.(result)
           window.dispatchEvent(new Event(updated))
@@ -2130,7 +2704,8 @@ window.__ModuleLoader__.load({
           setBusy(false)
         }
       }
-      const badgeSymbol = symbol || featureIcon(featureId)
+      const badgeSymbol = botDisplayIcon(featMeta || { id: featureId })
+      const sheetAccent = paradigmAccentFor(featMeta)
       return ReactDOM.createPortal(
         h('div', {
           className: 'lw-bot-sheet-backdrop',
@@ -2152,19 +2727,14 @@ window.__ModuleLoader__.load({
                 onClick: dismiss,
               }, h(Icon, { name: 'close' }))),
             h('div', { className: 'lw-bot-sheet-hero' },
-              h('span', { className: 'lw-bot-sheet-avatar', 'data-tone': featureId, 'aria-hidden': true },
+              h('span', { className: 'lw-bot-sheet-avatar', 'data-tone': featureId, style: sheetAccent ? { background: `color-mix(in srgb, ${sheetAccent} 16%, transparent)`, color: sheetAccent, boxShadow: 'none' } : undefined, 'aria-hidden': true },
                 h(Icon, { name: badgeSymbol })),
-              h('h2', { className: 'lw-bot-sheet-name' }, label.trim() || currentLabel || featureId),
+              h('h2', { className: 'lw-bot-sheet-name' }, currentLabel || featureId),
               h('div', { className: 'lw-bot-sheet-pills' },
                 projectName && h('span', { className: 'lw-bot-sheet-pill' }, projectName),
                 parsedKeywords.slice(0, 3).map(k => h('span', { key: k, className: 'lw-bot-sheet-pill' }, k)))),
             h('form', { className: 'lw-bot-sheet-form', onSubmit: submit },
               h('div', { className: 'lw-bot-sheet-body lw-form' },
-                h('div', { className: 'lw-bot-sheet-card' },
-                  h('span', { className: 'lw-bot-sheet-card-title' }, LW('外观与名称')),
-                  h(AvatarPicker, { value: symbol, onChange: setSymbol, allowDefault: isBuiltin }),
-                  h('label', null, LW('名字'),
-                    h('input', { required: true, autoFocus: true, maxLength: 80, value: label, disabled: busy, onChange: e => setLabel(e.target.value) }))),
                 h('div', { className: 'lw-bot-sheet-card' },
                   h('span', { className: 'lw-bot-sheet-card-title' }, LW('职责与关键词')),
                   h('label', null, LW('备注'),
@@ -2179,33 +2749,69 @@ window.__ModuleLoader__.load({
                 error && h('p', { role: 'alert', style: { margin: 0 } }, error)),
               h('div', { className: 'lw-bot-sheet-foot' },
                 Btn({ type: 'button', variant: 'ghost', disabled: busy, onClick: dismiss }, LW('取消')),
-                Btn({ type: 'submit', variant: 'primary', disabled: busy || !label.trim() }, busy ? LW('保存中…') : LW('保存')))))),
+                Btn({ type: 'submit', variant: 'primary', disabled: busy }, busy ? LW('保存中…') : LW('保存')))))),
         document.body)
     }
-    function ProjectForm({ busy, onPicked, onCancel, refresh, onCreated }) {
+    function ProjectForm({ busy, onPicked, onCancel, refresh, onCreated, pickDirectory }) {
       const [name, setName] = React.useState('')
+      const [sources, setSources] = React.useState(() => [{ id: requestId(), path: '' }])
       const [waiting, setWaiting] = React.useState(false)
+      const [picking, setPicking] = React.useState(false)
       const [error, setError] = React.useState('')
       const [id] = React.useState(requestId)
+      const locked = busy || waiting || picking
+      const changeSource = (sourceId, path) => setSources(previous =>
+        previous.map(source => source.id === sourceId ? { ...source, path } : source))
+      async function chooseSource(sourceId) {
+        if (locked) return
+        setPicking(true)
+        setError('')
+        try {
+          const path = await pickDirectory()
+          if (path) changeSource(sourceId, path)
+        } catch {
+          setError(LW('无法打开目录选择器，可以直接粘贴文件夹路径。'))
+        } finally {
+          setPicking(false)
+        }
+      }
       const submit = async e => {
         e.preventDefault()
-        if (busy || waiting || !name.trim()) return
+        if (locked || !name.trim()) return
         setWaiting(true)
+        setError('')
         try {
-          const row = await api('create', { name, requestId: id })
+          const sourcePaths = sources.map(source => source.path.trim()).filter(Boolean)
+          const row = await api('create', { name, requestId: id, sourcePaths })
           await refresh()
           if (onCreated) onCreated(row)
           else onPicked(row.path)
         } catch (err) { setError(err.message); setWaiting(false) }
       }
-      const close = () => { if (!busy && !waiting) onCancel() }
+      const close = () => { if (!locked) onCancel() }
       return h(Dialog, { title: createWorkspaceProject, close }, h('form', { className: 'lw-form', onSubmit: submit },
         h('label', null, LW('项目名称'), h('input', { autoFocus: true, required: true, maxLength: 80, value: name,
-          disabled: busy || waiting, onChange: e => setName(e.target.value) })),
+          disabled: locked, onChange: e => setName(e.target.value) })),
+        h('fieldset', { className: 'lw-create-sources', disabled: locked },
+          h('legend', null, LW('来源文件夹（可选）')),
+          h('p', { className: 'lw-hint' }, LW('文件留在原处，供本项目的助手和 Bot 只读访问。')),
+          sources.map((source, index) => h('div', { key: source.id, className: 'lw-source-picker' },
+            h('input', { value: source.path, 'aria-label': LW('来源文件夹路径 ') + (index + 1),
+              placeholder: LW('选择文件夹或粘贴绝对路径'), onChange: e => changeSource(source.id, e.target.value) }),
+            pickDirectory && Btn({ variant: 'secondary', 'aria-label': LW('选择来源文件夹 ') + (index + 1),
+              onClick: () => chooseSource(source.id) }, LW('选择文件夹')),
+            (source.path || sources.length > 1) && Btn({ variant: 'ghost',
+              'aria-label': LW('移除来源文件夹 ') + (index + 1),
+              onClick: () => setSources(previous => previous.length === 1
+                ? [{ ...source, path: '' }] : previous.filter(item => item.id !== source.id)) },
+            h(Icon, { name: 'close' })))),
+          h('div', { className: 'lw-actions' }, Btn({ variant: 'ghost', size: 'xs',
+            onClick: () => setSources(previous => [...previous, { id: requestId(), path: '' }]) },
+          h(Icon, { name: 'plus' }), LW('添加来源文件夹')))),
         error && h('span', { role: 'alert' }, error),
         h('div', { className: 'lw-actions lw-dialog-actions' },
-          Btn({ variant: 'ghost', onClick: close, disabled: busy || waiting }, LW('取消')),
-          Btn({ variant: 'primary', type: 'submit', disabled: busy || waiting || !name.trim() },
+          Btn({ variant: 'ghost', onClick: close, disabled: locked }, LW('取消')),
+          Btn({ variant: 'primary', type: 'submit', disabled: locked || !name.trim() },
             waiting ? LW('创建中…') : LW('创建')))))
     }
 
@@ -2229,9 +2835,8 @@ window.__ModuleLoader__.load({
       }
       return h(Dialog, { title: LW('创建项目插件'), close: safeClose }, h('form', { className: 'lw-form', onSubmit: submit },
         h('label', null, LW('插件名称'), h('input', { required: true, autoFocus: true, maxLength: 80, value: name, onChange: e => setName(e.target.value) })),
-        h('label', null, LW('适用范围'), h('select', { required: true, value: scope, onChange: e => setScope(e.target.value) },
-          h('option', { value: '', disabled: true }, LW('选择项目或全部项目')), h('option', { value: 'all' }, LW('全部项目')),
-          rows.filter(r => r.scope !== 'global').map(r => h('option', { key: r.scope, value: r.scope }, r.name)))),
+        h('label', null, LW('适用范围'), h(Select, { value: scope, ariaLabel: LW('适用范围'), placeholder: LW('选择项目或全部项目'), onChange: setScope,
+          options: [{ value: 'all', label: LW('全部项目') }, ...rows.filter(r => r.scope !== 'global').map(r => ({ value: r.scope, label: r.name }))] })),
         h('label', null, LW('交给项目助手的指令'), h('textarea', { rows: 4, required: true, maxLength: 12000, value: prompt, onChange: e => setPrompt(e.target.value) })),
         status && h('span', { role: 'alert' }, status),
         h('div', { className: 'lw-actions lw-dialog-actions' },
@@ -2276,108 +2881,85 @@ window.__ModuleLoader__.load({
       : item.kind === 'output' ? 'output'
       : item.kind === 'link' ? 'link' : 'file'
 
-    function categorizeFeatureItems(feature, featMeta, value, items) {
-      const baseCats = Array.isArray(featMeta?.categories) && featMeta.categories.length
-        ? featMeta.categories : [['push', LW('推送消息')], ['file', LW('文件资源')]]
-      const buckets = new Map(baseCats.map(([key, label]) => [key, { key, label, entries: [] }]))
-      const labelToKey = new Map(baseCats.map(([key, label]) => [label, key]))
-      const linkedIdeaIds = new Set((value?.rails?.goals || []).map(g => g.ideaId).filter(Boolean))
-      const ensureBucket = key => {
-        if (!buckets.has(key)) buckets.set(key, { key, label: key, entries: [] })
-        return buckets.get(key)
-      }
-      for (const it of items) {
-        let cat = it.category
-        if (cat && labelToKey.has(cat)) cat = labelToKey.get(cat)
-        if (!cat) {
-          const isFile = isReadableEntry(it) || isImageResource(it)
-          if (feature === 'feed') cat = isFile ? 'file' : feedKind(it)
-          else if (feature === 'ideas') cat = isFile ? 'file' : (linkedIdeaIds.has(it.id) ? 'converted' : 'fresh')
-          else if (feature === 'goals') cat = isFile ? 'file' : (it.done ? 'completed' : 'pending')
-          else if (feature === 'library') cat = libResKind(it)
-          else cat = isFile ? 'file' : 'push'
-        } else if (feature === 'ideas' && linkedIdeaIds.has(it.id) && cat === 'push') {
-          cat = 'converted'
-        }
-        ensureBucket(cat).entries.push(it)
-      }
-      if (feature === 'ideas' && Array.isArray(value?.reviews) && value.reviews.length) {
-        ensureBucket('review').entries.push(...value.reviews.map(r => ({
-          ...r, _metaType: 'review', text: r.reply || LW('AI 复盘建议'),
-        })))
-      }
-      return [...buckets.values()]
+    function SpeakerReply({ label, text }) {
+      return h('article', { className: 'lw-speaker-reply', 'aria-label': label + LW(' 的插话') },
+        h('strong', null, label), h('div', null, text))
     }
 
-    const deliveryStatus = {
-      WAITING_APPROVAL: LW('等待批准'), QUEUED: LW('已排队'), RUNNING: LW('运行中'), SUCCEEDED: LW('已完成'),
-      FAILED: LW('运行失败'), CANCELLED: LW('已取消'), INTERRUPTED: LW('运行中断'), BLOCKED: LW('暂时无法执行'),
+    function composerCandidates(sessionId, trigger, query, signal) {
+      return api('composer-candidates', { sessionId, trigger, query }, signal)
     }
 
-    function TrialReceipt({ sessionId, run }) {
-      const [open, setOpen] = React.useState(false)
-      const [file, setFile] = React.useState('')
-      const [result, setResult] = React.useState(null)
+    function useBotInputMenu(bot, textarea, onDraft) {
+      const [hit, setHit] = React.useState(null)
+      const [items, setItems] = React.useState([])
+      const [active, setActive] = React.useState(0)
+      const [status, setStatus] = React.useState('loading')
+      const ensure = React.useRef(bot.ensureSession)
+      ensure.current = bot.ensureSession
+      const id = React.useId()
+      function update(value, caret) {
+        const match = /(?:^|\s)([@/])([^\s@]*)$/u.exec(value.slice(0, caret))
+        if (match && (match[1] === '@' || !match[2].includes('/'))) {
+          setHit({ start: caret - match[2].length - 1, end: caret, trigger: match[1], query: match[2] })
+        } else setHit(null)
+      }
       React.useEffect(() => {
-        if (!open) return
+        if (!hit) return
         const controller = new AbortController()
-        setResult(null)
-        api('dialog-delivery', { sessionId, runId: run.id, file }, controller.signal).then(data => {
-          if (!controller.signal.aborted) setResult(data)
-        }).catch(error => {
-          if (!controller.signal.aborted) setResult({ error: error.message })
-        })
-        return () => controller.abort()
-      }, [sessionId, run.id, run.status, open, file])
-      return h('div', { className: 'lw-trial-receipt' },
-        h('button', { type: 'button', className: 'lw-receipt-toggle', 'aria-expanded': open,
-          onClick: () => { setFile(''); setOpen(!open) } },
-          h('span', null, run.projectName ? run.projectName + '：' + run.title : run.title),
-          h('span', { className: 'lw-hint' }, deliveryStatus[run.status] || run.status)),
-        open && h('div', { className: 'lw-receipt-detail' },
-          !result ? LW('读取中…') : file ? h(React.Fragment, null,
-            h('button', { type: 'button', onClick: () => setFile('') }, LW('返回运行结果')),
-            h('pre', null, result.error || result.text, result.truncated && '…'))
-            : h(React.Fragment, null,
-              result.error && h('p', null, result.error),
-              (result.stdout || result.stderr) && h('pre', null, [result.stdout, result.stderr].filter(Boolean).join('\n')),
-              (result.artifacts || []).map(item => h('button', { type: 'button', key: item.name,
-                onClick: () => setFile(item.name) }, item.name)),
-              !result.error && !result.stdout && !result.stderr && !result.artifacts?.length &&
-                h('span', null, run.status === 'WAITING_APPROVAL' ? LW('可在项目聊天的代码沙盒中批准这次试跑。') :
-                  result.exitCode != null ? LW('退出码 ') + result.exitCode : LW('尚无运行输出。')))))
-    }
-
-    function ConversationReceipts({ sessionId }) {
-      const [runs, setRuns] = React.useState([])
-      React.useEffect(() => {
-        const controller = new AbortController()
-        let busy = false
-        const read = async () => {
-          if (busy || document.hidden) return
-          busy = true
+        setItems([])
+        setActive(0)
+        setStatus('loading')
+        const timer = setTimeout(async () => {
           try {
-            const data = await api('dialog-delivery', { sessionId }, controller.signal)
-            if (!controller.signal.aborted && Array.isArray(data)) setRuns(data)
-          } catch { /* Keep the last received state through temporary disconnects. */ }
-          finally { busy = false }
+            const sid = await ensure.current()
+            const found = await composerCandidates(sid, hit.trigger, hit.query, controller.signal)
+            if (!controller.signal.aborted) {
+              setItems(found)
+              setStatus('ready')
+            }
+          } catch {
+            if (!controller.signal.aborted) setStatus('error')
+          }
+        }, 100)
+        return () => { clearTimeout(timer); controller.abort() }
+      }, [hit])
+      function pick(item, drill = Boolean(item.drill)) {
+        const input = textarea.current
+        if (!input || !hit) return
+        const text = drill ? '@' + item.drill : item.text + (hit.trigger === '@' ? ' ' : '')
+        const next = input.value.slice(0, hit.start) + text + input.value.slice(hit.end)
+        const caret = hit.start + text.length
+        onDraft(next)
+        if (drill) update(next, caret)
+        else setHit(null)
+        requestAnimationFrame(() => { input.focus(); input.setSelectionRange(caret, caret) })
+      }
+      function key(event) {
+        if (!hit || event.nativeEvent?.isComposing) return false
+        if (event.key === 'Escape') { setHit(null); event.preventDefault(); return true }
+        if (items.length && ['ArrowDown', 'ArrowUp'].includes(event.key)) {
+          setActive(index => (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length)
+          event.preventDefault()
+          return true
         }
-        read()
-        const timer = setInterval(read, 5000)
-        document.addEventListener('visibilitychange', read)
-        window.addEventListener(updated, read)
-        return () => {
-          controller.abort()
-          clearInterval(timer)
-          document.removeEventListener('visibilitychange', read)
-          window.removeEventListener(updated, read)
+        if (items.length && !event.shiftKey && ['Enter', 'Tab'].includes(event.key)) {
+          pick(items[active])
+          event.preventDefault()
+          return true
         }
-      }, [sessionId])
-      if (!runs.length) return null
-      const receipt = run => h(TrialReceipt, { key: run.id, sessionId, run })
-      return h('section', { className: 'lw-receipts', 'aria-label': LW('此对话的试跑回执') },
-        runs.slice(0, 2).map(receipt),
-        runs.length > 2 && h('details', null, h('summary', null, LW('更早的试跑（') + (runs.length - 2) + '）'), runs.slice(2).map(receipt)))
+        return false
+      }
+      return { update, key, close: () => setHit(null), controls: hit ? id : undefined,
+        selected: hit && items.length ? id + '-' + active : undefined,
+        menu: hit && h('div', { id, className: 'lw-composer-menu', role: 'listbox', 'aria-label': hit.trigger === '@' ? LW('引用与邀请') : LW('指令') },
+          items.length === 0 && h('p', { role: 'status', className: 'lw-composer-menu-label' },
+            LW(status === 'loading' ? '正在查找…' : status === 'error' ? '候选暂不可用' : '没有匹配项')),
+          items.map((item, index) => h(React.Fragment, { key: item.text || item.drill },
+            items[index - 1]?.section !== item.section && h('div', { className: 'lw-composer-menu-label' }, item.section),
+            h('button', { id: id + '-' + index, type: 'button', role: 'option', 'aria-selected': index === active,
+              onMouseDown: event => event.preventDefault(), onClick: () => pick(item) },
+              h('span', null, item.name, item.drill && ' ›'), item.description && h('small', null, item.description))))) }
     }
 
     function TurnProgress({ progress, onApproval }) {
@@ -2403,14 +2985,317 @@ window.__ModuleLoader__.load({
     const preparingReply = { text: LW('正在准备本轮回复') }
     let workbenchViews
     const getWorkbenchViews = () => workbenchViews ||= import(new URL('./labweave-bot-workbench.js', document.baseURI).href)
-      .then(module => module.createWorkbenchViews(React, project, { Btn, Icon, Tag, fmtDateTime }))
+      .then(module => module.createWorkbenchViews(React, project, { Btn, Icon, Tag, Select, fmtDateTime, Canvas: BotParadigmView }))
     const BotExperiments = React.lazy(() => getWorkbenchViews().then(views => ({ default: views.Experiments })))
-    const BotTaskDeliveries = React.lazy(() => getWorkbenchViews().then(views => ({ default: views.TaskDeliveries })))
+
+    function openComposerFile(input, imagesOnly) {
+      if (!input || input.disabled) return
+      const previous = input.getAttribute('accept')
+      if (imagesOnly) input.setAttribute('accept', 'image/*')
+      else input.removeAttribute('accept')
+      try { input.click() }
+      finally {
+        if (previous === null) input.removeAttribute('accept')
+        else input.setAttribute('accept', previous)
+      }
+    }
+
+    function ComposerAttachmentMenu({ disabled, onPick }) {
+      const [open, setOpen] = React.useState(false)
+      const ref = React.useRef(null)
+      const trigger = React.useRef(null)
+      React.useEffect(() => {
+        if (!open) return
+        const dismiss = event => {
+          if (!ref.current?.contains(event.target)) setOpen(false)
+        }
+        const escape = event => {
+          if (event.key !== 'Escape') return
+          setOpen(false)
+          if (ref.current?.contains(document.activeElement)) trigger.current?.focus()
+        }
+        document.addEventListener('pointerdown', dismiss)
+        document.addEventListener('keydown', escape)
+        return () => {
+          document.removeEventListener('pointerdown', dismiss)
+          document.removeEventListener('keydown', escape)
+        }
+      }, [open])
+      const pick = imagesOnly => {
+        setOpen(false)
+        trigger.current?.focus()
+        onPick(imagesOnly, ref.current)
+      }
+      const label = LW('导入图片或文件')
+      return h('div', { ref, className: 'lw-composer-attach' },
+        h('button', { ref: trigger, type: 'button', className: 'lw-fbot-plus-btn',
+          'aria-label': label, 'aria-expanded': open && !disabled, title: label, disabled,
+          onClick: () => setOpen(previous => !previous),
+        }, h(Icon, { name: 'plus' })),
+        open && !disabled && h('div', { className: 'lw-fbot-plus-menu', role: 'group', 'aria-label': label },
+          h('button', { type: 'button', onClick: () => pick(true) },
+            h(Icon, { name: 'image' }), h('span', null, LW('导入图片'))),
+          h('button', { type: 'button', onClick: () => pick(false) },
+            h(Icon, { name: 'file' }), h('span', null, LW('导入文件')))))
+    }
+
+    function ExtensionElements({ values, fields, role, describeReference }) {
+      if (!values) return null
+      const descriptors = fields || Object.keys(values).map(name => ({ name, type: 'text', role: 'detail' }))
+      const shown = descriptors.filter(field => values[field.name] != null && (!role || field.role === role))
+      if (!shown.length) return null
+      return h('dl', { className: 'lw-paradigm-fields' }, shown.map(({ name, type }) => {
+        const value = values[name]
+        const url = type === 'url' && mdSafeUrl(value)
+        const display = url ? h('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, value)
+          : type === 'reference' ? describeReference?.(value) || LW('关联记录不可用')
+            : typeof value === 'boolean' ? LW(value ? '是' : '否') : String(value)
+        return h('div', { key: name }, h('dt', null, name), h('dd', null, display))
+      }))
+    }
+
+    function botDisplayRecord(item, fields, layout) {
+      const roles = new Map(fields.map(field => [field.role, field]))
+      const value = role => item.elements?.[roles.get(role)?.name]
+      const [title, body] = entryHeadlineBody(item)
+      const status = value('status')
+      return {
+        title: value('title') || title,
+        summary: value('summary') || body,
+        group: value('group') || item.category || item.priority,
+        date: roles.has('date') ? value('date') : item.eventDate || (layout === 'lineage' ? null : item.updatedAt || item.ts),
+        status: typeof status === 'boolean' ? roles.get('status').name + '：' + LW(status ? '是' : '否') : status,
+        source: mdSafeUrl(value('source')) || item.url,
+        relation: value('relation') || item.parentId,
+      }
+    }
+
+    function BotParadigmView({ layout, items, fields = [], activeId, openEntry, toggleGoal, addNode, deleteNode, busy, emptyTitle, label = LW('内容画布') }) {
+      const [category, setCategory] = React.useState(null)
+      const [paths, setPaths] = React.useState([])
+      const [camera, setCamera] = React.useState({ zoom: 100, x: 0, y: 0 })
+      const [panning, setPanning] = React.useState(false)
+      const [fullscreen, setFullscreen] = React.useState(false)
+      const [size, setSize] = React.useState({ width: 0, height: 188 })
+      const zoom = camera.zoom / 100
+      const viewportRef = React.useRef(null)
+      const dragRef = React.useRef(null)
+      const stageRef = React.useRef(null)
+      function zoomBy(delta) {
+        setCamera(current => ({ ...current, zoom: Math.max(50, Math.min(200, current.zoom + delta)) }))
+      }
+      function startPan(event) {
+        if (event.button !== 0 || event.target.closest('button,input,a,label')) return
+        const stage = stageRef.current
+        const scale = stage.getBoundingClientRect().width / stage.offsetWidth / zoom || 1
+        dragRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY, camera, scale }
+        event.currentTarget.setPointerCapture(event.pointerId)
+        setPanning(true)
+      }
+      function movePan(event) {
+        const drag = dragRef.current
+        if (!drag || drag.id !== event.pointerId) return
+        setCamera(current => ({ ...current, x: drag.camera.x + (event.clientX - drag.x) / drag.scale,
+          y: drag.camera.y + (event.clientY - drag.y) / drag.scale }))
+      }
+      function endPan() {
+        dragRef.current = null
+        setPanning(false)
+      }
+      function resetCamera() {
+        setCamera({ zoom: 100, x: 0, y: 0 })
+        viewportRef.current?.scrollTo(0, 0)
+      }
+      React.useEffect(() => {
+        const viewport = viewportRef.current
+        function wheel(event) {
+          if (!event.ctrlKey || !event.deltaY) return
+          event.preventDefault()
+          zoomBy(event.deltaY < 0 ? 10 : -10)
+        }
+        viewport.addEventListener('wheel', wheel, { passive: false })
+        return () => viewport.removeEventListener('wheel', wheel)
+      }, [fullscreen])
+      const byId = new Map(items.map(item => [item.id, item]))
+      const rows = items.map(item => ({ ...botDisplayRecord(item, fields, layout), item }))
+      const categories = [...new Set(rows.map(row => row.item.canvasGroup || row.group || LW('未分类')))]
+      const selected = categories.includes(category) ? category : null
+      const visible = rows.filter(row => !selected || (row.item.canvasGroup || row.group || LW('未分类')) === selected)
+      const ids = new Set(visible.map(row => row.item.id))
+      const edges = visible.flatMap(row => [...new Set([
+        row.relation, ...(Array.isArray(row.item.dependsOn) ? row.item.dependsOn : []),
+      ])].filter(id => ids.has(id) && id !== row.item.id).map(id => ({ from: id, to: row.item.id })))
+      const dated = layout === 'timeline' || layout === 'lineage'
+      const sequential = dated || layout === 'reasoning'
+      const graph = layout === 'graph' || layout === 'path'
+      const lanes = new Map()
+      const append = (key, row) => {
+        if (!lanes.has(key)) lanes.set(key, [])
+        lanes.get(key).push(row)
+      }
+      if (graph) {
+        const depth = new Map()
+        const byRecord = new Map(visible.map(row => [row.item.id, row]))
+        const incoming = new Map(visible.map(row => [row.item.id, []]))
+        for (const edge of edges) incoming.get(edge.to).push(edge.from)
+        const successors = new Map()
+        for (const { from } of edges) successors.set(from, (successors.get(from) || 0) + 1)
+        const nodes = visible.map(row => ({ id: row.item.id, dependsOn: incoming.get(row.item.id) }))
+          .sort((a, b) => (successors.get(b.id) || 0) - (successors.get(a.id) || 0))
+        for (const item of orderGoalPath(nodes)) {
+          const parents = incoming.get(item.id).filter(id => depth.has(id))
+          const level = parents.length ? Math.min(10, 1 + Math.max(...parents.map(id => depth.get(id)))) : 0
+          depth.set(item.id, level)
+          append(level, byRecord.get(item.id))
+        }
+      } else if (sequential) {
+        const direction = layout === 'timeline' ? -1 : 1
+        const ordered = [...visible].sort((a, b) => {
+          const left = Date.parse(dated ? a.date : a.item.ts)
+          const right = Date.parse(dated ? b.date : b.item.ts)
+          if (!Number.isFinite(left)) return Number.isFinite(right) ? 1 : 0
+          if (!Number.isFinite(right)) return -1
+          return direction * (left - right)
+        })
+        ordered.forEach((row, index) => append(index, row))
+      } else {
+        for (const row of visible) {
+          const group = row.item.canvasGroup || (layout === 'checklist' && row.item.done ? LW('已完成') : row.group)
+          append(group || (layout === 'checklist' ? LW('待办') : LW('未分类')), row)
+        }
+      }
+
+      const edgeKey = JSON.stringify(edges)
+      const visibleKey = JSON.stringify([...lanes].map(([key, entries]) => [key, entries.map(row => row.item.id)]))
+      React.useLayoutEffect(() => {
+        const stage = stageRef.current
+        if (!stage) { setPaths([]); return }
+        const nodes = new Map([...stage.querySelectorAll('[data-canvas-node]')].map(node => [node.dataset.canvasNode, node]))
+        const links = JSON.parse(edgeKey)
+        function measure() {
+          const width = stage.offsetWidth, height = stage.offsetHeight
+          setSize(current => current.width === width && current.height === height ? current : { width, height })
+          const origin = stage.getBoundingClientRect()
+          const scale = origin.width / stage.offsetWidth || 1
+          const next = links.flatMap(({ from, to }) => {
+            if (!nodes.has(from) || !nodes.has(to)) return []
+            const source = nodes.get(from).getBoundingClientRect()
+            const target = nodes.get(to).getBoundingClientRect()
+            const across = Math.abs(source.left - target.left) / scale > 12
+            const forward = across ? source.left < target.left : source.top < target.top
+            const x = (across ? (forward ? source.right : source.left) : source.left + source.width / 2) - origin.left
+            const y = (across ? source.top + source.height / 2 : (forward ? source.bottom : source.top)) - origin.top
+            const endX = (across ? (forward ? target.left : target.right) : target.left + target.width / 2) - origin.left
+            const endY = (across ? target.top + target.height / 2 : (forward ? target.top : target.bottom)) - origin.top
+            const start = [x / scale, y / scale], end = [endX / scale, endY / scale]
+            const middle = across ? (start[0] + end[0]) / 2 : (start[1] + end[1]) / 2
+            const via = across ? [middle, start[1], middle, end[1]] : [start[0], middle, end[0], middle]
+            return [{ from, to, end, d: 'M' + start.join(' ') + ' C' + via.join(' ') + ' ' + end.join(' ') }]
+          })
+          setPaths(next)
+        }
+        measure()
+        const observer = new ResizeObserver(measure)
+        observer.observe(stage)
+        for (const node of nodes.values()) observer.observe(node)
+        return () => observer.disconnect()
+      }, [edgeKey, visibleKey, layout, fullscreen])
+
+      function card(row) {
+        const item = row.item
+        const file = isReadableEntry(item) || isImageResource(item)
+        const thumbnail = entryImageSrc(item)
+        const date = typeof row.date === 'string' && row.date.length === 10 ? row.date : fmtDate(row.date)
+        const blocked = toggleGoal && !item.done && item.dependsOn?.some?.(id => byId.has(id) && !byId.get(id).done)
+        const status = item.canvasStatus || row.status || item.relationStatus || (blocked && LW('等待前置目标'))
+        const editable = !item.canvasDraft && !item.experiment?.kind
+        return h('article', { key: item.id, className: 'lw-canvas-card', 'data-canvas-node': item.id, 'data-current': activeId === item.id,
+          'data-draft': Boolean(item.canvasDraft) },
+          h(openEntry ? 'button' : 'div', { className: 'lw-canvas-card-body',
+            ...(openEntry && { type: 'button', 'aria-label': row.title, onClick: () => openEntry(item) }) },
+            h('span', { className: 'lw-canvas-card-meta' },
+              h(Icon, { name: file ? 'file' : row.source ? 'link' : graph ? 'mindmap' : 'list' }),
+              dated && h('span', null, date || LW('日期待确认')),
+              item.due && h('span', null, LW('截止 ') + item.due),
+              item.canvasDraft && h('span', null, LW('草稿 · 待核验')),
+              item.canvasDraft && h('span', null, ({ queued: LW('排队中'), running: LW('整理中'),
+                needs_follow_up: LW('待继续'), completed: LW('已返回') })[item.dispatchStatus] || LW('已结束')),
+              status && h('span', null, status),
+              item.relationLabel && h('span', null, item.relationLabel)),
+            h('strong', null, row.title),
+            row.summary && row.summary !== row.title && h('span', { className: 'lw-paradigm-preview' }, row.summary),
+            thumbnail && h('img', { className: 'lw-canvas-thumb', src: thumbnail, alt: '', loading: 'lazy',
+              onError: event => { event.currentTarget.hidden = true } })),
+          toggleGoal && editable && h('label', { className: 'lw-canvas-card-meta', style: {padding:'0 10px 8px', alignItems:'center'} },
+            h('input', { type: 'checkbox', checked: Boolean(item.done), disabled: busy || blocked,
+              'aria-label': LW('完成 ') + row.title, onChange: () => toggleGoal(item) }), LW('完成')),
+          editable && (addNode || deleteNode) && h('div', { className: 'lw-canvas-node-actions' },
+            addNode && Btn({ variant: 'ghost', size: 'xs', disabled: busy, title: LW('添加分支'),
+              'aria-label': LW('添加分支 ') + row.title, onClick: () => addNode(item) }, '+'),
+            deleteNode && Btn({ variant: 'ghost', size: 'xs', disabled: busy, title: LW('删除节点'),
+              'aria-label': LW('删除节点 ') + row.title, onClick: () => deleteNode(item) }, '−')))
+      }
+
+      const canvas = h('section', { className: 'lw-bot-canvas', 'data-layout': layout, 'aria-label': label },
+        h('div', { className: 'lw-canvas-toolbar' },
+          addNode && Btn({ variant: 'ghost', size: 'xs', disabled: busy, onClick: () => addNode(null) }, LW('添加节点')),
+          categories.length > 1 && h('div', { className: 'lw-canvas-categories', role: 'group', 'aria-label': LW('内容类别') },
+            [null, ...categories].map(name => h('button', { key: name === null ? 'all' : 'category:' + name,
+              type: 'button', 'aria-pressed': selected === name, onClick: () => setCategory(name) }, name ?? LW('全部')))),
+          h('div', { className: 'lw-canvas-controls', role: 'group', 'aria-label': LW('画布视图') },
+            Btn({ variant: 'ghost', size: 'xs', disabled: camera.zoom <= 50, 'aria-label': LW('缩小画布'), onClick: () => zoomBy(-10) }, '−'),
+            h('span', { 'aria-label': LW('当前缩放') }, camera.zoom + '%'),
+            Btn({ variant: 'ghost', size: 'xs', disabled: camera.zoom >= 200, 'aria-label': LW('放大画布'), onClick: () => zoomBy(10) }, '+'),
+            Btn({ variant: 'ghost', size: 'xs', 'aria-label': LW('重置画布视图'), onClick: resetCamera }, LW('重置')),
+            !fullscreen && Btn({ variant: 'ghost', size: 'xs', 'aria-label': LW('全屏画布'), onClick: () => setFullscreen(true) }, LW('全屏')))),
+        h('div', { ref: viewportRef, className: 'lw-canvas-viewport', tabIndex: 0, role: 'region', 'aria-label': LW('节点与连线'),
+          'data-panning': panning, onPointerDown: startPan, onPointerMove: movePan,
+          onPointerUp: endPan, onPointerCancel: endPan, onLostPointerCapture: endPan },
+          !items.length && emptyTitle && h('p', { className: 'lw-canvas-live' }, emptyTitle),
+          h('div', { className: 'lw-canvas-frame', style: {
+            width: Math.ceil(size.width * zoom + Math.max(0, camera.x)),
+            height: Math.ceil(size.height * zoom + Math.max(0, camera.y)),
+          } },
+          h('div', { ref: stageRef, className: 'lw-canvas-stage',
+            style: { transform: 'translate(' + camera.x + 'px,' + camera.y + 'px) scale(' + zoom + ')' } },
+            h('svg', { className: 'lw-canvas-edges', 'aria-hidden': true },
+              paths.map(link => h('g', { key: link.from + ':' + link.to, 'data-from': link.from, 'data-to': link.to },
+                h('path', { d: link.d }), h('circle', { cx: link.end[0], cy: link.end[1], r: 2.5 })))),
+            [...lanes.entries()].sort(([a], [b]) => graph ? a - b : 0).map(([label, entries]) =>
+              h('div', { key: label, className: 'lw-canvas-lane' },
+                typeof label === 'string' && h('h3', null, label), entries.map(card)))))))
+      return fullscreen ? ReactDOM.createPortal(h(Dialog, {
+        title: LW('全屏画布'), className: 'lw-canvas-full', close: () => setFullscreen(false),
+      }, canvas), document.body) : canvas
+    }
+
+    function orderGoalPath(items) {
+      const followers = new Map(items.map(item => [item.id, []]))
+      const remaining = new Map()
+      const result = []
+      for (const item of items) {
+        const deps = Array.isArray(item.dependsOn) ? item.dependsOn.filter(id => followers.has(id)) : []
+        if (!deps.length) result.push(item)
+        else remaining.set(item.id, deps.length)
+        for (const id of deps) followers.get(id).push(item)
+      }
+      for (const item of result) {
+        for (const next of followers.get(item.id)) {
+          const pending = remaining.get(next.id) - 1
+          if (pending) remaining.set(next.id, pending)
+          else {
+            remaining.delete(next.id)
+            result.push(next)
+          }
+        }
+      }
+      return result.concat(items.filter(item => remaining.has(item.id)))
+    }
 
     function Panel({
       workspaceId, row, feature, featMeta, title, subtitle, emptyTitle,
-      value, loadError, persisted, bot, openModels, onRenamed,
-      tasksOpen, setTasksOpen, tasksId, onTaskCount, openWorkbenchTool,
+      value, loadError, persisted, bot, live, openModels, onRenamed,
+      openExperiment,
     }) {
       const [busy, setBusy] = React.useState(false)
       const [error, setError] = React.useState('')
@@ -2418,76 +3303,35 @@ window.__ModuleLoader__.load({
       const [reading, setReading] = React.useState(null)
       const [activeItemId, setActiveItemId] = React.useState(null)
       const [activeReview, setActiveReview] = React.useState(null)
-      const [quickModal, setQuickModal] = React.useState(false)
+      const [deletingItem, setDeletingItem] = React.useState(null)
+      const [browserLink, setBrowserLink] = React.useState(null)
+      const [boardPercent, setBoardPercent] = React.useState(persisted.boardPercent || 58)
       const [editingBot, setEditingBot] = React.useState(false)
+      const [nodeEdit, setNodeEdit] = React.useState(null)
       const [draftText, setDraftText] = React.useState(() => persisted?.draft || '')
 
-      // Sub-form state
-      const [topic, setTopic] = React.useState('')
-      const [quickText, setQuickText] = React.useState('')
-      const [quickDue, setQuickDue] = React.useState('')
-      const [quickDeps, setQuickDeps] = React.useState([])
-      const [quickCat, setQuickCat] = React.useState('push')
-      const [linkInput, setLinkInput] = React.useState('')
       const [editingId, setEditingId] = React.useState(null)
       const [editDraft, setEditDraft] = React.useState({ text: '', due: '' })
-      const [plusOpen, setPlusOpen] = React.useState(false)
-      const [botTasks, setBotTasks] = React.useState(null)
-      const [taskEditor, setTaskEditor] = React.useState(null)
-      const [taskError, setTaskError] = React.useState('')
-      const [taskNotice, setTaskNotice] = React.useState('')
-      const [assignmentError, setAssignmentError] = React.useState('')
-      const [workbenchTab, setWorkbenchTab] = React.useState(persisted.workbenchTab || 'tasks')
-      const [workbenchBusy, setWorkbenchBusy] = React.useState(false)
-      const [workbenchError, setWorkbenchError] = React.useState('')
-
-      async function launchWorkbenchTool(action) {
-        if (workbenchBusy) return
-        setWorkbenchError('')
-        setWorkbenchBusy(true)
-        try { await action() }
-        catch (error) { setWorkbenchError(error.message) }
-        finally { setWorkbenchBusy(false) }
+      const conversationRef = React.useRef(null)
+      const mainRef = React.useRef(null)
+      function resizeBoard(percent) {
+        const next = Math.max(25, Math.min(80, Math.round(percent)))
+        persisted.boardPercent = next
+        setBoardPercent(next)
       }
-
-      const detailRef = React.useRef(null)
-      const bottomRef = React.useRef(null)
+      function moveDivider(event) {
+        if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
+        const rect = mainRef.current.getBoundingClientRect()
+        resizeBoard(100 * (event.clientY - rect.top) / rect.height)
+      }
+      React.useEffect(() => {
+        const log = conversationRef.current
+        if (log) log.scrollTop = log.scrollHeight
+      }, [bot.messages.length])
       const fileInputRef = React.useRef(null)
       const textareaRef = React.useRef(null)
-      const plusWrapRef = React.useRef(null)
-      React.useEffect(() => {
-        if (!plusOpen) return
-        const onDoc = e => {
-          if (plusWrapRef.current?.contains(e.target)) return
-          setPlusOpen(false)
-        }
-        const onKey = e => { if (e.key === 'Escape') setPlusOpen(false) }
-        document.addEventListener('pointerdown', onDoc)
-        document.addEventListener('keydown', onKey)
-        return () => { document.removeEventListener('pointerdown', onDoc); document.removeEventListener('keydown', onKey) }
-      }, [plusOpen])
-
-      React.useEffect(() => {
-        const controller = new AbortController()
-        let revision = 0
-        const read = async () => {
-          if (document.hidden) return
-          const current = ++revision
-          try {
-            const data = await project(workspaceId, 'bot_assignments', { featureId: feature }, controller.signal)
-            if (!controller.signal.aborted && current === revision) { setBotTasks(data); setAssignmentError('') }
-          } catch (error) {
-            if (!controller.signal.aborted && current === revision) setAssignmentError(error.message)
-          }
-        }
-        read()
-        const timer = tasksOpen ? setInterval(read, 5000) : undefined
-        window.addEventListener(updated, read)
-        return () => { controller.abort(); clearInterval(timer); window.removeEventListener(updated, read) }
-      }, [workspaceId, feature, tasksOpen])
-      React.useEffect(() => {
-        onTaskCount?.(botTasks?.filter(task => task.kind === 'schedule' && task.status === 'active').length || 0)
-      }, [botTasks])
+      const changeDraft = text => { setDraftText(text); persisted.draft = text }
+      const inputMenu = useBotInputMenu(bot, textareaRef, changeDraft)
 
       React.useLayoutEffect(() => {
         const el = textareaRef.current
@@ -2507,109 +3351,73 @@ window.__ModuleLoader__.load({
         return h('div', { className: 'lw-panel', style: { padding: 24 }, role: loadError ? 'alert' : 'status' }, loadError || LW('正在读取项目…'))
       }
 
-      const items = value.rails[feature] || []
+      const members = (value.features || []).filter(member => member.clusterParent === feature && !member.archived)
+      const savedItems = members.length ? [{ id: feature, label: title }, ...members].flatMap(member =>
+        (value.rails[member.id] || []).map(item => ({ ...item, canvasRail: member.id, canvasGroup: member.label })))
+        : value.rails[feature] || []
+      const items = [...savedItems, ...(live?.drafts || [])]
       const action = (name, args) => project(workspaceId, name, args)
-      const openTaskEditor = (task, kind = 'duty') => {
-        setTaskError('')
-        setTaskNotice('')
-        setTaskEditor(task ? {
-          id: task.kind === 'schedule' ? (task.id || null) : task.kind + ':' + task.title,
-          kind: task.kind,
-          originalTitle: task.title,
-          title: task.title,
-          instruction: task.instruction || '',
-          rrule: task.rule || task.rrule || 'FREQ=WEEKLY',
-          expectedUpdatedAt: task.updatedAt ?? null,
-        } : { id: null, kind, title: '', instruction: '', rrule: 'FREQ=WEEKLY', expectedUpdatedAt: null })
-      }
-      const saveTaskEditor = async () => {
-        if (!taskEditor || busy) return
-        const title = taskEditor.title.trim()
-        if (!title) { setTaskError(LW('请填写任务名称。')); return }
-        if (!taskEditor.instruction.trim()) { setTaskError(LW('请填写任务内容。')); return }
-        if (taskEditor.kind === 'schedule' && !taskEditor.rrule.trim()) { setTaskError(LW('请填写重复规则。')); return }
-        setBusy(true); setTaskError('')
-        try {
-          if (taskEditor.kind === 'schedule') {
-            if (!taskEditor.id) await bot.ensureSession()
-            await action('bot_schedule_write', {
-              featureId: feature,
-              ...(taskEditor.id ? { id: taskEditor.id, expectedUpdatedAt: taskEditor.expectedUpdatedAt } : {}),
-              title, instruction: taskEditor.instruction, rrule: taskEditor.rrule.trim(),
-            })
-          } else {
-            await action('bot_assignment_write', {
-              featureId: feature, kind: taskEditor.kind, title, instruction: taskEditor.instruction,
-              ...(taskEditor.id ? { originalTitle: taskEditor.originalTitle } : {}),
-            })
-          }
-          setTaskEditor(null)
-          setTaskNotice(LW('已保存，项目内的助手都能看到最新分工。'))
-        } catch (err) {
-          setTaskError(err?.message || LW('保存失败，请重试。'))
-        } finally {
-          setBusy(false)
-          window.dispatchEvent(new Event(updated))
-        }
-      }
-      const deleteTask = async task => {
-        if (busy) return
-        setBusy(true); setTaskError(''); setTaskNotice('')
-        try {
-          if (task.kind === 'schedule') {
-            await action('bot_schedule_delete', {
-              featureId: feature, id: task.id, expectedUpdatedAt: task.updatedAt ?? null,
-            })
-          } else {
-            await action('bot_assignment_write', { featureId: feature, kind: task.kind, title: task.title, remove: true })
-          }
-          setTaskNotice(LW('已移除，项目内的助手都会看到最新分工。'))
-        } catch (err) {
-          setTaskError(err?.message || LW('删除失败，请重试。'))
-        } finally {
-          setBusy(false)
-          window.dispatchEvent(new Event(updated))
-        }
-      }
       const ordered = items.slice().reverse()
-      const groups = categorizeFeatureItems(feature, featMeta, value, ordered)
+      const botLayout = featMeta.layout
+      const typedLayout = botLayout && botLayoutLabels[botLayout]
+      const extensionFields = featMeta.extension?.fields || []
+      const effectiveParadigm = featMeta.extension?.base || featMeta.paradigm
+      const engineering = effectiveParadigm === 'engineering'
+      const paradigmAccent = botParadigms[effectiveParadigm]?.accent
+      const addNode = parent => setNodeEdit({ parent, title: '', text: '' })
+      const deleteNode = item => setNodeEdit({ remove: item })
+      const closeNodeEdit = () => { if (!busy) setNodeEdit(null) }
+      async function saveNode(event) {
+        event.preventDefault()
+        if (nodeEdit.remove) {
+          return run(async () => {
+            const item = nodeEdit.remove
+            await action('entry_delete', { rail: item.canvasRail || feature, id: item.id })
+            if (activeItemId === item.id) setActiveItemId(null)
+            setNodeEdit(null)
+          })
+        }
+        const name = nodeEdit.title.trim()
+        if (!name) return
+        return run(async () => {
+          const parent = nodeEdit.parent
+          await action('feature_push', { featureId: parent?.canvasRail || feature, title: name,
+            text: nodeEdit.text.trim() || name, source: '用户',
+            ...(parent && { parentId: parent.id, category: botDisplayRecord(parent, extensionFields, botLayout).group }) })
+          setNodeEdit(null)
+        })
+      }
 
-
-      const scrollToDetail = () => setTimeout(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 30)
-      const readResource = (id, page = 1, keepItem = null) => run(async () => {
-        setActiveReview(null)
-        if (keepItem) setActiveItemId(keepItem.id)
-        const res = await action('read', { id, page })
-        setReading({ id, ...res })
-        scrollToDetail()
-      })
+      async function readResource(id, page = 1) {
+        setBusy(true)
+        setError('')
+        try {
+          const res = await action('read', { id, page })
+          setReading({ id, ...res })
+        } catch (failure) {
+          setError(failure.message)
+        } finally {
+          setBusy(false)
+        }
+      }
 
       const openEntry = entry => {
         if (!entry) return
+        setDeletingItem(null)
+        setBrowserLink(null)
+        setError('')
+        setReading(null)
         if (entry._metaType === 'review') {
           setReading(null); setActiveItemId(null)
           setActiveReview(entry)
-          scrollToDetail()
           return
         }
         setActiveReview(null)
         setActiveItemId(entry.id)
-        if (isReadableEntry(entry)) {
-          readResource(entry.libraryId || entry.id, 1, entry)
-        } else {
-          setReading(null)
-          scrollToDetail()
-        }
       }
 
       const importFile = file => run(async () => {
-        if (!file || !file.size || file.size > 25 * 1024 * 1024) throw Error(LW('请选择 25 MiB 以内的文件。'))
-        const data = await new Promise((resolve, reject) => {
-          const reader = new FileReader()
-          reader.onload = () => resolve(reader.result.split(',')[1])
-          reader.onerror = reject
-          reader.readAsDataURL(file)
-        })
+        const data = await fileUploadData(file)
         const res = await action('upload', { name: file.name, data, featureId: feature })
         setNotice(LW('已导入文件：') + file.name)
         const targetEntry = res.linkedItem || res
@@ -2620,41 +3428,57 @@ window.__ModuleLoader__.load({
         e?.preventDefault?.()
         const text = draftText.trim()
         if (!text || bot.sending) return
-        persisted.draft = ''
-        setDraftText('')
+        inputMenu.close()
+        changeDraft('')
         try {
           await bot.sendPrompt(text)
-          setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 60)
         } catch (err) {
+          if (!persisted.draft) changeDraft(text)
           setError(err.message)
         }
       }
 
       const activeItem = activeItemId ? items.find(x => x.id === activeItemId) : null
+      const activeDisplay = activeItem && botDisplayRecord(activeItem, extensionFields, botLayout)
+      const attachment = activeItem && (activeItem.libraryId || activeItem.path || isReadableEntry(activeItem)) && (libraryItemsFor(activeItem) || activeItem)
+      function libraryItemsFor(item) {
+        const resources = value.rails.library || []
+        return resources.find(entry => entry.id === (item.libraryId || item.id) || (item.path && entry.path === item.path))
+      }
+      function closeDetail() {
+        if (busy) return
+        setActiveItemId(null); setActiveReview(null); setReading(null); setDeletingItem(null); setEditingId(null); setBrowserLink(null)
+      }
       const libraryItems = value.rails.library || []
       const libraryUrls = new Set(libraryItems.map(x => x.url).filter(Boolean))
       const goalsList = value.rails.goals || []
       const linkedIdeaIds = new Set(goalsList.map(g => g.ideaId).filter(Boolean))
 
-      const hasDetail = Boolean(reading || activeItem || activeReview)
-      const hasContent = items.length > 0 || bot.messages.length > 0 || bot.running
-        || hasDetail || (feature === 'ideas' && (value.reviews?.length || 0) > 0)
       const progress = (bot.running && bot.progress) || (bot.sending && preparingReply)
+      const hasDetail = Boolean(reading || activeItem || activeReview)
+      const hasContent = typedLayout || items.length > 0 || hasDetail || (feature === 'ideas' && (value.reviews?.length || 0) > 0)
 
       const kindBadges = { paper: LW('论文'), news: LW('新闻'), repository: LW('仓库'), pdf: 'PDF', output: LW('实验产物'), link: LW('链接'), file: LW('文件'), push: LW('推送'), fresh: LW('灵感'), converted: LW('已转目标'), pending: LW('追踪中'), completed: LW('已完成') }
-      const catColor = key => ({
-        completed: 'var(--dsw-alias-state-success-primary,#16a34a)',
-        output: 'var(--dsw-alias-state-success-primary,#16a34a)',
-        converted: 'var(--dsw-alias-state-success-primary,#16a34a)',
-        pdf: 'var(--dsw-alias-label-primary,#0f1115)',
-        paper: 'var(--dsw-alias-label-primary,#0f1115)',
-        fresh: 'var(--dsw-alias-state-business-primary,#3b82f6)',
-        pending: 'var(--dsw-alias-state-business-primary,#3b82f6)',
-        repository: 'var(--dsw-alias-label-secondary,#475569)',
-        news: 'var(--dsw-alias-state-warn-primary,#ca8a04)',
-        review: '#8b5cf6',
-        file: '#64748b',
-      }[key] || 'var(--dsw-alias-label-tertiary,#94a3b8)')
+      const entryKindKey = item => {
+        const isFile = isReadableEntry(item) || isImageResource(item)
+        if (feature === 'feed') return isFile ? 'file' : feedKind(item)
+        if (feature === 'ideas') return isFile ? 'file' : (linkedIdeaIds.has(item.id) ? 'converted' : 'fresh')
+        if (feature === 'goals') return isFile ? 'file' : (item.done ? 'completed' : 'pending')
+        if (feature === 'library') return libResKind(item)
+        return isFile ? 'file' : (item.kind || 'push')
+      }
+      const entryBadgeLabel = item => kindBadges[entryKindKey(item)] || title
+      const detailLabel = feature === 'feed' ? LW('动态详情') : LW('记录详情')
+      const showRecordHeader = Boolean(activeItem && !reading && !browserLink && !activeReview && editingId !== activeItem.id)
+      const recordText = String(activeItem?.text || '').trim()
+      const hasRecordTitle = activeItem?.title || extensionFields.some(field => field.role === 'title' && activeItem?.elements?.[field.name])
+      const plainShortTitle = recordText.length <= 44 && !/[\n：:]/.test(recordText) ? recordText : ''
+      const recordTitle = hasRecordTitle ? activeDisplay?.title : plainShortTitle
+      const recordHeader = showRecordHeader && h('div', { className: 'lw-record-heading' },
+        h('div', { className: 'lw-record-meta' },
+          h(Tag, { tone: 'neutral' }, entryBadgeLabel(activeItem)),
+          activeItem.ts && h('time', { className: 'lw-hint lw-mono', dateTime: activeItem.ts }, fmtDateTime(activeItem.ts))),
+        h('h2', null, inlineMarkdown(recordTitle || detailLabel, 'record-title')))
       const catIcon = key => ({
         paper: 'file', news: 'activity', repository: 'repo',
         fresh: 'ideas', converted: 'goals', review: 'spark',
@@ -2662,34 +3486,16 @@ window.__ModuleLoader__.load({
         pdf: 'file', output: 'spark', link: 'link',
         file: 'file', push: 'bot',
       }[key] || featureIcon(feature))
-      const nonEmptyGroups = groups.filter(g => g.entries.length > 0)
-      const totalGrouped = nonEmptyGroups.reduce((sum, g) => sum + g.entries.length, 0)
       const doneGoals = feature === 'goals' ? items.filter(x => x.done).length : 0
       const goalPct = feature === 'goals' && items.length ? Math.round((doneGoals / items.length) * 100) : 0
       const ringCircumference = 2 * Math.PI * 13
-      const scheduled = (botTasks || []).filter(task => task.kind === 'schedule')
-      const rules = (botTasks || []).filter(task => task.kind !== 'schedule')
-      const taskKinds = {
-        schedule: { label: LW('定时任务'), icon: 'calendar' },
-        duty: { label: LW('职责'), icon: 'bot' },
-        storage: { label: LW('存储规则'), icon: 'memory' },
-      }
-      const taskDocument = task => h(React.Fragment, null,
-        h('div', { className: 'lw-assigned-doc-head' },
-          h('strong', { className: 'lw-assigned-doc-title' }, task.title),
-          h('div', { className: 'lw-assigned-doc-actions' },
-            h('button', { type: 'button', 'aria-label': LW('编辑 ') + task.title, title: LW('编辑'),
-              disabled: busy, onClick: () => openTaskEditor(task) }, h(Icon, { name: 'edit' })),
-            h('button', { type: 'button', className: 'lw-tool-danger', 'aria-label': LW('删除 ') + task.title, title: LW('删除'),
-              disabled: busy, onClick: () => deleteTask(task) }, h(Icon, { name: 'trash' })))),
-        h(Markdown, { source: task.instruction }))
-
       return h('section', {
         className: 'lw-panel lw-fbot-shell',
-        style: { flex: 1, minHeight: 0, gap: 0 },
+        style: { flex: 1, minHeight: 0, gap: 0, '--lw-paradigm-accent': paradigmAccent },
+        'data-paradigm': paradigmAccent ? effectiveParadigm : undefined,
         'aria-label': title,
       },
-        h('div', { className: 'lw-fbot-main' },
+        h('div', { ref: mainRef, className: 'lw-fbot-main', style: { '--lw-board-size': boardPercent + '%' } },
           h('div', { className: 'lw-fbot-scroll' },
             h('div', { className: 'lw-fbot-center' },
               h('header', { className: 'lw-fbot-head' },
@@ -2700,55 +3506,59 @@ window.__ModuleLoader__.load({
                   onClick: () => setEditingBot(true),
                 },
                   h('span', { className: 'lw-bot-pill-badge', 'data-tone': feature, 'aria-hidden': true },
-                    h(Icon, { name: featMeta.symbol || featureIcon(feature) })),
+                    h(Icon, { name: botDisplayIcon(featMeta) })),
                   h('span', { className: 'lw-bot-pill-name' }, title),
                   h('span', { className: 'lw-bot-pill-edit', 'aria-hidden': true }, h(Icon, { name: 'edit' })))),
 
+              h('div', { className: 'lw-bot-board' },
+              Boolean(live?.active) && h('p', { className: 'lw-canvas-live', role: 'status' },
+                live.active + LW(' 项任务正在整理，草稿随进度更新')),
               busy && h('p', { role: 'status', className: 'lw-hint' }, LW('正在处理…')),
               notice && h('p', { role: 'status', className: 'lw-notice' }, notice),
               (error || bot.error) && h('p', { role: 'alert', style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
                 h('span', null, error || bot.error),
                 openModels && /模型|API|key|密钥/i.test(error || bot.error) && Btn({ variant: 'ghost', size: 'xs', onClick: openModels }, LW('模型与 API 设置'))),
 
-              !hasContent ? h('div', { className: 'lw-fbot-empty-wrap' },
+              engineering && h(React.Suspense, { fallback: h('p', { className: 'lw-hint' }, LW('正在读取实验…')) },
+                h(BotExperiments, { workspaceId, featureId: feature, updatedEvent: updated, layout: botLayout,
+                  records: ordered.map(item => ({ ...botDisplayRecord(item, extensionFields, botLayout), id: item.id, item })),
+                  addNode, deleteNode, busy,
+                  openRecord: record => openEntry(record.item) })),
+              !hasContent && !engineering ? h('div', { className: 'lw-fbot-empty-wrap' },
                 h('div', { className: 'lw-empty' },
-                  h('div', { className: 'lw-empty-emblem', 'aria-hidden': true }, h(Icon, { name: featMeta.symbol || featureIcon(feature) })),
+                  h('div', { className: 'lw-empty-emblem', 'aria-hidden': true }, h(Icon, { name: botDisplayIcon(featMeta) })),
                   h('strong', null, emptyTitle),
                   h('div', { className: 'lw-empty-chips' },
-                    h('button', { type: 'button', className: 'lw-empty-chip', onClick: () => setQuickModal(true) },
-                      h(Icon, { name: 'edit' }), h('span', null, LW('快速录入'))),
                     h('button', { type: 'button', className: 'lw-empty-chip', onClick: () => fileInputRef.current?.click() },
                       h(Icon, { name: 'upload' }), h('span', null, LW('上传文件'))))))
                 : h(React.Fragment, null,
-                  items.length > 0 && h('div', { className: 'lw-fbot-stats', 'aria-label': title + LW(' 进度与分类概览') },
+                  !typedLayout && feature === 'goals' && items.length > 0 && h('div', { className: 'lw-fbot-stats', 'aria-label': title + LW(' 进度概览') },
                     h('div', { className: 'lw-fbot-stats-top' },
-                      feature === 'goals'
-                        ? h('div', { className: 'lw-goal-ring-wrap' },
-                          h('svg', { className: 'lw-goal-ring', viewBox: '0 0 34 34', 'aria-hidden': true },
-                            h('circle', { className: 'lw-goal-ring-bg', cx: 17, cy: 17, r: 13 }),
-                            h('circle', {
-                              className: 'lw-goal-ring-fg', cx: 17, cy: 17, r: 13,
-                              strokeDasharray: ringCircumference,
-                              strokeDashoffset: ringCircumference * (1 - goalPct / 100),
-                            })),
-                          h('div', { style: { display: 'grid', lineHeight: 1.3 } },
-                            h('strong', { style: { fontSize: 'var(--lw-ui-sm)' } }, `完成 ${doneGoals} / ${items.length}`),
-                            h('span', { className: 'lw-hint lw-mono', style: { fontSize: 'var(--lw-ui-xs)' } }, goalPct + '%')))
-                        : h('span', { style: { fontSize: 'var(--lw-ui-xs)', fontWeight: 600, color: 'var(--dsw-alias-label-secondary)' } },
-                          `共 ${items.length} 项`),
-                      h('div', { className: 'lw-fbot-stat-pills' },
-                        nonEmptyGroups.map(g => h('span', { key: g.key, className: 'lw-stat-chip' },
-                          h('span', { className: 'lw-stat-dot', style: { background: catColor(g.key) } }),
-                          g.label, ' ', g.entries.length)))),
-                    totalGrouped > 0 && h('div', { className: 'lw-stat-track', 'aria-hidden': true },
-                      nonEmptyGroups.map(g => h('div', {
-                        key: g.key,
-                        className: 'lw-stat-seg',
-                        style: { width: Math.max(8, Math.round((g.entries.length / totalGrouped) * 100)) + '%', background: catColor(g.key) },
-                      })))),
+                      h('div', { className: 'lw-goal-ring-wrap' },
+                        h('svg', { className: 'lw-goal-ring', viewBox: '0 0 34 34', 'aria-hidden': true },
+                          h('circle', { className: 'lw-goal-ring-bg', cx: 17, cy: 17, r: 13 }),
+                          h('circle', {
+                            className: 'lw-goal-ring-fg', cx: 17, cy: 17, r: 13,
+                            strokeDasharray: ringCircumference,
+                            strokeDashoffset: ringCircumference * (1 - goalPct / 100),
+                          })),
+                        h('div', { style: { display: 'grid', lineHeight: 1.3 } },
+                          h('strong', { style: { fontSize: 'var(--lw-ui-sm)' } }, `完成 ${doneGoals} / ${items.length}`),
+                          h('span', { className: 'lw-hint lw-mono', style: { fontSize: 'var(--lw-ui-xs)' } }, goalPct + '%'))))),
 
-                  hasDetail && h('div', { ref: detailRef, className: 'lw-fbot-detail' },
-                    reading ? h('section', { className: 'lw-reader-pane', style: { position: 'static' }, 'aria-label': LW('资源内容') },
+                  hasDetail && ReactDOM.createPortal(h(Dialog, {
+                    title: detailLabel, wide: true, close: closeDetail,
+                    className: showRecordHeader ? 'lw-record-dialog' : '', header: recordHeader,
+                  },
+                    h('div', { className: 'lw-canvas-detail-body' },
+                    error && h('p', { role: 'alert', className: 'lw-error' }, error),
+                    browserLink ? h(React.Fragment, null,
+                      h('div', { className: 'lw-actions' },
+                        Btn({ variant: 'ghost', size: 'xs', onClick: () => setBrowserLink(null) }, LW('返回详情')),
+                        h('a', { className: 'lw-btn lw-btn-secondary lw-btn-xs', href: browserLink, target: '_blank', rel: 'noopener noreferrer' }, LW('在新标签页打开'))),
+                      h('iframe', { className: 'lw-dynamic-browser', title: LW('动态原文'),
+                        src: browserLink, sandbox: 'allow-scripts', referrerPolicy: 'no-referrer' }))
+                    : reading ? h('section', { className: 'lw-reader-pane', style: { position: 'static' }, 'aria-label': LW('资源内容') },
                       h('div', { className: 'lw-reader-head' },
                         h('strong', { style: { fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 140px' } },
                           activeItem?.text || libraryItems.find(x => x.id === reading.id)?.text || LW('资源阅读')),
@@ -2756,29 +3566,17 @@ window.__ModuleLoader__.load({
                           reading.pages && Btn({ variant: 'secondary', size: 'xs', disabled: busy || reading.page <= 1, onClick: () => readResource(reading.id, reading.page - 1, activeItem) }, LW('上一页')),
                           reading.pages && h('span', { className: 'lw-hint lw-mono' }, reading.page, ' / ', reading.pages),
                           reading.pages && Btn({ variant: 'secondary', size: 'xs', disabled: busy || reading.page >= reading.pages, onClick: () => readResource(reading.id, reading.page + 1, activeItem) }, LW('下一页')),
-                          Btn({ variant: 'accent', size: 'xs', onClick: () => {
-                            const prompt = `请阅读资料 ${reading.id}${reading.pages ? LW(' 的第 ') + (reading.page || 1) + LW(' 页') : ''}，总结核心内容，并将摘要归档到本项目。`
-                            setDraftText(prompt); persisted.draft = prompt
-                          } }, LW('填入提问')),
-                          h('button', {
-                            type: 'button', className: 'lw-dialog-close', 'aria-label': LW('关闭'), title: LW('关闭'),
-                            onClick: () => { setReading(null); setActiveItemId(null) },
-                          }, h(Icon, { name: 'close' })))),
+                          Btn({ variant: 'ghost', size: 'xs', onClick: () => setReading(null) }, LW('返回详情')))),
                       h('pre', { className: 'lw-reader-body' }, reading.text || reading.files?.join('\n') || LW('该页没有可提取文本。')))
                     : activeReview ? h('div', { style: { display: 'grid', gap: 8 } },
-                      h('div', { className: 'lw-fbot-detail-head' },
-                        h('strong', null, LW('AI 复盘详情')),
-                        h('button', { type: 'button', className: 'lw-dialog-close', 'aria-label': LW('关闭'), title: LW('关闭'), onClick: () => setActiveReview(null) },
-                          h(Icon, { name: 'close' }))),
+                      h('strong', null, LW('AI 复盘详情')),
                       h('span', { className: 'lw-hint lw-mono' }, fmtDateTime(activeReview.ts)),
-                      h('div', { className: 'lw-stream-body' }, activeReview.reply))
-                    : activeItem && h('div', { style: { display: 'grid', gap: 10 } },
-                      h('div', { className: 'lw-fbot-detail-head' },
+                      h(RecordBody, { source: activeReview.reply }))
+                    : activeItem && h('article', { className: 'lw-record-content' },
+                      !showRecordHeader && h('div', { className: 'lw-fbot-detail-head' },
                         h('div', { className: 'lw-actions' },
-                          h(Tag, { tone: 'neutral' }, kindBadges[activeItem.category || (feature === 'feed' ? feedKind(activeItem) : activeItem.kind)] || title),
-                          activeItem.ts && h('span', { className: 'lw-hint lw-mono' }, fmtDateTime(activeItem.ts))),
-                        h('button', { type: 'button', className: 'lw-dialog-close', 'aria-label': LW('关闭'), title: LW('关闭'), onClick: () => setActiveItemId(null) },
-                          h(Icon, { name: 'close' }))),
+                          h(Tag, { tone: 'neutral' }, entryBadgeLabel(activeItem)),
+                          activeItem.ts && h('span', { className: 'lw-hint lw-mono' }, fmtDateTime(activeItem.ts)))),
                       editingId === activeItem.id ? h('form', { className: 'lw-form', onSubmit: e => {
                         e.preventDefault(); if (!editDraft.text.trim()) return
                         const actName = feature === 'goals' ? 'goal_update' : 'idea_update'
@@ -2795,11 +3593,30 @@ window.__ModuleLoader__.load({
                       : (() => {
                         const activeImgSrc = entryImageSrc(activeItem)
                         return h(React.Fragment, null,
-                          activeItem.title && h('h3', { className: 'lw-fbot-detail-title' }, activeItem.title),
-                          h('div', { className: 'lw-stream-body' }, activeItem.text),
+                          recordText !== recordTitle && h(RecordBody, { source: recordText }),
+                          h(ExtensionElements, { values: Object.fromEntries([
+                            [LW('完成条件'), activeItem.completionCriteria], [LW('假设'), activeItem.hypothesis],
+                            [LW('最小验证'), activeItem.validation], [LW('结果'), activeItem.result],
+                            [LW('关系类型'), activeItem.relationLabel], [LW('核查状态'), activeItem.relationStatus],
+                          ].filter(([, value]) => value)) }),
+                          h(ExtensionElements, { values: activeItem.elements, fields: featMeta.extension?.fields?.filter(field => field.role !== 'title'),
+                            describeReference: id => {
+                              const target = items.find(item => item.id === id)
+                              return target && botDisplayRecord(target, extensionFields, botLayout).title
+                            } }),
                           activeImgSrc && h(EntryImage, { src: activeImgSrc, alt: activeItem.caption || activeItem.title || LW('推送配图'),
                             className: 'lw-fbot-detail-media', illustrated: true, caption: activeItem.caption }),
-                          h('div', { className: 'lw-actions' },
+                          attachment && h('div', { className: 'lw-actions lw-canvas-attachment' },
+                            h('span', { className: 'lw-actions' }, h(Icon, { name: 'file' }),
+                              attachment.path?.split(/[\\/]/).pop()?.replace(/^[a-f0-9]{32}-/, '') || attachment.text),
+                            isReadableEntry(activeItem) && Btn({ size: 'xs', disabled: busy,
+                              onClick: () => readResource(attachment.id, 1, activeItem) }, LW('预览文件'))),
+                          h(EntrySource, { item: activeItem }),
+                          !activeItem.canvasDraft && h('div', { className: 'lw-actions lw-record-actions' },
+                            Btn({ variant: 'danger', size: 'xs', className: 'lw-record-delete', disabled: busy,
+                              onClick: () => setDeletingItem(activeItem.id) }, feature === 'feed' ? LW('删除动态') : LW('删除记录')),
+                            feature === 'feed' && mdSafeUrl(activeDisplay.source) &&
+                              Btn({ size: 'xs', onClick: () => setBrowserLink(mdSafeUrl(activeDisplay.source)) }, LW('在弹窗中浏览原文')),
                             feature === 'feed' && Btn({ variant: 'primary', size: 'xs', disabled: busy, onClick: () => run(async () => {
                               await action('idea_create', { text: activeItem.text, ...(activeItem.url ? { url: activeItem.url } : {}) })
                               setNotice(LW('已保存到「点子」。'))
@@ -2813,18 +3630,25 @@ window.__ModuleLoader__.load({
                               setNotice('已转化为研究目标。')
                             }) }, linkedIdeaIds.has(activeItem.id) ? LW('已转目标') : LW('转为目标')),
                             feature === 'goals' && Btn({ variant: 'primary', size: 'xs', disabled: busy, onClick: () => run(() => action('goal_update', { id: activeItem.id, done: !activeItem.done })) }, activeItem.done ? LW('标为未完成') : LW('标记完成')),
-                            (feature === 'ideas' || feature === 'goals') && Btn({ variant: 'ghost', size: 'xs', onClick: () => { setEditingId(activeItem.id); setEditDraft({ text: activeItem.text, due: activeItem.due || '' }) } }, LW('编辑')),
-                            isReadableEntry(activeItem) && Btn({ variant: 'primary', size: 'xs', onClick: () => readResource(activeItem.libraryId || activeItem.id, 1, activeItem) }, LW('阅读全文')),
-                            Btn({ variant: 'secondary', size: 'xs', onClick: () => { const p = LW('请结合项目资料分析并补充这条记录：\n') + [activeItem.title, activeItem.text].filter(Boolean).join('\n'); setDraftText(p); persisted.draft = p } }, LW('交给 Bot 深入')),
+                            (feature === 'ideas' || feature === 'goals') && Btn({ variant: 'ghost', size: 'xs', onClick: () => { setEditingId(activeItem.id); setEditDraft({ text: activeItem.text, due: activeItem.due || '' }) } }, LW('编辑'))),
+                          deletingItem === activeItem.id && h('div', { className: 'lw-actions lw-record-delete-confirm' },
+                            h('span', null, LW('删除这条记录及其连线？')),
+                            Btn({ size: 'xs', disabled: busy, onClick: () => setDeletingItem(null) }, LW('取消')),
                             Btn({ variant: 'danger', size: 'xs', disabled: busy, onClick: () => run(async () => {
-                              if (feature === 'feed') await action('dismiss_feed', { id: activeItem.id, key: activeItem.url || activeItem.text })
-                              else await action('entry_delete', { rail: feature, id: activeItem.id })
-                              setActiveItemId(null)
-                            }) }, feature === 'feed' ? LW('隐藏') : LW('删除'))),
-                          h(EntrySource, { item: activeItem }))
-                      })())),
+                              const rail = activeItem.canvasRail || feature
+                              if (rail === 'feed') await action('dismiss_feed', { id: activeItem.id, key: activeItem.url || activeItem.text })
+                              else await action('entry_delete', { rail, id: activeItem.id })
+                              setActiveItemId(null); setDeletingItem(null)
+                            }) }, LW('确认删除'))))
+                      })()))), document.body),
 
-                  ordered.length > 0 && (feature === 'library'
+                  typedLayout && !engineering && h(BotParadigmView, {
+                    layout: botLayout, items: ordered, fields: extensionFields, activeId: activeItemId, openEntry, busy,
+                    addNode, deleteNode, emptyTitle,
+                    toggleGoal: effectiveParadigm === 'goals' ? item => run(() =>
+                      action('feature_push', { featureId: item.canvasRail || feature, id: item.id, done: !item.done })) : null,
+                  }),
+                  ordered.length > 0 && !typedLayout && !engineering && (feature === 'library'
                     ? h('div', { className: 'lw-doc-grid', 'aria-label': title + LW(' 上下文记录') },
                       ordered.map(item => {
                         const [headline, body] = entryHeadlineBody(item)
@@ -2853,7 +3677,7 @@ window.__ModuleLoader__.load({
                               h('span', { className: 'lw-res-dot', 'data-kind': kind, style: { marginTop: 6 } }),
                               h('span', { className: 'lw-doc-title', title: item.text }, body || headline)),
                             h('div', { className: 'lw-doc-foot' },
-                              h(Tag, { tone: 'neutral' }, kindBadges[item.category || kind] || kindBadges[kind] || title),
+                              h(Tag, { tone: 'neutral' }, kindBadges[kind] || title),
                               readable && Btn({ variant: 'secondary', size: 'xs', onClick: e => { e.stopPropagation(); openEntry(item) } }, LW('阅读')))))
                       }))
                     : h('div', { style: { display: 'grid', gap: 8 }, 'aria-label': title + LW(' 上下文记录') },
@@ -2862,8 +3686,8 @@ window.__ModuleLoader__.load({
                         const imgSrc = entryImageSrc(item)
                         const isActive = activeItemId === item.id || reading?.id === item.id || (item.libraryId && reading?.id === item.libraryId)
                         const readable = isReadableEntry(item)
-                        const category = item.category || (feature === 'feed' ? feedKind(item) : item.kind)
-                        const itemIcon = item.done ? 'check' : catIcon(category || feature)
+                        const entryKey = entryKindKey(item)
+                        const itemIcon = item.done ? 'check' : catIcon(entryKey || feature)
                         return h('article', {
                           key: item.id || feedKey(item),
                           className: 'lw-fbot-card',
@@ -2885,34 +3709,50 @@ window.__ModuleLoader__.load({
                                 onClick: e => { e.stopPropagation(); openEntry(item) } }, headline),
                               h('div', { className: 'lw-actions' },
                                 item.due && h('span', { className: 'lw-hint lw-mono', style: { fontSize: 'var(--lw-ui-xs)' } }, item.due),
-                                h(Tag, { tone: item.done ? 'success' : 'neutral' }, item.done ? LW('已完成') : (kindBadges[category] || title)),
+                                h(Tag, { tone: item.done ? 'success' : 'neutral' }, entryBadgeLabel(item)),
                                 readable && Btn({ variant: 'secondary', size: 'xs', onClick: e => { e.stopPropagation(); openEntry(item) } }, LW('阅读')))),
                             (body || (!imgSrc && item.caption)) && h('div', { className: 'lw-muse-row-sub' }, body || item.caption)),
                           imgSrc && h(EntryImage, { src: imgSrc, alt: item.caption || headline,
                             className: 'lw-fbot-detail-media', illustrated: true, caption: item.caption }),
+                          h(ExtensionElements, { values: item.elements }),
                           h(EntrySource, { item }))
-                      }))),
-
-                  bot.messages.length > 0 && h('div', { className: 'lw-bot-turns', 'aria-label': title + LW(' 对话记录') },
-                    bot.messages.map(msg => h('div', { key: msg.id, className: 'lw-bot-msg', 'data-role': msg.role },
+                      }))))))),
+          h('div', { className: 'lw-bot-divider', role: 'separator', tabIndex: 0,
+            'aria-label': LW('调整画布与对话高度'), 'aria-orientation': 'horizontal',
+            'aria-valuemin': 25, 'aria-valuemax': 80, 'aria-valuenow': boardPercent,
+            onPointerDown: event => { if (event.button === 0) event.currentTarget.setPointerCapture(event.pointerId) },
+            onPointerMove: moveDivider,
+            onKeyDown: event => {
+              const changes = { ArrowUp: boardPercent - 4, ArrowDown: boardPercent + 4, Home: 25, End: 80 }
+              if (changes[event.key] === undefined) return
+              event.preventDefault()
+              resizeBoard(changes[event.key])
+            },
+          }),
+          h('section', { className: 'lw-bot-conversation', 'aria-label': LW('与 Bot 对话') },
+            h('div', { ref: conversationRef, className: 'lw-bot-conversation-log' },
+              h('div', { className: 'lw-bot-conversation-log-inner' },
+                  (bot.messages.length > 0 || progress) && h('div', { className: 'lw-bot-turns', 'aria-label': title + LW(' 对话记录') },
+                    bot.messages.map(msg => msg.role === 'speaker' ? h(SpeakerReply, { key: msg.id, label: msg.label, text: msg.text })
+                      : h('div', { key: msg.id, className: 'lw-bot-msg', 'data-role': msg.role, 'data-pending': msg.pending || undefined },
                       h('div', { className: 'lw-bot-msg-meta' },
                         h('span', null, msg.role === 'user' ? LW('你') : title),
                         h('div', { className: 'lw-bot-msg-actions' },
                           msg.time && h('span', { className: 'lw-mono' }, fmtDateTime(msg.time)),
-                          h(RewindButton, { role: msg.role, disabled: bot.running || bot.sending,
+                          msg.pending ? h('span', { role: 'status' }, LW('发送中…'))
+                            : h(RewindButton, { role: msg.role, disabled: bot.running || bot.sending,
                             onClick: () => bot.openRewind(msg, draft => {
                               const restored = persisted.draft ? persisted.draft + '\n\n' + draft : draft
                               persisted.draft = restored
                               setDraftText(restored)
                               requestAnimationFrame(() => textareaRef.current?.focus())
                             }) }))),
-                      msg.text)))),
-              bot.sessionId && h(ConversationReceipts, { key: bot.sessionId, sessionId: bot.sessionId }),
-              h('div', { ref: bottomRef }))),
+                      msg.text.replace(/@\[((?:\\.|[^\\\]])*)\]\((?:weave-ref|dsh-session):[A-Za-z0-9_-]+\)/gu, '@$1'))),
+                    progress && h(TurnProgress, { progress, onApproval: bot.openApproval })))),
 
           h('form', { className: 'lw-fbot-composer-wrap', onSubmit: submitComposer },
-            progress && h(TurnProgress, { progress, onApproval: bot.openApproval }),
-            h('div', { ref: plusWrapRef, className: 'lw-fbot-composer' },
+            h('div', { className: 'lw-fbot-composer' },
+              inputMenu.menu,
               h('input', {
                 ref: fileInputRef,
                 type: 'file',
@@ -2921,33 +3761,20 @@ window.__ModuleLoader__.load({
                 style: { display: 'none' },
                 onChange: e => { const f = e.target.files[0]; e.target.value = ''; if (f) importFile(f) },
               }),
-              h('button', {
-                type: 'button',
-                className: 'lw-fbot-plus-btn',
-                'aria-label': LW('添加内容或文件'),
-                'aria-expanded': plusOpen,
-                'aria-haspopup': 'menu',
-                title: LW('导入文件或快速录入'),
-                disabled: busy,
-                onClick: () => setPlusOpen(prev => !prev),
-              }, h(Icon, { name: 'plus' })),
-              plusOpen && h('div', { className: 'lw-fbot-plus-menu', 'aria-label': LW('添加操作') },
-                h('button', {
-                  type: 'button', disabled: busy,
-                  onClick: () => { setPlusOpen(false); fileInputRef.current?.click() },
-                }, h(Icon, { name: 'upload' }), h('span', null, LW('导入文件'))),
-                h('button', {
-                  type: 'button',
-                  onClick: () => { setPlusOpen(false); setQuickModal(true) },
-                }, h(Icon, { name: 'edit' }), h('span', null, LW('+ 录入')))),
+              h(ComposerAttachmentMenu, { disabled: busy, onPick: imagesOnly => openComposerFile(fileInputRef.current, imagesOnly) }),
               h('textarea', {
                 ref: textareaRef,
                 rows: 1,
                 'aria-label': LW('向 ') + title + LW(' 发送消息'),
-                placeholder: LW('消息'),
+                placeholder: LW('消息，/ 指令，@ 引用或邀请'),
+                'aria-controls': inputMenu.controls,
+                'aria-activedescendant': inputMenu.selected,
+                'aria-autocomplete': 'list',
                 value: draftText,
-                onChange: e => { setDraftText(e.target.value); persisted.draft = e.target.value },
+                onChange: e => { changeDraft(e.target.value); inputMenu.update(e.target.value, e.target.selectionStart) },
+                onBlur: inputMenu.close,
                 onKeyDown: e => {
+                  if (inputMenu.key(e)) return
                   if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent?.isComposing) {
                     e.preventDefault()
                     submitComposer()
@@ -2960,147 +3787,24 @@ window.__ModuleLoader__.load({
                 'aria-label': LW('发送'),
                 title: bot.sending ? LW('发送中…') : LW('发送'),
                 disabled: busy || bot.sending || !draftText.trim(),
-              }, h(Icon, { name: 'send' }))))),
+              }, h(Icon, { name: 'send' })))))),
 
-        tasksOpen && h(Dialog, {
-          id: tasksId, title: title + ' 工作台', side: true, className: 'lw-bot-workbench', close: () => setTasksOpen(false),
-          header: h('div', { className: 'lw-bot-workbench-head' },
-            h('span', { className: 'lw-bot-pill-badge', 'data-tone': feature }, h(Icon, { name: featMeta.symbol || featureIcon(feature) })),
-            h('div', { className: 'lw-bot-workbench-identity' }, h('h2', null, title), h('p', { className: 'lw-hint' }, row.name))),
-        }, h('div', { className: 'lw-bot-workstack' },
-          h('section', { className: 'lw-bot-brief', 'aria-label': LW('Bot 特点') },
-            h('div', { className: 'lw-bot-workline' },
-              h('h3', null, LW('Bot 特点')),
-              Btn({ variant: 'ghost', size: 'xs', onClick: () => { setTasksOpen(false); setEditingBot(true) } }, LW('编辑特点'))),
-            h('p', null, subtitle),
-            featMeta.keywords?.length > 0 && h('div', { className: 'lw-bot-keywords' },
-              featMeta.keywords.map(keyword => h('span', { key: keyword }, keyword)))),
-          h('nav', { className: 'lw-bot-worknav', 'aria-label': LW('Bot 工作台栏目') },
-            [['tasks', 'calendar', '任务'], ['experiments', 'activity', '实验'], ['tools', 'sidebarRight', '工具']].map(([key, icon, label]) =>
-              h('button', { key, type: 'button', 'aria-pressed': workbenchTab === key, onClick: () => {
-                persisted.workbenchTab = key
-                setWorkbenchTab(key)
-              } }, h(Icon, { name: icon }), LW(label)))),
-          workbenchError && h('p', { role: 'alert', className: 'lw-error' }, workbenchError),
-          workbenchTab === 'experiments' && h(React.Suspense, { fallback: h('p', { className: 'lw-hint' }, LW('正在读取实验…')) },
-            h(BotExperiments, { workspaceId, featureId: feature, updatedEvent: updated,
-              openSandbox: run => launchWorkbenchTool(() => openWorkbenchTool('sandbox', run)) })),
-          workbenchTab === 'tools' && h('section', { className: 'lw-bot-workstack', 'aria-label': LW('工具') },
-            h('div', { className: 'lw-bot-workline' },
-              Btn({ size: 'sm', disabled: workbenchBusy || bot.sending, onClick: () => launchWorkbenchTool(() => openWorkbenchTool('browser')) },
-                h(Icon, { name: 'globe' }), LW('浏览器')),
-              Btn({ size: 'sm', disabled: workbenchBusy, onClick: () => launchWorkbenchTool(() => openWorkbenchTool('sandbox')) },
-                h(Icon, { name: 'activity' }), LW('项目代码沙盒')))),
-          workbenchTab === 'tasks' && h('section', { className: 'lw-bot-workstack', 'aria-label': LW('任务线程') },
-            h('div', { className: 'lw-bot-workline' },
-              h('h3', null, LW('任务线程')),
-              Btn({ variant: 'primary', size: 'sm', disabled: busy, onClick: () => openTaskEditor(null, 'schedule') }, LW('+ 定时任务'))),
-            taskError && !taskEditor && h('p', { role: 'alert', className: 'lw-error' }, taskError),
-            taskNotice && h('p', { role: 'status', className: 'lw-notice' }, taskNotice),
-            assignmentError && h('p', { role: 'alert', className: 'lw-error' }, assignmentError),
-            botTasks === null && !assignmentError && h('p', { className: 'lw-hint' }, LW('正在读取任务…')),
-            botTasks !== null && scheduled.length === 0 && h('p', { className: 'lw-hint' }, LW('还没有定时任务。')),
-            scheduled.map(task => h('article', { key: task.id, className: 'lw-assigned-doc' },
-              taskDocument(task),
-              h('div', { className: 'lw-assigned-meta' },
-                task.next && task.status === 'active' && h('span', null, LW('下次投递 ') + fmtDateTime(task.next)),
-                h(Tag, { tone: task.status === 'active' ? 'success' : 'neutral' },
-                  task.executionActive ? LW('执行中') : task.status === 'active' ? LW('已启用') : scheduleStatusText[task.status] || task.status)),
-              h(React.Suspense, { fallback: null },
-                h(BotTaskDeliveries, { workspaceId, featureId: feature, taskId: task.id,
-                  openConversation: sessionId => launchWorkbenchTool(() => openWorkbenchTool('conversation', sessionId)) })))),
-            h('section', { className: 'lw-bot-workstack', 'aria-label': LW('分工') },
-              h('div', { className: 'lw-bot-workline' }, h('h3', null, LW('分工')),
-                h('div', { className: 'lw-actions' },
-                  Btn({ size: 'xs', disabled: busy, onClick: () => openTaskEditor(null, 'duty') }, LW('+ 职责')),
-                  Btn({ size: 'xs', disabled: busy, onClick: () => openTaskEditor(null, 'storage') }, LW('+ 存储规则')))),
-              rules.map(task => h('article', { key: task.kind + ':' + task.title, className: 'lw-assigned-doc' },
-                h('span', { className: 'lw-assigned-kind' }, taskKinds[task.kind].label),
-                taskDocument(task))))))),
-
-        quickModal && h(Dialog, { title: LW('快速录入：') + title, close: () => { if (!busy) setQuickModal(false) } },
-          feature === 'feed' ? h('form', { className: 'lw-form', onSubmit: e => {
-            e.preventDefault(); if (!topic.trim()) return
-            run(async () => { await action('topic', { topic: topic.trim() }); setTopic(''); setNotice(LW('主题已保存。')); setQuickModal(false) })
-          } },
-            h('label', null, LW('订阅关键词'), h('input', { required: true, autoFocus: true, value: topic, placeholder: value.topic || LW('输入关键词…'), onChange: e => setTopic(e.target.value) })),
-            h('div', { className: 'lw-actions lw-dialog-actions' },
-              Btn({ variant: 'ghost', disabled: busy, onClick: () => setQuickModal(false) }, LW('取消')),
-              value.topic && Btn({ variant: 'secondary', disabled: busy, onClick: () => run(async () => { await action('refresh_feed'); setNotice(LW('动态已刷新。')); setQuickModal(false) }) }, LW('立即刷新动态')),
-              Btn({ variant: 'primary', type: 'submit', disabled: busy || !topic.trim() }, LW('保存订阅'))))
-          : feature === 'library' ? h('form', { className: 'lw-form', onSubmit: e => {
-            e.preventDefault(); if (!linkInput.trim()) return
-            run(async () => { await action('link', { url: linkInput.trim() }); setLinkInput(''); setNotice(LW('已保存资源链接。')); setQuickModal(false) })
-          } },
-            h('label', null, LW('资源链接 / Git 仓库地址'), h('input', { required: true, autoFocus: true, type: 'url', value: linkInput, placeholder: 'https://…', onChange: e => setLinkInput(e.target.value) })),
-            h('div', { className: 'lw-actions lw-dialog-actions' },
-              Btn({ variant: 'ghost', disabled: busy, onClick: () => setQuickModal(false) }, LW('取消')),
-              Btn({ variant: 'secondary', disabled: busy || !linkInput.trim(), onClick: () => run(async () => { await action('clone', { url: linkInput.trim() }); setLinkInput(''); setNotice(LW('Git 仓库已克隆至项目目录。')); setQuickModal(false) }) }, LW('克隆为 Git 仓库')),
-              Btn({ variant: 'primary', type: 'submit', disabled: busy || !linkInput.trim() }, LW('添加链接'))))
-          : h('form', { className: 'lw-form', onSubmit: e => {
-            e.preventDefault(); if (!quickText.trim()) return
-            run(async () => {
-              if (feature === 'ideas') {
-                await action('idea_create', { text: quickText.trim() })
-              } else if (feature === 'goals') {
-                await action('goal_create', { text: quickText.trim(), ...(quickDue ? { due: quickDue } : {}), ...(quickDeps.length ? { dependsOn: quickDeps } : {}) })
-              } else {
-                await action('feature_push', { featureId: feature, text: quickText.trim(), category: quickCat.trim() || 'push', source: LW('手动录入') })
-              }
-              setQuickText(''); setQuickDue(''); setQuickDeps([]); setQuickModal(false)
-            })
-          } },
-            h('label', null, feature === 'ideas' ? LW('新点子') : feature === 'goals' ? LW('新目标') : LW('内容'),
-              h('textarea', { required: true, autoFocus: true, rows: 3, value: quickText, placeholder: `输入要保存到「${title}」的内容…`, onChange: e => setQuickText(e.target.value) })),
-            feature === 'goals' && h(React.Fragment, null,
-              h('label', null, LW('截止日期（可选）'), h('input', { type: 'date', value: quickDue, onChange: e => setQuickDue(e.target.value) })),
-              goalsList.length > 0 && h('label', null, LW('前置目标（可选）'),
-                h('select', { multiple: true, style: { minHeight: 68 }, value: quickDeps,
-                  onChange: e => setQuickDeps(Array.from(e.target.selectedOptions, o => o.value)) },
-                  goalsList.map(g => h('option', { key: g.id, value: g.id }, g.text))))),
-            feature !== 'ideas' && feature !== 'goals' && h('label', null, LW('归档分类'),
-              h('input', { value: quickCat, placeholder: LW('如 push / 论文 / 实验'), onChange: e => setQuickCat(e.target.value) })),
-            h('div', { className: 'lw-actions lw-dialog-actions' },
-              Btn({ variant: 'ghost', disabled: busy, onClick: () => setQuickModal(false) }, LW('取消')),
-              Btn({ variant: 'primary', type: 'submit', disabled: busy || !quickText.trim() }, LW('添加'))))),
-        taskEditor && h(Dialog, {
-          title: taskEditor.id ? LW('编辑分配任务') : LW('新建分配任务'),
-          close: () => { if (!busy) setTaskEditor(null) },
-        },
-          h('form', { className: 'lw-form lw-assigned-editor', onSubmit: e => { e.preventDefault(); void saveTaskEditor() } },
-            !taskEditor.id && h('label', null, LW('类型'),
-              h('select', {
-                value: taskEditor.kind, disabled: busy,
-                onChange: e => setTaskEditor({ ...taskEditor, kind: e.target.value }),
-              },
-                h('option', { value: 'duty' }, LW('职责')),
-                h('option', { value: 'storage' }, LW('存储规则')),
-                h('option', { value: 'schedule' }, LW('定时任务')))),
-            taskEditor.id && h('p', { className: 'lw-assigned-hint', style: { margin: 0 } },
-              (taskKinds[taskEditor.kind] || {}).label || taskEditor.kind),
-            h('label', null, LW('任务名称'),
-              h('input', {
-                required: true, autoFocus: true, maxLength: 80, value: taskEditor.title, disabled: busy,
-                onChange: e => setTaskEditor({ ...taskEditor, title: e.target.value }),
-              })),
-            taskEditor.kind === 'schedule' && h('label', null, LW('重复规则（RRULE）'),
-              h('textarea', {
-                rows: 2, required: true, value: taskEditor.rrule, disabled: busy, placeholder: 'FREQ=WEEKLY;BYDAY=MO',
-                onChange: e => setTaskEditor({ ...taskEditor, rrule: e.target.value }),
-              })),
-            h('label', null, LW('内容（Markdown）'),
-              h('textarea', {
-                required: true, rows: 9, maxLength: 3000, value: taskEditor.instruction, disabled: busy,
-                placeholder: LW('用 Markdown 写下职责、输出格式或存储要求…'),
-                onChange: e => setTaskEditor({ ...taskEditor, instruction: e.target.value }),
-              })),
-            taskEditor.instruction.trim() && h('div', { className: 'lw-assigned-preview', 'aria-label': LW('Markdown 预览') },
-              h(Markdown, { source: taskEditor.instruction })),
-            taskError && h('p', { role: 'alert', className: 'lw-error', style: { margin: 0 } }, taskError),
-            h('p', { className: 'lw-assigned-hint', style: { margin: 0 } }, LW('保存后，这个 Bot 和项目内其他助手都能读到最新分工。')),
-            h('div', { className: 'lw-actions lw-dialog-actions' },
-              Btn({ variant: 'ghost', disabled: busy, onClick: () => setTaskEditor(null) }, LW('取消')),
-              Btn({ variant: 'primary', type: 'submit', disabled: busy || !taskEditor.title.trim() || !taskEditor.instruction.trim() }, LW('保存'))))),
+        nodeEdit && ReactDOM.createPortal(h(Dialog, {
+          title: nodeEdit.remove ? LW('删除节点') : nodeEdit.parent ? LW('添加分支') : LW('添加节点'), close: closeNodeEdit,
+        }, h('form', { className: 'lw-form', onSubmit: saveNode },
+          nodeEdit.remove ? h('p', null, LW('删除「') + botDisplayRecord(nodeEdit.remove, extensionFields, botLayout).title
+            + LW('」及其连线？下级节点会保留。'))
+            : h(React.Fragment, null,
+              nodeEdit.parent && h('p', { className: 'lw-hint' }, LW('上级节点 ') + botDisplayRecord(nodeEdit.parent, extensionFields, botLayout).title),
+              h('label', null, LW('节点标题'), h('input', { autoFocus: true, required: true, maxLength: 200,
+                value: nodeEdit.title, onChange: event => setNodeEdit({ ...nodeEdit, title: event.target.value }) })),
+              h('label', null, LW('节点内容'), h('textarea', { rows: 3, maxLength: 4000,
+                value: nodeEdit.text, onChange: event => setNodeEdit({ ...nodeEdit, text: event.target.value }) }))),
+          error && h('p', { role: 'alert' }, error),
+          h('div', { className: 'lw-actions lw-dialog-actions' },
+            Btn({ variant: 'ghost', disabled: busy, onClick: closeNodeEdit }, LW('取消')),
+            Btn({ variant: nodeEdit.remove ? 'danger' : 'primary', type: 'submit', disabled: busy },
+              LW(nodeEdit.remove ? '确认删除' : '保存节点'))))), document.body),
         editingBot && h(FeatureBotEditDialog, {
           workspaceId, projectName: row?.name, featureId: feature, featMeta,
           currentLabel: title, currentHint: subtitle,
@@ -3109,6 +3813,7 @@ window.__ModuleLoader__.load({
     }
 
     const paths = {
+      mindmap: 'M12 6v5M5 17v-5h14v5M12 12v5M9 3h6v4H9zM2 17h6v4H2zM9 17h6v4H9zM16 17h6v4h-6z',
       rewind: 'M3 11h11a5 5 0 0 1 0 10h-2M3 11l5-5M3 11l5 5',
       folder: 'M2.5 5.5h6l2 2h11v11.5H2.5z', chat: 'M4 4.5h16v12H10l-5.5 4V16H4z',
       feed: 'M3 13h4l3-7 4 12 3-7h4', ideas: 'M9 16c0-2-3-3-3-7a6 6 0 0 1 12 0c0 4-3 5-3 7z M10 20h4',
@@ -3133,8 +3838,10 @@ window.__ModuleLoader__.load({
       fingerprint: 'M12 10a2 2 0 0 0-2 2c0 1.4-.3 2.8-.9 4 M12 10a2 2 0 0 1 2 2c0 2.2-.5 4.2-1.4 6 M8.5 14.5c.3-1.2.5-2.4.5-3.5a3 3 0 0 1 6 0c0 1.8-.3 3.5-1 5.2 M5.5 13c.2-1 .3-2 .3-3a6.2 6.2 0 0 1 12.4 0c0 1.2-.1 2.4-.4 3.5 M6.8 6.5A8 8 0 0 1 17.2 6.5',
       back: 'M15 18l-6-6 6-6',
       upload: 'M12 16V4 M7 9l5-5 5 5 M4 19h16',
+      download: 'M12 4v12 M7 11l5 5 5-5 M4 20h16',
       image: 'M4 5.5h16v13H4z M8.2 9.2a1.4 1.4 0 1 0 0-2.8 1.4 1.4 0 0 0 0 2.8z M4.8 16.5l5-5.2 3.2 3.2 2.2-2.1 4.8 4.1',
       file: 'M7 3h7l5 5v13H7z M14 3v5h5',
+      cube: 'M12 2.5 20.5 7.25v9.5L12 21.5l-8.5-4.75v-9.5L12 2.5z M3.5 7.25 12 12l8.5-4.75 M12 12v9.5',
       repo: 'M7 7a2 2 0 1 0 0 4 2 2 0 0 0 0-4z M17 13a2 2 0 1 0 0 4 2 2 0 0 0 0-4z M7 11v6 M17 17v-1a3 3 0 0 0-3-3H9',
       refresh: 'M20 11a8 8 0 1 0-2.35 6.35 M20 4v7h-7',
       spark: 'M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z',
@@ -3270,6 +3977,7 @@ window.__ModuleLoader__.load({
       let rows = []
       let disposed = false
       let revision = 0, choice, nameStrings, initialNavigation = false
+      let assistantEntrance, foldedAssistantId
       let remoteBus = null
       let remoteSession = null
       let remoteLlm = null
@@ -3500,8 +4208,7 @@ window.__ModuleLoader__.load({
       }
       const nav = ctx.uiWorkspace
       const currentSession = () => Object.values(ctx.sessions.list.getSnapshot().byId).find(s => s.retainedBy.mainView > 0)
-      const currentRow = () => {
-        const current = currentSession()
+      const currentRow = (current = currentSession()) => {
         const native = current && ctx.workspaces.list.getSnapshot().items.find(w => w.sessionIds.includes(current.id))
         const workspaceId = native?.workspaceId || current?.workspaceId
         return workspaceId ? rows.find(r => r.workspaceId === workspaceId) : undefined
@@ -3517,7 +4224,6 @@ window.__ModuleLoader__.load({
       function selectPage(workspaceId, feature) {
         const row = rows.find(r => r.workspaceId === workspaceId && r.scope !== 'global')
         if (!row || !hasFeature(row, feature)) return
-        hideActiveSandbox()
         const target = { workspaceId, feature }
         syncChoice(target)
         splitPanes = [target]
@@ -3572,7 +4278,6 @@ window.__ModuleLoader__.load({
           return
         }
         if (!hasFeature(row, feature)) return
-        hideActiveSandbox()
         const pane = { workspaceId: row.workspaceId, feature }
         if (activePanel === pageKey && splitPanes.length === 0 && choice?.workspaceId) splitPanes = [choice]
         if (!splitPanes.some(p => p.workspaceId === pane.workspaceId && p.feature === pane.feature)) {
@@ -3721,6 +4426,11 @@ window.__ModuleLoader__.load({
           if (name === 'sidebar.panellist.actions' || name === 'conversation.session.header.views.actions') {
             return list.filter(e => e.options?.id !== 'entry-customization' && !String(e.options?.id || '').startsWith('__lw_sync'))
           }
+          // The native subagent plugin supplies both the breadcrumb control and the header catalog.
+          if (name === 'conversation.session.header.lineage') return []
+          if (name === 'conversation.session.header.actions') {
+            return list.filter(e => e.options?.id !== 'subagent-catalog' && !String(e.options?.id || '').startsWith('__lw_sync'))
+          }
           if (name === 'conversation.input.model.options' || name === 'conversation.session.header.actions.subagent.footer') {
             return list.filter(e => e.options?.id !== 'agent-team' && !String(e.options?.id || '').startsWith('__lw_sync'))
           }
@@ -3802,10 +4512,16 @@ window.__ModuleLoader__.load({
         const names = () => { if (!disposed) refresh().catch(() => {}) }
         const syncRoom = () => {
           const panel = ctx.layout.panelInfo.getSnapshot()
-          const row = currentRow()
+          const session = currentSession()
+          const row = currentRow(session)
           const room = panel.activePanelId ? 'page' : (!row || row.scope === 'global' ? 'global' : 'project')
           const { dataset } = document.documentElement
           if (dataset.lwRoom !== room) dataset.lwRoom = room
+          if (panel.activePanelId === pageKey || panel.activePanelId === welcomeKey) setAssistantBrandHidden(false)
+          else if (panel.activePanelId == null && session) {
+            if (room === 'project' || allBotSessionIds().has(session.id)) setAssistantBrandHidden(false)
+            else if (row?.scope === 'global' && (initialNavigation || !session.blank) && !assistantEntrance) setAssistantBrandHidden(true)
+          }
         }
         window.addEventListener(nameChanged, names)
         window.addEventListener(profileChanged, names)
@@ -3837,10 +4553,114 @@ window.__ModuleLoader__.load({
           window.removeEventListener(navEvent, syncRoom)
           offSessions(); offWorkspaces(); offPanel(); clearTimeout(updateTimer); clearTimeout(catalogTimer)
           delete document.documentElement.dataset.lwRoom
+          setAssistantBrandHidden(false)
         }
       }, 'LabWeave appearance')
 
       const slot = (name, options, component) => ctx.slots.inject(name, () => ctx.slots.register({ name, ...options }, component))
+      const speakerRepliesByHistory = new WeakMap()
+      function NativeSpeakerReplies({ binding, messageId }) {
+        const history = useStore(binding.eventSource)
+        let byMessage = speakerRepliesByHistory.get(history)
+        if (!byMessage) {
+          byMessage = new Map()
+          const events = history.entries.map(entry => entry.event)
+          const cuts = rewindCuts(events)
+          for (const event of events) {
+            if (event.type !== 'user/message' || event.data.source.kind !== 'labweave-speaker' || isRewound(cuts, event.seq)) continue
+            const { replyTo, label } = event.data.source
+            if (!byMessage.has(replyTo)) byMessage.set(replyTo, [])
+            byMessage.get(replyTo).push(h(SpeakerReply, { key: event.seq, label, text: featureBotMessageText(event) }))
+          }
+          speakerRepliesByHistory.set(history, byMessage)
+        }
+        return byMessage.get(messageId) || null
+      }
+      const referenceKind = 'labweave-reference'
+      ctx.effect(() => ctx.uiConversation.userText.register({
+        id: referenceKind, order: 15,
+        match(text, from) {
+          const pattern = /@\[((?:\\.|[^\\\]])*)\]\(weave-ref:[A-Za-z0-9_-]+\)/gu
+          pattern.lastIndex = from
+          const match = pattern.exec(text)
+          return match ? { id: referenceKind, start: match.index, end: pattern.lastIndex,
+            data: { label: match[1].replace(/\\(.)/gu, '$1') } } : undefined
+        },
+      }), 'Weave composer reference labels')
+      slot('conversation.user.text.node', { key: referenceKind }, ({ node }) =>
+        h('span', { className: 'lw-tag', 'data-tone': 'neutral' }, '@' + node.data.label))
+      ctx.inject(['inputTriggers'], scope => {
+        const service = scope.get?.('inputTriggers') ?? scope.inputTriggers
+        if (!service?.live?.sources) return
+        scope.effect(() => {
+          const belongs = sid => {
+            const ws = ctx.workspaces.list.getSnapshot().items.find(item => item.sessionIds.includes(sid))
+            return ws && rows.some(item => item.workspaceId === ws.workspaceId)
+          }
+          const restores = []
+          function adapt(source) {
+            if (!['/', '@'].includes(source.trigger)) return
+            const primary = source.name === (source.trigger === '/' ? 'command' : 'reference')
+            restores.push(wrap(source, 'candidates', async (original, session, req) => {
+              if (!belongs(session.sessionId)) return original(session, req)
+              if (!primary) return []
+              try {
+                const found = await composerCandidates(session.sessionId, source.trigger, req.query, req.signal)
+                return found.map(item => ({
+                  name: item.name, description: item.description, section: item.section,
+                  icon: item.section === '对话' || item.section === '邀请发言' ? 'session'
+                    : item.section === '空间存储' ? 'file' : item.drill ? 'folder' : undefined,
+                  ...(item.drill && { drill: true }),
+                  value: JSON.stringify({ weave: item }),
+                }))
+              } catch (error) {
+                if (req.signal?.aborted) return []
+                throw error
+              }
+            }))
+            if (source.trigger === '/') {
+              for (const key of ['matchEnter', 'matchClaim', 'lexicon']) {
+                if (typeof source[key] === 'function') {
+                  restores.push(wrap(source, key, (original, session, ...args) =>
+                    belongs(session.sessionId) ? undefined : original(session, ...args)))
+                }
+              }
+            }
+            if (!primary) return
+            if (source.trigger === '@' && typeof source.openReference === 'function') {
+              restores.push(wrap(source, 'openReference', (original, session, ref) =>
+                ref.ref?.includes('weave-ref:') ? false : original(session, ref)))
+            }
+            restores.push(wrap(source, 'onPick', (original, args) => {
+              let chosen
+              try { chosen = JSON.parse(args.candidate.value || '{}').weave } catch {}
+              if (!chosen) return original(args)
+              if (chosen.tab) {
+                const sid = args.session.sessionId
+                requestAnimationFrame(() => {
+                  if (currentSession()?.id !== sid) return
+                  try {
+                    ctx.sidebarRight.openTabIn(sid, chosen.tab)
+                    ctx.sidebarRight.actionsFor?.(sid)?.setExpanded?.(sid, true)
+                  } catch (err) { notice(err.message) }
+                })
+                return { text: '' }
+              }
+              if (chosen.drill && (args.action === 'drill' || !chosen.text)) return { text: '@' + chosen.drill, continue: true }
+              if (source.trigger === '@') return { insert: { source: 'reference', ref: chosen.text,
+                label: chosen.label || chosen.name, appearance: chosen.section === '对话' || chosen.section === '邀请发言' ? 'session' : 'file',
+                clipboardText: chosen.text } }
+              return { text: chosen.text }
+            }))
+          }
+          for (const source of service.live.sources) adapt(source)
+          const restoreRegister = wrap(service, 'registerSource', (register, source) => {
+            adapt(source)
+            return register(source)
+          })
+          return () => { restoreRegister(); restores.reverse().forEach(restore => restore()) }
+        }, 'Weave session-specific input menus')
+      })
       function openConversationRewind(sessionId, role, address, restore) {
         const binding = ctx.sessions.binding(sessionId)
         const entries = binding?.eventSource.getSnapshot().entries
@@ -3921,12 +4741,15 @@ window.__ModuleLoader__.load({
               const row = render(props)
               const actions = row?.props?.actions
               const seq = props.node?.data?.seq
-              if (typeof actions !== 'function' || !Number.isSafeInteger(seq)) return row
-              return React.cloneElement(row, { actions: text => {
+              const userRow = typeof actions !== 'function' || !Number.isSafeInteger(seq) ? row
+                : React.cloneElement(row, { actions: text => {
                 const footer = actions(text)
                 return React.cloneElement(footer, { extraActions: h(React.Fragment, null,
                   footer.props.extraActions, h(NativeRewindButton, { sessionId: props.sessionId, role: 'user', address: seq })) })
               } })
+              const messageId = props.node?.data?.messageId
+              const binding = messageId && ctx.sessions.binding(props.sessionId)
+              return binding ? h(React.Fragment, null, userRow, h(NativeSpeakerReplies, { binding, messageId })) : userRow
             }
             entry.component = replacement
             wrapped.set(entry, { original, replacement })
@@ -3955,9 +4778,118 @@ window.__ModuleLoader__.load({
       function GlobalConversationProgress({ binding }) {
         const session = useStore(binding.session)
         const history = useStore(binding.eventSource)
+        const anchor = React.useRef(null)
+        const [target, setTarget] = React.useState(null)
+        React.useLayoutEffect(() => {
+          if (!session.running) {
+            setTarget(null)
+            return
+          }
+          const conversation = anchor.current?.closest('[data-conversation-content][data-conversation-session]')
+          if (!conversation) return
+          // The pinned client owns the running row inside the message list.
+          const locate = () => setTarget(conversation.querySelector('[data-chat-running]:not([data-holding])'))
+          locate()
+          const observer = new MutationObserver(locate)
+          observer.observe(conversation, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-chat-running', 'data-holding'] })
+          return () => observer.disconnect()
+        }, [session.running])
         const progress = session.running && conversationProgress(history.entries)
-        return progress ? h('div', { className: 'lw-assistant-progress' }, h(TurnProgress, { progress })) : null
+        return h(React.Fragment, null, h('span', { hidden: true, ref: anchor }),
+          target && progress && ReactDOM.createPortal(
+            h('div', { className: 'lw-assistant-progress' }, h(TurnProgress, { progress })), target))
       }
+      function ProjectHandoffs({ sessionId }) {
+        const [items, setItems] = React.useState([])
+        const [error, setError] = React.useState('')
+        const [busy, setBusy] = React.useState(false)
+        const sending = React.useRef(false)
+        const isVisible = () => Boolean(document.querySelector(
+          '[data-conversation-content][data-conversation-session="' + CSS.escape(sessionId) + '"]')?.getClientRects().length)
+        async function forward(item, confirm) {
+          if (sending.current || !isVisible()) return
+          sending.current = true
+          setBusy(true)
+          setError('')
+          const command = (action, args = {}) => api('project-handoffs', { sessionId, id: item.id, action, ...args })
+          let claimed, accepted = false, submitted = false
+          try {
+            const row = rows.find(entry => entry.scope === item.projectId)
+            if (!row || row.scope === 'global') throw Error(LW('目标项目已不可用。'))
+            const workspaces = ctx.workspaces.list.getSnapshot()
+            const sessions = ctx.sessions.list.getSnapshot()
+            const eligible = sessionsFor(row.workspaceId, workspaces, sessions, allBotSessionIds())
+            const target = recentSessionFor(row.workspaceId, eligible.filter(entry => !entry.blank)) || eligible.find(entry => entry.blank)
+            const sid = target?.id || await ctx.sessions.create({ workspaceId: row.workspaceId })
+            if (!isVisible()) return
+            claimed = await command('claim', { targetSessionId: sid, confirm })
+            await ctx.sessions.using(sid, { source: 'projectHandoff' }, async ref => {
+              await ref.ready
+              await ensureSessionRoutableModel(sid, ref)
+              const projectSession = ref.binding.session
+              submitted = true
+              const result = await projectSession.prompt([{ type: 'text', text: claimed.task }], 'queue')
+              if (result?.ok === false) {
+                submitted = false
+                throw Error(sessionErrorText(result.error) || LW('目标项目会话暂时无法接单。'))
+              }
+              accepted = true
+            })
+            await command('sent', { claim: claimed.claim }).catch(() => {})
+            if (isVisible()) openChat(sid)
+          } catch (err) {
+            if (claimed && !accepted && !submitted) await command('release', { claim: claimed.claim }).catch(() => {})
+            setError(err.message)
+          } finally {
+            sending.current = false
+            setBusy(false)
+          }
+        }
+        React.useEffect(() => {
+          const ctrl = new AbortController()
+          let loading = false
+          async function refresh() {
+            if (loading || sending.current) return
+            loading = true
+            try {
+              const pending = await api('project-handoffs', { sessionId }, ctrl.signal)
+              if (ctrl.signal.aborted) return
+              setItems(pending)
+              const next = pending.find(item => item.status === 'ready')
+              if (next) await forward(next, false)
+            } catch { /* Retry on the next refresh. */ }
+            finally { loading = false }
+          }
+          void refresh()
+          const timer = setInterval(refresh, 1000)
+          return () => { ctrl.abort(); clearInterval(timer) }
+        }, [sessionId])
+        if (!items.length && !error) return null
+        return h('section', { className: 'lw-project-handoffs', 'aria-label': LW('项目转交') },
+          error && h('p', { role: 'alert' }, error),
+          items.map(item => h('article', { key: item.id, className: 'lw-speaker-reply' },
+            h('strong', null, LW('转交项目 ') + item.projectName),
+            h('p', null, item.task),
+            item.status === 'sending' ? Btn({ size: 'xs', onClick: () => openChat(item.targetSessionId) }, LW('到项目会话查看'))
+              : h('div', { className: 'lw-actions' },
+              h('span', { className: 'lw-hint' }, item.status === 'ready' ? LW('正在准备转交') : LW('等待确认')),
+              Btn({ variant: 'primary', size: 'xs', disabled: busy, onClick: () => forward(item, true) }, LW('确认并转交')),
+              Btn({ variant: 'ghost', size: 'xs', disabled: busy, onClick: async () => {
+                try {
+                  await api('project-handoffs', { sessionId, id: item.id, action: 'dismiss' })
+                  setItems(previous => previous.filter(entry => entry.id !== item.id))
+                } catch (err) { setError(err.message) }
+              } }, LW('取消'))))))
+      }
+      slot('shell.overlay', { id: 'labweave-project-handoffs' }, function HandoffOverlay() {
+        useNav()
+        const sessions = useStore(ctx.sessions.list)
+        const workspaces = useStore(ctx.workspaces.list)
+        const global = rows.find(row => row.scope === 'global')
+        const workspace = global && workspaces.items.find(item => item.workspaceId === global.workspaceId)
+        const sessionId = workspace?.sessionIds.find(id => sessions.byId[id]?.retainedBy.mainView > 0)
+        return sessionId ? h(ProjectHandoffs, { key: sessionId, sessionId }) : null
+      })
       slot('conversation.input.dock', { id: 'labweave-messenger', order: 12, inject: sessionId => ({ sessionId }) }, ({ sessionId }) => {
         useNav()
         const workspace = useStore(ctx.workspaces.list).items.find(w => w.sessionIds.includes(sessionId))
@@ -3966,88 +4898,121 @@ window.__ModuleLoader__.load({
         const binding = ctx.sessions.binding(sessionId)
         return h(React.Fragment, null,
           h('style', { 'data-lw-messenger': sessionId }, [
-            scope + ' [data-slot="conversation.input.model"],' + scope + ' [data-slot="conversation.input.permission"],' + scope + ' [data-slot="conversation.input.plan"],' + scope + ' [class*="uV2eYG_select"],' + scope + ' [class*="uV2eYG_modes"],' + scope + ' [class*="uV2eYG_add"]{display:none!important}',
+            scope + ' [data-slot="conversation.input.model"],' + scope + ' [data-slot="conversation.input.permission"],' + scope + ' [data-slot="conversation.input.plan"],' + scope + ' [class*="uV2eYG_select"],' + scope + ' [class*="uV2eYG_modes"],' + scope + ' [data-composer-card] button[class$="_add"]{display:none!important}',
             scope + ' [data-chat-flow-kind="turn-process"],' + scope + ' [data-step-process"],' + scope + ' [data-chat-call-id],' + scope + ' [data-tool]{display:none!important}',
             scope + ' [data-variant="think"]{display:none!important}',
             scope + ' [data-content-phase="active"] [class*="scrollBody"],' + scope + ' [data-phase="active"] [class*="scrollBody"]{padding-top:8px}',
           ].join('')),
-          h(ConversationReceipts, { key: 'receipts-' + sessionId, sessionId }),
           binding && h(GlobalConversationProgress, { key: sessionId, binding }))
       })
       slot('conversation.input.left', { id: 'labweave-assistant-attach', order: -20, inject: sessionId => ({ sessionId }) }, ({ sessionId }) => {
         useNav()
         const workspace = useStore(ctx.workspaces.list).items.find(w => w.sessionIds.includes(sessionId))
         if (!workspace || !rows.some(r => r.workspaceId === workspace.workspaceId && r.scope === 'global')) return null
-        const [open, setOpen] = React.useState(false)
-        const wrapRef = React.useRef(null)
-        React.useEffect(() => {
-          if (!open) return
-          const onDoc = e => { if (!wrapRef.current?.contains(e.target)) setOpen(false) }
-          const onKey = e => { if (e.key === 'Escape') setOpen(false) }
-          document.addEventListener('pointerdown', onDoc)
-          document.addEventListener('keydown', onKey)
-          return () => {
-            document.removeEventListener('pointerdown', onDoc)
-            document.removeEventListener('keydown', onKey)
-          }
-        }, [open])
-        const pick = accept => {
-          setOpen(false)
-          const root = document.querySelector('[data-conversation-session="' + CSS.escape(sessionId) + '"]')
-          const input = root?.querySelector('input[type="file"]')
-          if (!input || input.disabled) return
-          const prev = input.getAttribute('accept')
-          if (accept) input.setAttribute('accept', accept)
-          else input.removeAttribute('accept')
-          input.click()
-          window.setTimeout(() => {
-            if (prev == null) input.removeAttribute('accept')
-            else input.setAttribute('accept', prev)
-          }, 1500)
-        }
-        return h('div', { ref: wrapRef, className: 'lw-asst-attach' },
-          h('button', {
-            type: 'button', className: 'lw-fbot-plus-btn',
-            'aria-label': LW('导入图片或文件'), 'aria-haspopup': 'menu', 'aria-expanded': open,
-            title: LW('导入图片或文件'),
-            onClick: () => setOpen(prev => !prev),
-          }, h(Icon, { name: 'plus' })),
-          open && h('div', { className: 'lw-fbot-plus-menu', role: 'menu', 'aria-label': LW('导入图片或文件') },
-            h('button', { type: 'button', role: 'menuitem', onClick: () => pick('image/*') },
-              h(Icon, { name: 'image' }), h('span', null, LW('导入图片'))),
-            h('button', { type: 'button', role: 'menuitem', onClick: () => pick('') },
-              h(Icon, { name: 'file' }), h('span', null, LW('导入文件')))))
+        return h(ComposerAttachmentMenu, { onPick: (imagesOnly, anchor) => {
+          const input = anchor?.closest('[data-composer-card]')?.querySelector('input[type="file"]')
+          openComposerFile(input, imagesOnly)
+        } })
       })
       const BrandMark = ({ size }) => h('img', {
         src: './weave-orbit.svg', alt: '', 'aria-hidden': true, draggable: false,
         width: size, height: size, className: 'lw-brand-mark',
       })
+      function setAssistantBrandHidden(hidden) {
+        document.documentElement.toggleAttribute('data-lw-assistant-brand-hidden', hidden)
+      }
+      function queueAssistantEntrance(button) {
+        const animate = !matchMedia('(prefers-reduced-motion: reduce)').matches &&
+          !document.documentElement.hasAttribute('data-lw-assistant-brand-hidden')
+        const pairs = [
+          ['.lw-brand-mark', '.lw-hero-avatar-img'],
+          ['.lw-wordmark', '.lw-hero-entry-name'],
+        ].flatMap(([from, to]) => {
+          const bounds = animate && button.querySelector(from)?.getBoundingClientRect()
+          return bounds?.width && bounds.height ? [{ bounds, to }] : []
+        })
+        assistantEntrance = { pairs, expires: performance.now() + 4000 }
+      }
+
+      function playAssistantEntrance(hero, entrance) {
+        const layer = document.createElement('div')
+        layer.className = 'lw-assistant-flight'
+        layer.setAttribute('aria-hidden', 'true')
+        document.body.append(layer)
+        const animations = []
+        const timing = { duration: 420, delay: 100, easing: 'cubic-bezier(.2,.75,.25,1)', fill: 'both' }
+        for (const { bounds, to } of entrance.pairs) {
+          const target = hero.querySelector(to)
+          const end = target?.getBoundingClientRect()
+          if (!end?.width || !end.height) continue
+          const copy = target.cloneNode(true)
+          const style = getComputedStyle(target)
+          Object.assign(copy.style, {
+            position: 'absolute', margin: '0', left: end.left + 'px', top: end.top + 'px',
+            width: end.width + 'px', height: end.height + 'px',
+            color: style.color, font: style.font, letterSpacing: style.letterSpacing,
+            borderRadius: style.borderRadius, objectFit: style.objectFit,
+          })
+          layer.append(copy)
+          const x = bounds.left + bounds.width / 2 - end.left - end.width / 2
+          const y = bounds.top + bounds.height / 2 - end.top - end.height / 2
+          const scale = bounds.height / end.height
+          animations.push(copy.animate([
+            { transform: "translate(" + x + "px," + y + "px) scale(" + scale + ")", opacity: 1 },
+            { transform: 'none', opacity: 1, offset: .88 },
+            { transform: 'none', opacity: 0 },
+          ], timing))
+          animations.push(target.animate([{ opacity: 0 }, { opacity: 0, offset: .88 }, { opacity: 1 }], timing))
+        }
+        const cleanup = () => {
+          for (const animation of animations) animation.cancel()
+          layer.remove()
+        }
+        Promise.allSettled(animations.map(animation => animation.finished)).then(cleanup)
+        return cleanup
+      }
+
+      function AssistantIdentity({ row, active = false, entryRef }) {
+        const displayName = row?.name || 'Weave'
+        const hasCustomAvatar = Boolean(row?.hasCustomAvatar && row?.avatar)
+        const avatarSrc = hasCustomAvatar ? row.avatar : './weave-orbit.svg'
+        const tagline = !active && row?.tagline
+        return h('button', {
+          ref: entryRef, type: 'button',
+          className: 'lw-assistant-identity ' + (active ? 'lw-active-profile-entry' : 'lw-hero-profile-entry'),
+          'aria-label': '设置全局助手 ' + displayName + ' 资料',
+          'aria-haspopup': 'dialog', title: LW('点击设置助手头像与资料'),
+          onClick: () => window.dispatchEvent(new CustomEvent(openProfileEvent)),
+        },
+          h('span', { className: 'lw-hero-avatar-frame', 'data-custom': hasCustomAvatar ? 'true' : 'false' },
+            h('img', { src: avatarSrc, alt: '', 'aria-hidden': true, draggable: false, className: 'lw-brand-mark lw-hero-avatar-img' }),
+            h('span', { className: 'lw-hero-avatar-badge', 'aria-hidden': true }, h(Icon, { name: 'edit' }))),
+          h('span', { className: 'lw-hero-entry-name' }, displayName),
+          tagline && h('span', { className: 'lw-hero-entry-tagline' }, tagline))
+      }
+
       function GlobalHeroEntry({ size }) {
         useNav()
         useStore(ctx.sessions.list)
         useStore(ctx.workspaces.list)
+        const panel = useStore(ctx.layout.panelInfo)
+        const ref = React.useRef(null)
+        const cleanup = React.useRef(null)
         const room = currentRow()
+        React.useLayoutEffect(() => {
+          if (!assistantEntrance || !ref.current?.getClientRects().length ||
+              room?.scope !== 'global' || panel.activePanelId != null) return
+          const entrance = assistantEntrance
+          assistantEntrance = null
+          setAssistantBrandHidden(true)
+          if (performance.now() >= entrance.expires || !entrance.pairs.length ||
+              matchMedia('(prefers-reduced-motion: reduce)').matches) return
+          cleanup.current?.()
+          cleanup.current = playAssistantEntrance(ref.current, entrance)
+        })
+        React.useLayoutEffect(() => () => cleanup.current?.(), [])
         if (room && room.scope !== 'global') return h(BrandMark, { size })
-        const g = globalRow()
-        const displayName = g?.name || 'Weave'
-        const hasCustomAvatar = Boolean(g?.hasCustomAvatar && g?.avatar)
-        const avatarSrc = hasCustomAvatar ? g.avatar : './weave-orbit.svg'
-        const tagline = g?.tagline || ''
-        return h('button', {
-          type: 'button',
-          className: 'lw-hero-profile-entry',
-          'aria-label': `设置全局助手 ${displayName} 资料`,
-          title: '点击设置助手头像与资料',
-          onClick: () => window.dispatchEvent(new CustomEvent(openProfileEvent)),
-        },
-          h('span', { className: 'lw-hero-avatar-frame', 'data-custom': hasCustomAvatar ? 'true' : 'false' },
-            h('img', {
-              src: avatarSrc, alt: '', 'aria-hidden': true, draggable: false,
-              className: 'lw-brand-mark lw-hero-avatar-img',
-            }),
-            h('span', { className: 'lw-hero-avatar-badge', 'aria-hidden': true }, h(Icon, { name: 'edit' }))),
-          h('span', { className: 'lw-hero-entry-name' }, displayName),
-          tagline && h('span', { className: 'lw-hero-entry-tagline' }, tagline))
+        return h(AssistantIdentity, { row: globalRow(), entryRef: ref })
       }
       slot('sidebar.brand.mark', { priority: -30 }, BrandMark)
       slot('conversation.hero.brand.mark', { priority: -30 }, GlobalHeroEntry)
@@ -4074,48 +5039,65 @@ window.__ModuleLoader__.load({
         }, [canOpen, workspaceId, attempt])
         if (selectedId !== undefined) return null
         return h('div', { role: failed ? 'alert' : 'status', className: 'lw-hint' },
-          failed ? LW('无法打开助理。') : LW('正在打开助理…'),
+          failed ? LW('无法打开助手。') : LW('正在打开助手…'),
           failed && Btn({ variant: 'ghost', onClick: () => { setFailed(false); retry() } }, LW('重试')))
       })
-      function openAssistantHome() {
+      function showWelcome() {
+        assistantEntrance = null
         closeDrawer()
         forgetPage()
+        ctx.layout.selectPanel(welcomeKey)
+        changed()
+      }
+      function toggleAssistant(button) {
+        initialNavigation = true
         const g = globalRow()
         const current = currentSession()
-        const onGlobalBlank = current?.blank && ctx.workspaces.list.getSnapshot().items
-          .some(item => item.workspaceId === g?.workspaceId && item.sessionIds.includes(current.id))
         const panelId = ctx.layout.panelInfo.getSnapshot().activePanelId
-        if (onGlobalBlank && !panelId) {
-          changed()
+        if (isAssistantOpen(panelId, current)) {
+          foldedAssistantId = current.id
+          showWelcome()
           return
         }
+        const folded = panelId === welcomeKey && ctx.sessions.list.getSnapshot().byId[foldedAssistantId]
+        const resume = folded && currentRow(folded)?.scope === 'global' ? folded : null
+        foldedAssistantId = null
+        if (!resume || resume.blank) queueAssistantEntrance(button)
+        closeDrawer()
+        if (resume) return openChat(resume.id)
+        forgetPage()
         if (g) nav.startSession(g.workspaceId)
         else nav.startSession()
         changed()
       }
+      function isAssistantOpen(panelId, session) {
+        return panelId == null && session && currentRow(session)?.scope === 'global' && !allBotSessionIds().has(session.id)
+      }
       slot('sidebar.brand.name', { priority: -30 }, () => {
-        const rev = useNav(), ref = React.useRef(null)
+        useNav()
+        const ref = React.useRef(null)
         const panel = useStore(ctx.layout.panelInfo)
         useStore(ctx.sessions.list)
         useStore(ctx.workspaces.list)
-        const globalName = globalRow()?.name || 'Weave'
-        const active = !panel.activePanelId && (!currentRow() || currentRow()?.scope === 'global')
+        const active = Boolean(isAssistantOpen(panel.activePanelId, currentSession()))
+        const label = active ? LW('收回助手') : LW('打开助手')
         React.useLayoutEffect(() => {
           const btn = ref.current?.closest('button')
           if (!btn) return
-          btn.setAttribute('aria-label', LW('打开助理'))
+          btn.setAttribute('aria-label', label)
+          btn.setAttribute('aria-expanded', String(active))
           btn.removeAttribute('title')
           const onClick = event => {
             event.preventDefault()
             event.stopPropagation()
-            openAssistantHome()
+            toggleAssistant(btn)
           }
           btn.addEventListener('click', onClick)
           return () => btn.removeEventListener('click', onClick)
-        }, [rev, globalName])
+        }, [label, active])
         return h('span', { ref, className: 'lw-brand-entry' },
           h('span', { className: 'lw-wordmark' }, 'Weave'),
-          h('span', { className: 'lw-brand-assistant', 'data-active': active ? 'true' : 'false', 'aria-hidden': true }, LW('打开助理')))
+          h('span', { className: 'lw-brand-assistant', 'data-active': active ? 'true' : 'false', 'aria-hidden': true }, label))
       })
 
       const tool = (name, label, onClick, className = '') => h('button', { type: 'button',
@@ -4145,6 +5127,7 @@ window.__ModuleLoader__.load({
         const { value, error } = useProject(row.workspaceId, 'navigation')
         const [chatsOpen, setChatsOpen] = React.useState(true)
         const featureList = projectFeatures(row, value)
+        const archivedBots = featureList.filter(bot => bot.archived)
         const labels = value?.labels || Object.fromEntries(featureList.map(f => [f.id, f.label]))
         const hidden = allBotSessionIds(value)
         const visibleSessions = sessions.filter(s => !hidden.has(s.id))
@@ -4152,11 +5135,12 @@ window.__ModuleLoader__.load({
         const entry = (id, text, icon, click, active, extra = {}) => h('button', { type: 'button', className: 'lw-row-main',
           'aria-current': active ? 'page' : undefined, ...extra, onClick: click }, h(Icon, { name: icon }), h('span', null, text))
         return h('nav', { className: 'lw-tier', 'aria-label': row.name + LW(' 项目功能') },
-          featureList.map(feat => {
+          featureList.filter(bot => !bot.archived && !bot.clusterParent).map(feat => {
             const id = feat.id
             const label = labels[id] || feat.label || features[id] || id
+            const members = featureList.filter(bot => bot.clusterParent === id && !bot.archived)
             return h(React.Fragment, { key: id },
-              h('div', { className: 'lw-row' }, entry(id, label, feat.symbol || featureIcon(id), () => {
+              h('div', { className: 'lw-row' }, entry(id, label, botDisplayIcon(feat), () => {
                 if (id === 'chat') {
                   if (matches.length > 0) setChatsOpen(prev => !prev)
                   else setChatsOpen(true)
@@ -4164,12 +5148,21 @@ window.__ModuleLoader__.load({
                 }
                 openPage(row, id)
               }, activePage === id || splitPanes.some(p => p.workspaceId === row.workspaceId && p.feature === id),
-              id === 'chat' && matches.length > 0 ? { 'aria-expanded': chatsOpen, title: chatsOpen ? LW('点击收起对话历史') : LW('点击展开对话历史') } : {}),
+              {
+                ...(id === 'chat' && matches.length > 0 ? { 'aria-expanded': chatsOpen, title: chatsOpen ? LW('点击收起对话历史') : LW('点击展开对话历史') } : {}),
+                ...(id !== 'chat' && paradigmKeyFor(feat) ? { 'data-paradigm': paradigmKeyFor(feat), style: { '--lw-paradigm-accent': paradigmAccentFor(feat) } } : {}),
+              }),
               h('span', { className: 'lw-row-tools' },
                 id === 'chat' && tool('plus', LW('在') + row.name + LW('中新建对话'), () => { setChatsOpen(true); startProjectChat(row) }),
                 onRenameFeature && tool('edit', LW('重命名功能 ') + label, () => onRenameFeature(row, feat, label)),
                 id!=='chat' && onDeleteFeature && tool('trash',LW('删除功能 ')+label,()=>onDeleteFeature(row,feat,label),'lw-tool-danger'),
                 tool('split', LW('分屏打开') + label, () => splitPage(row, id)))),
+              members.length > 0 && h('details', { className: 'lw-sessions' },
+                h('summary', null, LW('成员 Bot') + ' · ' + members.length),
+                members.map(member => h('div', { className: 'lw-row', key: member.id },
+                  entry(member.id, member.label, botDisplayIcon(member),
+                    () => openPage(row, member.id), activePage === member.id,
+                    paradigmKeyFor(member) ? { 'data-paradigm': paradigmKeyFor(member), style: { '--lw-paradigm-accent': paradigmAccentFor(member) } } : {})))),
               id === 'chat' && (chatsOpen || Boolean(filter)) && matches.length > 0 && h('div', { className: 'lw-sessions', 'aria-label': row.name + LW(' 对话') },
                 matches.map(s => h('div', { className: 'lw-row', key: s.id },
                   h('button', { type: 'button', className: 'lw-row-main', 'aria-current': current === s.id ? 'page' : undefined,
@@ -4178,6 +5171,18 @@ window.__ModuleLoader__.load({
                     tool('edit', LW('重命名对话 ') + chatTitle(s), () => onRenameChat(s)),
                     tool('trash', LW('删除对话 ') + chatTitle(s), () => onDeleteChat(row, s), 'lw-tool-danger'))))))
           }),
+          archivedBots.length > 0 && h('details', { className: 'lw-sessions' },
+            h('summary', null, LW('已归档 Bot') + ' · ' + archivedBots.length),
+            archivedBots.map(bot => h('div', { className: 'lw-row', key: bot.id },
+              entry(bot.id, bot.label, botDisplayIcon(bot), () => openPage(row, bot.id), activePage === bot.id,
+                paradigmKeyFor(bot) ? { 'data-paradigm': paradigmKeyFor(bot), style: { '--lw-paradigm-accent': paradigmAccentFor(bot) } } : {}),
+              tool('back', LW('恢复 ') + bot.label, async () => {
+                try {
+                  await project(row.workspaceId, 'bot_restore', { featureId: bot.id })
+                  await refresh()
+                  window.dispatchEvent(new Event(updated))
+                } catch (failure) { notice(failure.message) }
+              })))),
           error && h('small', { role: 'alert' }, error))
       }
 
@@ -4186,7 +5191,7 @@ window.__ModuleLoader__.load({
         if (result && result.ok === false) throw Error(result.error?.message || LW('重命名对话失败。'))
       }
       const removeSessionInRow = async (row, sessionId) => {
-        await ctx.uiWorkspace.archiveSession(sessionId, { stopActivity: true })
+        await api('delete-session', { sessionId })
         if (currentSession()?.id === sessionId) {
           const remaining = historySessionsFor(row.workspaceId, ctx.workspaces.list.getSnapshot(), ctx.sessions.list.getSnapshot(), allBotSessionIds())
             .filter(s => s.id !== sessionId)
@@ -4225,7 +5230,7 @@ window.__ModuleLoader__.load({
         if (dialog?.type === 'delete-session') {
           return h(Dialog, { title: LW('删除对话'), close }, h('div', { className: 'lw-form' },
             h('p', { style: { margin: 0, fontSize: 13, color: 'var(--dsw-alias-label-secondary)' } },
-              `确定移除对话「${chatTitle(dialog.session)}」吗？`),
+              `确定删除对话「${chatTitle(dialog.session)}」吗？对话日志将在 Weave 停止时永久清理。`),
             err && h('p', { role: 'alert' }, err),
             h('div', { className: 'lw-actions lw-dialog-actions' },
               Btn({ variant: 'ghost', onClick: close, disabled: busy }, LW('取消')),
@@ -4251,9 +5256,14 @@ window.__ModuleLoader__.load({
         const selected = panel.activePanelId === pageKey ? choice : null
         React.useEffect(() => {
           if (initialNavigation || !globalRow() || sessions.phase !== 'ready' || workspace.phase !== 'ready') return
-          initialNavigation = true
-          if (choice && sessionStorage.getItem(selectionKey) && choice.feature !== 'chat' && rows.some(r => r.workspaceId === choice.workspaceId))
+          if (choice && choice.feature !== 'chat' && rows.some(r => r.workspaceId === choice.workspaceId)) {
+            initialNavigation = true
             return selectPage(choice.workspaceId, choice.feature)
+          }
+          const room = currentRow(current)
+          if (panel.activePanelId == null && !room) return
+          initialNavigation = true
+          if (panel.activePanelId == null && room?.scope === 'global' && current.blank) showWelcome()
         }, [revision, sessions.phase, workspace.phase, current, panel.activePanelId])
         React.useEffect(() => {
           if (selected?.workspaceId) setExpanded(prev => ({ ...prev, [selected.workspaceId]: true }))
@@ -4310,7 +5320,7 @@ window.__ModuleLoader__.load({
             await refresh();window.dispatchEvent(new Event(updated));setDialog(undefined)
             setExpanded(prev=>({...prev,[row.workspaceId]:true}));setFilter(null);openPage(row,feat.id)
           }}),
-          dialog?.type === 'create' && h(ProjectForm, { refresh, onCreated: created, onCancel: close }),
+          dialog?.type === 'create' && h(ProjectForm, { refresh, onCreated: created, onCancel: close, pickDirectory: () => nav.pickDirectory() }),
           dialog?.type === 'rename' && h(Dialog, { title: LW('重命名项目'), close }, h('form', { className: 'lw-form',
             onSubmit: async e => {
               e.preventDefault(); if (busy || !rename.trim()) return
@@ -4323,17 +5333,7 @@ window.__ModuleLoader__.load({
             h('div', { className: 'lw-actions lw-dialog-actions' },
               Btn({ variant: 'ghost', onClick: close, disabled: busy }, LW('取消')),
               Btn({ variant: 'primary', type: 'submit', disabled: busy || !rename.trim() }, LW('保存'))))),
-          dialog?.type === 'delete-project' && h(Dialog, { title: LW('删除项目'), close }, h('div', { className: 'lw-form' },
-            h('p', { style: { margin: 0, fontSize: 13, color: 'var(--dsw-alias-label-secondary)' } },
-              `确定将「${dialog.row.name}」从工作区项目列表中移除吗？本地项目文件会保留，运行中的实验需先停止。`),
-            err && h('p', { role: 'alert' }, err),
-            h('div', { className: 'lw-actions lw-dialog-actions' },
-              Btn({ variant: 'ghost', onClick: close, disabled: busy }, LW('取消')),
-              Btn({ variant: 'danger', disabled: busy, onClick: async () => {
-                setBusy(true); setErr('')
-                try { await removeProject(dialog.row); setBusy(false); setDialog(undefined) }
-                catch (error) { setErr(error.message); setBusy(false) }
-              } }, busy ? LW('删除中…') : LW('确认删除'))))),
+          dialog?.type === 'delete-project' && h(DeleteProjectDialog, { row: dialog.row, removeProject, onCancel: close, onDeleted: close }),
           (dialog?.type === 'rename-session' || dialog?.type === 'delete-session') && h(SessionActionDialog, { dialog, onCancel: close }),
           dialog?.type === 'rename-feature' && h(FeatureRenameDialog, {
             workspaceId: dialog.row.workspaceId, projectName: dialog.row.name,
@@ -4341,7 +5341,7 @@ window.__ModuleLoader__.load({
             onSaved: refresh, onCancel: close,
           }),
           dialog?.type === 'project-settings' && h(ProjectSettingsDialog, {
-            key: dialog.row.workspaceId, row: dialog.row, close, refresh, pickDirectory: () => nav.pickDirectory(),
+            key: dialog.row.workspaceId, row: dialog.row, close, refresh, removeProject, pickDirectory: () => nav.pickDirectory(),
           }))
         const hiddenSessions = allBotSessionIds()
         const projectRows = rows.filter(r => r.scope !== 'global')
@@ -4447,7 +5447,7 @@ window.__ModuleLoader__.load({
               }))
           }),
           !projectRows.length && h('button', {
-            type: 'button', className: 'lw-sidebar-empty-btn',
+            type: 'button', className: 'lw-sidebar-empty-btn lw-add-action',
             onClick: () => setDialog({ type: 'create' }),
           }, h(Icon, { name: 'plus' }), h('span', null, LW('新建第一个工作区项目'))),
           dialogs)
@@ -4509,16 +5509,32 @@ window.__ModuleLoader__.load({
         return text.startsWith('<system-reminder>') || text.startsWith('Time sampled while preparing turn')
       }
 
+      function reconcileBotPrompts(pending, messages, sessionId) {
+        if (!pending.length) return pending
+        const acknowledged = new Map()
+        return pending.flatMap(prompt => {
+          if (prompt.sessionId !== sessionId) return [prompt]
+          const afterSeq = Math.max(prompt.afterSeq, acknowledged.get(prompt.text) || 0)
+          const echoed = messages.find(message => message.role === 'user' && message.seq > afterSeq && message.text === prompt.text)
+          if (echoed) {
+            acknowledged.set(prompt.text, echoed.seq)
+            return []
+          }
+          return [afterSeq === prompt.afterSeq ? prompt : { ...prompt, afterSeq }]
+        })
+      }
+
       function useFeatureBot(row, feature, featMeta, value) {
         const sid = featMeta?.botSessionId && ctx.sessions.list.getSnapshot().byId[featMeta.botSessionId]
           ? featMeta.botSessionId : null
-        const [eventsState, setEventsState] = React.useState({ messages: [], running: false, progress: null, error: '' })
+        const [eventsState, setEventsState] = React.useState({ messages: [], pending: [], running: false, progress: null, error: '' })
         const [sending, setSending] = React.useState(false)
         const createdSession = React.useRef(null)
+        const submitting = React.useRef(false)
 
         React.useEffect(() => {
           if (!sid) {
-            setEventsState({ messages: [], running: false, progress: null, error: '' })
+            setEventsState(prev => ({ ...prev, messages: [], running: false, progress: null, error: '' }))
             return
           }
           localBotSessions.add(sid)
@@ -4538,6 +5554,10 @@ window.__ModuleLoader__.load({
               const ev = rec?.event
               if (!ev || isRewound(cuts, ev.seq)) continue
               if (ev.type === 'user/message') {
+                if (ev.data?.source?.kind === 'labweave-speaker') {
+                  messages.push({ id: 's-' + ev.seq, role: 'speaker', label: ev.data.source.label, text: featureBotMessageText(ev) })
+                  continue
+                }
                 if (isInjectedContextEvent(ev)) continue
                 const text = featureBotMessageText(ev)
                 if (text.trim()) messages.push({ id: 'u-' + ev.seq, role: 'user', seq: ev.seq, text: text.trim(), time: ev.time })
@@ -4557,7 +5577,8 @@ window.__ModuleLoader__.load({
             const running = Boolean(sessSnap?.running)
             const progress = running ? conversationProgress(entries) : null
             const errMsg = sessionErrorText(sessSnap?.promptError?.error) || sessionErrorText(sessSnap?.lastAgentError)
-            setEventsState({ messages, running, progress, error: errMsg })
+            setEventsState(prev => ({ messages, running, progress, error: errMsg,
+              pending: reconcileBotPrompts(prev.pending, messages, sid) }))
           }
           try {
             ref = ctx.sessions.retain(sid, { source: 'featureBot' })
@@ -4597,68 +5618,44 @@ window.__ModuleLoader__.load({
 
         const sendPrompt = async text => {
           const clean = String(text || '').trim()
-          if (!clean || sending) return
+          if (!clean || submitting.current) return
+          submitting.current = true
+          const id = 'pending-' + requestId()
+          const message = { id, role: 'user', text: clean, time: new Date().toISOString(), pending: true }
           setSending(true)
-          setEventsState(prev => ({ ...prev, error: '' }))
+          setEventsState(prev => ({ ...prev, error: '', pending: [...prev.pending, message] }))
           try {
             const targetSid = await ensureSession()
             await ctx.sessions.using(targetSid, { source: 'featureBot' }, async ref => {
               await Promise.resolve(ref.ready).catch(() => {})
               await ensureSessionRoutableModel(targetSid, ref)
+              const entries = ref.binding.eventSource.getSnapshot().entries || []
+              const afterSeq = entries.reduce((latest, record) => Math.max(latest, record.event?.seq || 0), 0)
+              setEventsState(prev => ({ ...prev, pending: prev.pending.map(prompt =>
+                prompt.id === id ? { ...prompt, sessionId: targetSid, afterSeq } : prompt) }))
               const res = await ref.binding.session.prompt([{ type: 'text', text: clean }], 'queue')
               if (res && res.ok === false) throw Error(sessionErrorText(res.error) || LW('发送失败，请检查模型设置。'))
             })
           } catch (err) {
-            setEventsState(prev => ({ ...prev, error: err?.message || LW('发送失败。') }))
+            setEventsState(prev => ({ ...prev, pending: prev.pending.filter(prompt => prompt.id !== id),
+              error: err?.message || LW('发送失败。') }))
             throw err
           } finally {
+            submitting.current = false
             setSending(false)
           }
         }
 
-        return { ...eventsState, sessionId: sid, sending, sendPrompt, ensureSession, openApproval: () => openChat(sid),
+        return { ...eventsState, messages: [...eventsState.messages, ...eventsState.pending],
+          sessionId: sid, sending, sendPrompt, ensureSession, openApproval: () => openChat(sid),
           openRewind: (message, restore) => openConversationRewind(sid, message.role, message.seq, restore) }
       }
 
-      let workbenchNavigation
-      async function openBotWorkbenchTool(row, feature, bot, tool, target) {
-        if (tool === 'conversation') {
-          openChat(target)
-          return
-        }
-        const kind = tool === 'browser' ? 'browser' : 'labweave-context'
-        if (tool === 'browser' && !ctx.sidebarRightTabs?.get('browser')) throw Error(LW('当前工作区的浏览器工具不可用。'))
-        const queue = sid => {
-          workbenchNavigation = { sid, kind, expires: Date.now() + 5000 }
-          if (tool === 'sandbox') {
-            if (target) sandboxEvents.set(sid, { ...target, eventId: requestId(), workspaceId: row.workspaceId })
-            else sandboxEvents.delete(sid)
-            workbenchReturn.set(sid, { workspaceId: row.workspaceId, feature })
-          }
-        }
-        if (tool === 'browser') {
-          const sid = await bot.ensureSession()
-          queue(sid)
-          openChat(sid)
-          return
-        }
-        const members = historySessionsFor(row.workspaceId, ctx.workspaces.list.getSnapshot(),
-          ctx.sessions.list.getSnapshot(), allBotSessionIds())
-        const session = recentSessionFor(row.workspaceId, members)
-        if (session) {
-          queue(session.id)
-          openChat(session.id)
-        } else {
-          forgetPage()
-          await nav.openWorkspace(row.workspaceId, queue)
-          changed()
-        }
-      }
-
       function ProjectPage({ row, feature, paneIndex = 0, paneCount = 1 }) {
-        const { value, error: loadError } = useProject(row.workspaceId)
+        const { value, error: loadError } = useProject(row.workspaceId, 'view', '', 5000)
         const featureList = projectFeatures(row, value)
         const featMeta = featureList.find(f => f.id === feature) || { id: feature, label: features[feature] || feature }
+        const { value: live } = useProject(row.workspaceId, 'bot_canvas', featMeta.paradigm ? feature : '', 1500)
         const labels = value?.labels || Object.fromEntries(featureList.map(f => [f.id, f.label]))
         const title = labels[feature] || featMeta.label || features[feature] || feature
         const pane = { workspaceId: row.workspaceId, feature }
@@ -4666,12 +5663,6 @@ window.__ModuleLoader__.load({
         const emptyTitle = featMeta.emptyText || featureEmpties[feature] || `还没有收到来自「${title}」的推送内容`
         const persisted = paneStateFor(row.workspaceId, feature)
         const bot = useFeatureBot(row, feature, featMeta, value)
-        const [tasksOpen, setTasksOpen] = React.useState(() => Boolean(persisted.reopenWorkbench))
-        React.useEffect(() => { persisted.reopenWorkbench = false }, [persisted])
-        const [taskCount, setTaskCount] = React.useState(0)
-        const tasksId = React.useId()
-        const hasBotTasks = taskCount > 0
-        const tasksLabel = tasksOpen ? LW('收起 Bot 工作台') : LW('打开 Bot 工作台')
         return h('main', { className: 'lw-page', 'data-feature': feature, 'aria-label': row.name + '的' + title },
           h('div', { className: 'lw-page-topbar' },
             h('div', { className: 'lw-actions' },
@@ -4682,13 +5673,6 @@ window.__ModuleLoader__.load({
                 onClick: () => toggleCompanionChat(row),
               }, h(Icon, { name: 'chat' }), h('span', null, chatSplit ? LW('收起聊天') : LW('聊天')))),
             h('div', { className: 'lw-actions' },
-              h('button', {
-                type: 'button', className: 'lw-companion-btn lw-fbot-tasks-toggle',
-                'aria-label': tasksLabel, 'aria-expanded': tasksOpen, 'aria-haspopup': 'dialog', 'aria-controls': tasksOpen ? tasksId : undefined,
-                title: tasksLabel,
-                onClick: () => setTasksOpen(v => !v),
-              }, h(Icon, { name: 'sidebarRight' }), h('span', null, LW('工作台')),
-                hasBotTasks && h(Tag, { tone: 'neutral' }, taskCount)),
               paneCount > 1 && h('button', {
                 type: 'button', className: 'lw-pane-close',
                 'aria-label': LW('关闭分栏 ') + title,
@@ -4697,12 +5681,16 @@ window.__ModuleLoader__.load({
               }, h(Icon, { name: 'close' })))),
           h(Panel, {
             workspaceId: row.workspaceId, row, feature, featMeta, title, subtitle, emptyTitle,
-            value, loadError, persisted, bot, openModels: () => openSettingsRef?.('models'), draft, onRenamed: refresh,
-            tasksOpen, setTasksOpen, tasksId, onTaskCount: setTaskCount,
-            openWorkbenchTool: (tool, target) => openBotWorkbenchTool(row, feature, bot, tool, target),
+            value, loadError, persisted, bot, live, openModels: () => openSettingsRef?.('models'), draft, onRenamed: refresh,
           }))
       }
 
+      slot('main', { key: welcomeKey }, function Welcome() {
+        const hour = new Date().getHours()
+        const greeting = hour < 12 ? LW('早上好') : hour < 18 ? LW('下午好') : LW('晚上好')
+        return h('main', { className: 'lw-welcome' },
+          h(BrandMark, { size: 96 }), h('h1', null, greeting))
+      })
       slot('main', { key: pageKey }, () => {
         useNav()
         const activePanes = (splitPanes.length ? splitPanes : (choice ? [choice] : []))
@@ -4718,121 +5706,39 @@ window.__ModuleLoader__.load({
           activePanes.map((p, idx) => h(ProjectPage, { key: p.workspaceId + ':' + p.feature, row: p.row, feature: p.feature, paneIndex: idx, paneCount })))
       })
 
-      const SandboxPanel = React.lazy(() => import(new URL('./labweave-sandbox-panel.js', document.baseURI).href)
-        .then(module => ({default: module.createPanel(React, project, (row,sid)=>{
-          const bot=row.features?.find(f=>f.botSessionId===sid)
-          if(bot)selectPage(row.workspaceId,bot.id)
-          else openChat(sid)
-        }, {Icon, Btn})})))
       const ToolPane = React.lazy(() => import(new URL('./labweave-tools-panel.js', document.baseURI).href)
-        .then(module => ({default: module.createToolPane(React, project, {Icon, Btn})})))
-      const sandboxEvents = new Map()
-      const workbenchReturn = new Map()
-      function isSandboxChat(sid) {
-        const row = currentRow()
-        return !!sid && !!row && row.scope !== 'global' && currentSession()?.id === sid
+        .then(module => ({default: module.createToolPane(React, project, { Icon, Btn, useProject, fileUploadData, updated })})))
+      const BrowserPane = React.lazy(() => import(new URL('./labweave-browser-panel.js', document.baseURI).href)
+        .then(module => ({default: module.createBrowserPane(React, { LW })})))
+      function isProjectChat(sid) {
+        const session = currentSession()
+        const row = currentRow(session)
+        return !!sid && session?.id === sid && !!row && row.scope !== 'global'
           && ctx.layout.panelInfo.getSnapshot().activePanelId == null
-          && !(chatSplit && splitPanes.length) && !allBotSessionIds().has(sid)
-      }
-      function hideActiveSandbox() {
-        const sidebar = ctx.sidebarRight
-        const sid = currentSession()?.id
-        const active = sidebar?.active?.()
-        if (!sid || !active) return
-        if (active.kind === 'labweave-context') sidebar.hide(active.id)
-        for (const tab of sidebar.openTabs?.getSnapshot() || []) {
-          if (tab.sessionId === sid && tab.kind === 'labweave-context') sidebar.closeIn?.(sid, tab.tabId)
-        }
-      }
-      function SandboxTab() {
-        useNav()
-        useStore(ctx.sessions.list)
-        useStore(ctx.workspaces.list)
-        useStore(ctx.layout.panelInfo)
-        const current = currentRow(), sid = currentSession()?.id, event = sandboxEvents.get(sid)
-        if (!isSandboxChat(sid) || !current || current.scope === 'global') return null
-        return h(React.Suspense, { fallback: h('p', { className: 'lw-hint', role: 'status' }, LW('读取项目代码沙盒…')) },
-          h(SandboxPanel, { key: current.workspaceId, row: current, notice: event?.workspaceId === current.workspaceId ? event : null }))
-      }
-      function useSandboxNotifications(sid) {
-        React.useEffect(()=>{
-          if(!sid)return
-          const ctrl=new AbortController()
-          let timer
-          const key='labweave.sandbox.last.'+sid
-          async function check(){
-            try{
-              if(document.hidden)return
-              const event=await api('sandbox-event',{sessionId:sid},ctrl.signal)
-              if(ctrl.signal.aborted || !isSandboxChat(sid) || !event || Date.now()-event.at>120000 || event.eventId===sessionStorage.getItem(key))return
-              sandboxEvents.set(sid,event)
-              ctx.sidebarRight.openTabIn(sid,'labweave-context')
-              ctx.sidebarRight.actionsFor?.(sid)?.setExpanded?.(sid,true)
-              sessionStorage.setItem(key,event.eventId)
-              changed()
-            }catch{/* Retry naturally when the authenticated session reconnects. */}
-            finally{if(!ctrl.signal.aborted)timer=setTimeout(check,1800)}
-          }
-          check()
-          return ()=>{ctrl.abort();clearTimeout(timer)}
-        },[sid])
+          && !(chatSplit && splitPanes.length)
       }
 
-      const guideGlyph = path => function GuideGlyph({ size = 24, className }) {
+      const guideGlyph = (path, name) => function GuideGlyph({ size = 24, className }) {
         return h('svg', {
           width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
-          strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round', className, 'aria-hidden': true,
+          strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round', className, 'aria-hidden': true, 'data-icon': name,
         }, h('path', { d: path }))
       }
       const guideArtwork = {
-        sandbox: guideGlyph('M9 3h6 M10 3v5.6L5.7 18a2.3 2.3 0 0 0 2 3.3h8.6a2.3 2.3 0 0 0 2-3.3L14 8.6V3 M7.5 15h9'),
+        storage: guideGlyph(paths.cube, 'cube'),
         git: guideGlyph(paths.repo),
-        storage: guideGlyph('M4 7.5h16V20H4z M4 7.5 6.2 4h11.6L20 7.5 M9.5 12h5'),
+        browser: guideGlyph('M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20ZM2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10Z'),
       }
-
-      if (ctx.sidebarRightTabs?.register) {
-        const definition = {
-          id: 'labweave-research-context',
-          kind: 'labweave-context',
-          priority: 'builtin',
-          title: () => LW('项目代码沙盒'),
-          guide: [{
-            id: 'labweave-context',
-            order: 5,
-            title: () => LW('项目代码沙盒'),
-            description: () => LW('使用本项目的 Python 环境运行对话中的实验，查看进程、日志和产物。'),
-            icon: guideArtwork.sandbox,
-          }],
-        }
-        ctx.effect(() => {
-          let off, pending = false, disposed = false
-          function sync() {
-            if (pending || disposed) return
-            pending = true
-            queueMicrotask(() => {
-              pending = false
-              if (disposed) return
-              if (isSandboxChat(currentSession()?.id)) {
-                if (!off) off = ctx.sidebarRightTabs.register(definition)
-              } else if (off) {
-                hideActiveSandbox()
-                off()
-                off = undefined
-              }
-            })
-          }
-          const subs = [ctx.layout.panelInfo,ctx.sessions.list,ctx.workspaces.list].map(store => store.subscribe(sync))
-          window.addEventListener(navEvent,sync)
-          sync()
-          return () => { disposed=true; window.removeEventListener(navEvent,sync); subs.forEach(unsubscribe=>unsubscribe()); off?.() }
-        }, 'LabWeave chat sandbox visibility')
-      }
-
-      slot('sidebar.right.pane.tab.title', { key: 'labweave-research-context' }, () => h('span',null,LW('项目代码沙盒')))
-
-      slot('sidebar.right.pane.tab', { key: 'labweave-research-context' }, SandboxTab)
 
       const PROJECT_TOOL_TABS = [
+        {
+          id: 'labweave-project-files',
+          kind: 'labweave-files',
+          title: '空间存储',
+          order: 5,
+          guideIcon: guideArtwork.storage,
+          description: '按时间查看和下载本项目对话生成的文件。',
+        },
         {
           id: 'labweave-project-git',
           kind: 'labweave-git',
@@ -4840,14 +5746,6 @@ window.__ModuleLoader__.load({
           order: 12,
           guideIcon: guideArtwork.git,
           description: '查看本项目仓库和工作树的状态、变更和最近提交。',
-        },
-        {
-          id: 'labweave-project-storage',
-          kind: 'labweave-storage',
-          title: '存储空间',
-          order: 14,
-          guideIcon: guideArtwork.storage,
-          description: '按关键词类别归档项目文件，也可以在对话里自定义类别。',
         },
       ]
       function projectToolTab(kind) {
@@ -4857,7 +5755,7 @@ window.__ModuleLoader__.load({
           useStore(ctx.workspaces.list)
           useStore(ctx.layout.panelInfo)
           const current = currentRow(), sid = currentSession()?.id
-          if (!isSandboxChat(sid) || !current || current.scope === 'global') return null
+          if (!isProjectChat(sid) || allBotSessionIds().has(sid)) return null
           return h(React.Suspense, { fallback: h('p', { className: 'lw-hint', role: 'status' }, LW('正在打开工具…')) },
             h(ToolPane, { key: current.workspaceId + ':' + kind, row: current, kind }))
         }
@@ -4886,7 +5784,8 @@ window.__ModuleLoader__.load({
             queueMicrotask(() => {
               pending = false
               if (disposed) return
-              if (isSandboxChat(currentSession()?.id)) {
+              const sid = currentSession()?.id
+              if (isProjectChat(sid) && !allBotSessionIds().has(sid)) {
                 if (!off) off = ctx.sidebarRightTabs.register(definition)
               } else if (off) {
                 off()
@@ -4900,9 +5799,34 @@ window.__ModuleLoader__.load({
           return () => { disposed=true; window.removeEventListener(navEvent,sync); subs.forEach(unsubscribe=>unsubscribe()); off?.() }
         }, 'LabWeave ' + spec.kind + ' visibility')
         slot('sidebar.right.pane.tab.title', { key: spec.id }, () => h('span',null,LW(spec.title)))
-        slot('sidebar.right.pane.tab', { key: spec.id }, projectToolTab(spec.kind === 'labweave-git' ? 'git' : 'storage'))
+        slot('sidebar.right.pane.tab', { key: spec.id }, projectToolTab(spec.kind))
       }
       PROJECT_TOOL_TABS.forEach(registerProjectToolTab)
+
+      if (ctx.sidebarRightTabs?.register) {
+        const browserTabDef = {
+          id: 'labweave-live-browser',
+          kind: 'labweave-browser',
+          priority: 'builtin',
+          title: () => LW('浏览器'),
+          guide: [{
+            id: 'labweave-browser',
+            order: 25,
+            title: () => LW('浏览器'),
+            description: () => LW('由本机真实浏览器内核驱动，支持任意网站、论文页面、PDF 与登录态。'),
+            icon: guideArtwork.browser,
+          }],
+        }
+        ctx.effect(() => ctx.sidebarRightTabs.register(browserTabDef), 'LabWeave live browser tab')
+        slot('sidebar.right.pane.tab.title', { key: 'labweave-live-browser' }, () => h('span', null, LW('浏览器')))
+        slot('sidebar.right.pane.tab', { key: 'labweave-live-browser' }, function LiveBrowserTab() {
+          useNav()
+          useStore(ctx.sessions.list)
+          const sid = currentSession()?.id || 'global'
+          return h(React.Suspense, { fallback: h('p', { className: 'lw-hint', role: 'status' }, LW('正在打开浏览器…')) },
+            h(BrowserPane, { key: 'browser:' + sid, tabKey: sid }))
+        })
+      }
 
       slot('conversation.header.leading', { id: 'labweave-global-sessions', priority: -20 }, () => {
         useNav()
@@ -4917,35 +5841,6 @@ window.__ModuleLoader__.load({
         const [sessionDialog, setSessionDialog] = React.useState(null)
         const triggerRef = React.useRef(null)
         const popoverRef = React.useRef(null)
-        const wrapRef = React.useRef(null)
-        const identityRef = React.useRef(null)
-        const placeIdentity = React.useCallback(() => {
-          const start = wrapRef.current
-          const btn = identityRef.current
-          if (!start || !btn) return
-          const header = start.closest('header')
-          if (!header) return
-          const hr = header.getBoundingClientRect()
-          btn.style.left = `${hr.left + hr.width / 2}px`
-          btn.style.top = `${hr.top + hr.height / 2}px`
-          btn.style.height = `${Math.min(56, Math.max(48, hr.height - 24))}px`
-          btn.dataset.placed = 'true'
-        }, [])
-        React.useLayoutEffect(() => {
-          placeIdentity()
-          const start = wrapRef.current
-          const header = start?.closest('header')
-          const ro = new ResizeObserver(placeIdentity)
-          if (header) ro.observe(header)
-          if (start) ro.observe(start)
-          window.addEventListener('resize', placeIdentity)
-          window.addEventListener('scroll', placeIdentity, { passive: true, capture: true })
-          return () => {
-            ro.disconnect()
-            window.removeEventListener('resize', placeIdentity)
-            window.removeEventListener('scroll', placeIdentity, { capture: true })
-          }
-        })
         const placePopover = () => {
           const rect = triggerRef.current?.getBoundingClientRect()
           if (!rect) return
@@ -4975,31 +5870,20 @@ window.__ModuleLoader__.load({
         if (!isGlobal) return null
         const historyList = historySessionsFor(row.workspaceId, workspaces, sessions, allBotSessionIds())
         const startNewGlobalSession = () => {
+          assistantEntrance = null
           setOpen(false)
           forgetPage()
           nav.startSession(row.workspaceId)
           changed()
         }
-        const identityName = row.name || 'Weave'
-        const identityAvatar = row.hasCustomAvatar && row.avatar ? row.avatar : './weave-orbit.svg'
-        const identityButton = !current.blank && h('button', {
-          ref: identityRef, type: 'button', className: 'lw-corner-identity',
-          'data-custom': row.hasCustomAvatar && row.avatar ? 'true' : 'false',
-          'aria-label': `设置全局助手 ${identityName} 资料`,
-          title: LW('点击设置助手头像与资料'),
-          onClick: () => window.dispatchEvent(new CustomEvent(openProfileEvent)),
-        },
-          h('img', { src: identityAvatar, alt: '', className: 'lw-corner-identity-avatar', 'aria-hidden': true }),
-          h('span', { className: 'lw-corner-identity-name' }, identityName))
-        return h('div', { className: 'lw-corner-wrap', ref: wrapRef },
-          identityButton && ReactDOM.createPortal(identityButton, document.body),
+        return h('div', { className: 'lw-corner-wrap' },
           h('button', {
             ref: triggerRef, type: 'button', className: 'lw-corner-btn',
             'aria-expanded': open, 'aria-haspopup': 'dialog', 'aria-label': LW('助手历史对话'),
             onClick: () => { if (!open) placePopover(); setOpen(prev => !prev) },
           }, h(Icon, { name: 'chat' }), h('span', null, LW('历史对话')), historyList.length > 0 && h('span', { className: 'lw-seg-count' }, historyList.length)),
           !current.blank && h('button', {
-            type: 'button', className: 'lw-corner-btn', 'aria-label': LW('新建全局对话'),
+            type: 'button', className: 'lw-corner-btn lw-add-action', 'aria-label': LW('新建全局对话'),
             onClick: startNewGlobalSession,
           }, h(Icon, { name: 'plus' }), h('span', null, LW('新对话'))),
           open && ReactDOM.createPortal(
@@ -5011,7 +5895,8 @@ window.__ModuleLoader__.load({
             h('div', { className: 'lw-session-popover-head' },
               h('strong', null, LW('历史对话')),
               h('span', { className: 'lw-actions', style: { gap: 4 } },
-                Btn({ variant: 'ghost', size: 'xs', disabled: Boolean(current.blank), onClick: startNewGlobalSession }, LW('+ 新对话')),
+                Btn({ variant: 'ghost', size: 'xs', className: 'lw-add-action', disabled: Boolean(current.blank), onClick: startNewGlobalSession },
+                  h(Icon, { name: 'plus' }), LW('新对话')),
                 tool('close', LW('关闭列表'), () => setOpen(false)))),
             h('div', { className: 'lw-session-popover-list' },
               !historyList.length
@@ -5031,59 +5916,123 @@ window.__ModuleLoader__.load({
           sessionDialog && h(SessionActionDialog, { dialog: sessionDialog, onCancel: () => setSessionDialog(null) }))
       })
 
+      const dispatchStatuses = {
+        queued: ['待启动', 'neutral'], running: ['执行中', 'neutral'], completed: ['已完成', 'success'],
+        blocked: ['受阻', 'warning'], needs_follow_up: ['待跟进', 'warning'], incomplete: ['未完成', 'warning'],
+        failed: ['失败', 'danger'], cancelled: ['已取消', 'neutral'], interrupted: ['已中断', 'warning'],
+      }
+
+      function ProjectDispatchCard({ task, row, close }) {
+        const [expanded, setExpanded] = React.useState(false)
+        const [detail, setDetail] = React.useState(null)
+        const [error, setError] = React.useState(false)
+        const [attempt, retry] = React.useReducer(n => n + 1, 0)
+        React.useEffect(() => {
+          if (!expanded) return
+          const controller = new AbortController()
+          project(row.workspaceId, 'bot_dispatch_detail', { id: task.id }, controller.signal).then(value => {
+            if (!controller.signal.aborted) { setDetail(value); setError(false) }
+          }).catch(() => { if (!controller.signal.aborted) setError(true) })
+          return () => controller.abort()
+        }, [expanded, row.workspaceId, task.id, task.updatedAt, attempt])
+        const [status, tone] = dispatchStatuses[task.status] || [task.status, 'neutral']
+        const origin = sessionsFor(row.workspaceId, ctx.workspaces.list.getSnapshot(), ctx.sessions.list.getSnapshot())
+          .find(session => session.id === task.parentSessionId)
+        const affiliation = [task.clusterLabel && task.botLabel,
+          task.botState === 'archived' ? LW('Bot 已归档') : task.botState === 'removed' ? LW('Bot 已移除') : '',
+          fmtDateTime(task.updatedAt)].filter(Boolean).join(' · ')
+        return h('details', { className: 'lw-project-task-item', onToggle: e => setExpanded(e.currentTarget.open) },
+          h('summary', null, h(Icon, { name: 'right' }),
+            h('span', { className: 'lw-project-task-title' },
+              h('strong', null, task.title || task.task.split('\n')[0].slice(0, 110)),
+              h('span', { className: 'lw-hint' }, affiliation)),
+            h(Tag, { tone }, LW(status))),
+          expanded && h('div', { className: 'lw-project-task-detail' },
+            error && h('div', { role: 'alert', className: 'lw-actions' }, LW('任务详情暂时无法读取。'),
+              Btn({ variant: 'ghost', size: 'xs', onClick: () => { setError(false); retry() } }, LW('重试'))),
+            !detail && !error && h('p', { className: 'lw-hint', role: 'status' }, LW('正在读取任务详情…')),
+            detail && h(React.Fragment, null,
+              h('small', { className: 'lw-hint' }, LW('分派于 ') + fmtDateTime(detail.createdAt)),
+              h('p', null, detail.task),
+              detail.answer && h(Markdown, { source: detail.answer }),
+              detail.detail && h('p', { className: 'lw-hint' }, detail.detail)),
+            h('div', { className: 'lw-actions' },
+              origin && Btn({ variant: 'secondary', size: 'xs', onClick: () => { close(); openChat(origin.id) } }, LW('返回发起对话')),
+              task.botState !== 'removed' && Btn({ variant: 'secondary', size: 'xs',
+                onClick: () => { close(); openPage(row, task.featureId) } }, LW('查看 Bot')))))
+      }
+
       function ProjectTasks({ row, sessionId }) {
         const { workspaceId, features: bots } = row
         const [open, setOpen] = React.useState(false)
-        const [tasks, setTasks] = React.useState(null)
-        const [failed, setFailed] = React.useState(false)
+        const [section, setSection] = React.useState('dispatch')
+        const [dispatches, setDispatches] = React.useState(null)
+        const [activeCount, setActiveCount] = React.useState(0)
+        const [schedules, setSchedules] = React.useState(null)
+        const [error, setError] = React.useState(false)
         const [attempt, retry] = React.useReducer(n => n + 1, 0)
         React.useEffect(() => {
-          let controller, timer
+          const controller = new AbortController()
+          const { signal } = controller
+          let timer, reading = false
+          const readSchedules = open && section === 'schedules'
           const read = async () => {
-            controller = new AbortController()
-            const { signal } = controller
+            if (reading || signal.aborted) return
+            clearTimeout(timer)
+            reading = true
             try {
-              // A Bot can have a schedule before its first session is created.
-              const groups = await Promise.all((bots || []).filter(bot => bot.id !== 'chat').map(async bot => {
-                const assignments = await project(workspaceId, 'bot_assignments', { featureId: bot.id }, signal)
-                return assignments.filter(task => task.kind === 'schedule').map(task => ({ ...task, botLabel: bot.label }))
-              }))
-              if (signal.aborted) return
-              setTasks([...new Map(groups.flat().map(task => [task.id, task])).values()])
-              setFailed(false)
+              if (document.hidden) return
+              if (readSchedules) {
+                const groups = await Promise.all((bots || []).filter(bot => bot.id !== 'chat').map(async bot => {
+                  const assignments = await project(workspaceId, 'bot_assignments', { featureId: bot.id }, signal)
+                  return assignments.filter(task => task.kind === 'schedule').map(task => ({ ...task, botLabel: bot.label }))
+                }))
+                if (!signal.aborted) setSchedules([...new Map(groups.flat().map(task => [task.id, task])).values()])
+              } else {
+                const data = await project(workspaceId, 'bot_dispatches', { summary: !open }, signal)
+                if (signal.aborted) return
+                setActiveCount(data.activeCount)
+                if (open) setDispatches(data.tasks)
+              }
+              if (!signal.aborted) setError(false)
             } catch {
-              if (signal.aborted) return
-              setTasks(null)
-              setFailed(true)
+              if (!signal.aborted) setError(true)
+            } finally {
+              reading = false
+              if (!signal.aborted && !readSchedules) timer = setTimeout(read, open ? 1500 : 5000)
             }
           }
-          const refresh = () => {
-            controller?.abort()
-            clearTimeout(timer)
-            timer = setTimeout(read, 24)
-          }
-          const offChanged = remoteBus?.$on?.('schedule/changed', refresh)
-          const offReset = ctx.on('connection/reset', refresh)
+          const offChanged = readSchedules && remoteBus?.$on?.('schedule/changed', read)
+          const offReset = ctx.on('connection/reset', read)
+          window.addEventListener('focus', read)
           read()
           return () => {
-            controller?.abort()
+            controller.abort()
             clearTimeout(timer)
-            offChanged?.()
+            if (offChanged) offChanged()
             offReset()
+            window.removeEventListener('focus', read)
           }
-        }, [workspaceId, bots, remoteBus, attempt])
+        }, [workspaceId, bots, remoteBus, attempt, open, section])
 
         const label = LW('项目任务')
         const close = () => setOpen(false)
-        const activeCount = tasks?.filter(task => task.status === 'active').length || 0
+        const groups = new Map()
+        for (const task of dispatches || []) {
+          const id = task.clusterId || task.featureId
+          if (!groups.has(id)) groups.set(id, { label: task.clusterLabel || task.botLabel, tasks: [] })
+          groups.get(id).tasks.push(task)
+        }
         let content
-        if (failed) {
-          content = h('div', { className: 'lw-actions', role: 'alert' }, LW('读取项目任务失败。'),
-            Btn({ variant: 'ghost', onClick: () => { setFailed(false); retry() } }, LW('重试')))
-        } else if (!tasks?.length) {
-          content = h('p', { className: 'lw-hint', role: 'status' }, tasks ? LW('本项目的 Bot 暂无定时任务。') : LW('正在读取项目任务…'))
+        if (section === 'dispatch') {
+          content = groups.size ? [...groups].map(([id, group]) => h('section', { key: id, className: 'lw-project-task-group' },
+            h('h3', null, group.label),
+            group.tasks.map(task => h(ProjectDispatchCard, { key: task.id, task, row, close }))))
+            : h('p', { className: 'lw-hint', role: 'status' }, dispatches ? LW('本项目还没有分派给 Bot 的任务。') : LW('正在读取分派任务…'))
+        } else if (!schedules?.length) {
+          content = h('p', { className: 'lw-hint', role: 'status' }, schedules ? LW('本项目的 Bot 暂无定时任务。') : LW('正在读取定时任务…'))
         } else {
-          content = h('ul', { className: 'lw-project-task-list', role: 'list' }, tasks.map(task => {
+          content = h('ul', { className: 'lw-project-task-list', role: 'list' }, schedules.map(task => {
             const next = task.next ? LW('下次执行 ') + fmtDateTime(task.next) : ''
             const details = [task.botLabel, scheduleStatusText[task.status], next].filter(Boolean).join(' · ')
             return h('li', { key: task.id }, h('button', {
@@ -5099,11 +6048,19 @@ window.__ModuleLoader__.load({
           h('button', {
             type: 'button', className: 'lw-corner-btn', title: label,
             'aria-label': label, 'aria-haspopup': 'dialog', 'aria-expanded': open,
-            'aria-description': activeCount ? `${activeCount} 项已启用` : undefined,
-            onClick: () => setOpen(true),
+            'aria-description': activeCount ? `${activeCount} 项任务执行中或待启动` : undefined,
+            onClick: () => { setSection('dispatch'); setError(false); setOpen(true) },
           }, h(Icon, { name: 'calendar' }), h('span', { className: 'lw-corner-label' }, label),
           activeCount > 0 && h('span', { className: 'lw-seg-count', 'aria-hidden': true }, activeCount)),
-          open && ReactDOM.createPortal(h(Dialog, { title: label, close, side: true }, content), document.body))
+          open && ReactDOM.createPortal(h(Dialog, { title: label, close, side: true },
+            h('div', { className: 'lw-project-task-content' },
+              h('nav', { className: 'lw-segmented', 'aria-label': LW('项目任务栏目') },
+                [['dispatch', 'Bot 分派'], ['schedules', '定时任务']].map(([id, text]) =>
+                  h('button', { key: id, type: 'button', className: 'lw-seg-btn', 'aria-pressed': section === id,
+                    onClick: () => { setError(false); setSection(id) } }, LW(text)))),
+              error && h('div', { className: 'lw-actions', role: 'alert' }, LW('读取项目任务失败。'),
+                Btn({ variant: 'ghost', size: 'xs', onClick: () => { setError(false); retry() } }, LW('重试'))),
+              content)), document.body))
       }
 
       slot('conversation.session.header.corner', { id: 'labweave-rightbar-picker', priority: -20 }, () => {
@@ -5115,30 +6072,8 @@ window.__ModuleLoader__.load({
         const row = currentRow()
         const isGlobal = !row || row.scope === 'global'
         const panel = useStore(ctx.layout.panelInfo)
-        useSandboxNotifications(!isGlobal && isSandboxChat(sid) ? sid : null)
         const isOpen = () => Boolean(sid && document.querySelector(`[data-sidebar-right-session="${sid}"][data-sidebar-right-open]`))
         const [rightOpen, setRightOpen] = React.useState(isOpen)
-        React.useEffect(() => {
-          const request = workbenchNavigation
-          if (!request || !sid || isGlobal || panel.activePanelId !== null || request.sid !== sid) return
-          // The project tab is registered after the new workspace selection is published.
-          let frame
-          function reveal() {
-            if (workbenchNavigation !== request || currentSession()?.id !== sid
-                || ctx.layout.panelInfo.getSnapshot().activePanelId !== null) return
-            if (!ctx.sidebarRightTabs?.get(request.kind) && Date.now() < request.expires) {
-              frame = requestAnimationFrame(reveal)
-              return
-            }
-            workbenchNavigation = null
-            try {
-              ctx.sidebarRight.openTabIn(sid, request.kind)
-              ctx.sidebarRight.actionsFor?.(sid)?.setExpanded?.(sid, true)
-            } catch (error) { notice(error.message) }
-          }
-          frame = requestAnimationFrame(reveal)
-          return () => cancelAnimationFrame(frame)
-        }, [sid, isGlobal, panel.activePanelId])
         React.useEffect(() => {
           if (sid && isGlobal && isOpen()) {
             try {
@@ -5165,6 +6100,7 @@ window.__ModuleLoader__.load({
               else if (ctx.sidebarRight.toggleExpanded) ctx.sidebarRight.toggleExpanded()
               ctx.layout.closeRightbar()
             } else {
+              if (!isBotSandboxChat(sid)) hideActiveSandbox()
               const hasOpenTab = Boolean(ctx.sidebarRight.openTabs?.getSnapshot?.().some(t => t.sessionId === sid))
               if (!hasOpenTab) ctx.sidebarRight.openTabIn(sid, 'guide')
               actions?.setExpanded?.(sid, true)
@@ -5172,15 +6108,12 @@ window.__ModuleLoader__.load({
           } catch (err) { notice(err.message) }
           changed()
         }
-        if (!sid || isGlobal) return null
-        const bot = row.features?.find(feature => feature.botSessionId === sid)
-        const returnTarget = bot ? { workspaceId: row.workspaceId, feature: bot.id } : workbenchReturn.get(sid)
+        if (!sid) return null
+        if (isGlobal) {
+          if (!row || current.blank || panel.activePanelId != null) return null
+          return h(AssistantIdentity, { row, active: true })
+        }
         return h('div', { className: 'lw-corner-wrap lw-project-corner' },
-          returnTarget && hasFeature(row, returnTarget.feature) && h('button', { type: 'button', className: 'lw-corner-btn', 'aria-label': LW('返回 Bot 工作台'),
-            onClick: () => {
-              workbenchReturn.delete(sid)
-              persistedWorkbench(returnTarget)
-            } }, h(Icon, { name: 'back' }), h('span', { className: 'lw-corner-label' }, LW('Bot 工作台'))),
           panel.activePanelId == null && !allBotSessionIds().has(sid) && h(ProjectTasks, { key: sid, row, sessionId: sid }),
           h('button', {
             type: 'button', className: 'lw-corner-btn', title: LW('工具'),
@@ -5189,10 +6122,6 @@ window.__ModuleLoader__.load({
           }, h(Icon, { name: 'sidebarRight' }), h('span', { className: 'lw-corner-label' }, LW('工具'))))
       })
 
-      function persistedWorkbench({ workspaceId, feature }) {
-        paneStateFor(workspaceId, feature).reopenWorkbench = true
-        selectPage(workspaceId, feature)
-      }
 
       const parseModelCapacity = text => {
         const trimmed = String(text || '').trim()
@@ -5709,46 +6638,52 @@ window.__ModuleLoader__.load({
           modelError && h('p', { role: 'alert' }, modelError),
           pref?.mode === 'fixed' && h('label', { className: 'lw-asst-select' }, LW('使用的模型'),
             choices.length
-              ? h('select', {
-                value: selected, disabled: savingModel,
-                'aria-label': LW('使用的模型'),
-                onChange: e => {
-                  const choice = choices.find(c => routeValue(c) === e.target.value)
+              ? h(Select, {
+                value: selected, disabled: savingModel, ariaLabel: LW('使用的模型'),
+                onChange: next => {
+                  const choice = choices.find(c => routeValue(c) === next)
                   if (choice) void apply({ mode: 'fixed', provider: choice.provider, model: choice.model })
                 },
-              },
-                !active && h('option', { value: selected }, LW('已保存的模型当前不可用')),
-                choices.map(c => h('option', { key: routeValue(c), value: routeValue(c) }, c.label)))
+                options: [
+                  ...(active ? [] : [{ value: selected, label: LW('已保存的模型当前不可用') }]),
+                  ...choices.map(c => ({ value: routeValue(c), label: c.label })),
+                ],
+              })
               : h('p', { className: 'lw-hint' }, LW('还没有可调用的模型，请先添加 API。'))),
           pref?.mode === 'fixed' && active && h(React.Fragment, null,
             h('label', { className: 'lw-asst-select' }, LW('推理强度'),
-              h('select', {
-                'aria-label': LW('推理强度'), value: pref.reasoningEffort || '',
+              h(Select, {
+                ariaLabel: LW('推理强度'), value: pref.reasoningEffort || '',
                 disabled: savingModel || (!active.efforts.length && !pref.reasoningEffort),
-                onChange: e => void apply({ ...pref, ...modelDefaults, reasoningEffort: e.target.value || null }),
-              },
-              h('option', { value: '' }, active.efforts.length ? LW('模型默认') : LW('此模型未提供可选档位')),
-              pref.reasoningEffort && !active.efforts.some(item => item.id === pref.reasoningEffort) &&
-                h('option', { value: pref.reasoningEffort }, LW('已保存的档位当前不可用')),
-              active.efforts.map(item => h('option', { key: item.id, value: item.id }, item.name)))),
+                onChange: next => void apply({ ...pref, ...modelDefaults, reasoningEffort: next || null }),
+                options: [
+                  { value: '', label: active.efforts.length ? LW('模型默认') : LW('此模型未提供可选档位') },
+                  ...(pref.reasoningEffort && !active.efforts.some(item => item.id === pref.reasoningEffort)
+                    ? [{ value: pref.reasoningEffort, label: LW('已保存的档位当前不可用') }] : []),
+                  ...active.efforts.map(item => ({ value: item.id, label: item.name })),
+                ],
+              })),
             h('label', { className: 'lw-asst-select' }, LW('上下文窗口'),
-              h('select', {
-                'aria-label': LW('上下文窗口'), value: pref.contextWindow || '',
+              h(Select, {
+                ariaLabel: LW('上下文窗口'), value: pref.contextWindow || '',
                 disabled: savingModel || (!active.contextOptions.length && !pref.contextWindow),
-                onChange: e => void apply({ ...pref, ...modelDefaults, contextWindow: Number(e.target.value) || null }),
-              },
-              h('option', { value: '' }, active.contextWindow ? LW('模型默认 ') + formatModelCapacity(active.contextWindow) : LW('模型默认')),
-              pref.contextWindow && !active.contextOptions.includes(pref.contextWindow) &&
-                h('option', { value: pref.contextWindow }, LW('已保存的窗口当前不可用')),
-              active.contextOptions.map(size => h('option', { key: size, value: size }, formatModelCapacity(size)))))),
+                onChange: next => void apply({ ...pref, ...modelDefaults, contextWindow: Number(next) || null }),
+                options: [
+                  { value: '', label: active.contextWindow ? LW('模型默认 ') + formatModelCapacity(active.contextWindow) : LW('模型默认') },
+                  ...(pref.contextWindow && !active.contextOptions.includes(pref.contextWindow)
+                    ? [{ value: pref.contextWindow, label: LW('已保存的窗口当前不可用') }] : []),
+                  ...active.contextOptions.map(size => ({ value: size, label: formatModelCapacity(size) })),
+                ],
+              }))),
           h('label', { className: 'lw-asst-select' }, LW('助手权限'),
-            h('select', { value: permission?.preset || '', disabled: !permission || savingPermission,
-              'aria-label': LW('助手权限'), onChange: e => void applyPermission(e.target.value) },
-            !permission?.preset && h('option', { value: '', disabled: true },
-              permission ? LW('请选择助手权限') : LW('正在读取权限…')),
-            Object.entries(permissionLabels).filter(([value]) => permission?.options.includes(value))
-              .map(([value, label]) => h('option', { key: value, value }, label)))),
-          h('p', { className: 'lw-hint' }, LW('此设置仅作用于全局助手，从下一轮回复起生效。')),
+            h(Select, {
+              value: permission?.preset || '', disabled: !permission || savingPermission, ariaLabel: LW('助手权限'),
+              placeholder: permission ? LW('请选择助手权限') : LW('正在读取权限…'),
+              onChange: next => void applyPermission(next),
+              options: Object.entries(permissionLabels).filter(([value]) => permission?.options.includes(value))
+                .map(([value, label]) => ({ value, label })),
+            })),
+          h('p', { className: 'lw-hint' }, LW('完全权限可直接转交。其他级别先确认。项目任务按目标项目会话的权限执行。')),
           permissionError && h('p', { role: 'alert' }, permissionError))
       }
       slot('settings.section', { id: 'labweave-assistant', order: 8, label: () => LW('助手设置') }, AssistantSettingsSection)

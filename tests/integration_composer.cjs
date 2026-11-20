@@ -1,0 +1,115 @@
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const { chromium } = require('playwright')
+
+async function main() {
+  const channel = process.env.PLAYWRIGHT_CHANNEL || (process.platform === 'win32' ? 'msedge' : 'chromium')
+  const browser = await chromium.launch({ channel, headless: true })
+  const page = await browser.newPage({ locale: 'zh-CN', viewport: { width: 1280, height: 820 } })
+  page.setDefaultTimeout(25000)
+  page.on('pageerror', error => console.error(error.message))
+  const button = name => page.getByRole('button', { name, exact: true })
+  const chat = page.locator('[data-conversation-content][data-conversation-session]:visible').last()
+  const nativeInput = chat.locator('[contenteditable=true]').last()
+  const nativeOption = name => page.getByRole('option').filter({ hasText: name }).last()
+  const byName = label => page.getByRole('article', { name: label + ' 的插话', exact: true })
+  let step = 'boot'
+  try {
+    await page.goto(fs.readFileSync(0, 'utf8').trim(), { waitUntil: 'domcontentloaded' })
+    step = 'global commands and explicit project selection'
+    await button('打开助手').click()
+    await nativeInput.pressSequentially('/')
+    await nativeOption('新建项目').waitFor()
+    assert.equal(await nativeOption('分派任务').count(), 0)
+    await page.keyboard.press('Escape')
+    await nativeInput.press('Backspace')
+    await nativeInput.pressSequentially('@')
+    await nativeOption('输入验收').waitFor()
+    assert.equal(await nativeOption('文献核对员').count(), 0)
+    await nativeOption('输入验收').click()
+    await nativeOption('文献核对员').click()
+    await page.keyboard.type(' FROM_GLOBAL')
+    await button('发送消息').click()
+    const globalSession = await chat.getAttribute('data-conversation-session')
+    await page.waitForFunction(async sessionId => {
+      const res = await fetch('/api/labweave/project-handoffs', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId }) })
+      return res.ok && (await res.json()).some(item => item.status === 'pending')
+    }, globalSession)
+    const transfer = page.getByRole('region', { name: '项目转交', exact: true })
+    await transfer.getByRole('button', { name: '确认并转交', exact: true }).click()
+    await button('项目任务').waitFor()
+    await chat.getByText('收到 FROM_GLOBAL', { exact: true }).waitFor({ timeout: 80000 })
+
+    step = 'project commands and storage reference'
+    const nav = page.getByRole('navigation', { name: '输入验收 项目功能' })
+    if (!await nav.isVisible()) await button('输入验收').click()
+    const forwardedSession = await chat.getAttribute('data-conversation-session')
+    await nav.getByRole('button', { name: '在输入验收中新建对话', exact: true }).click()
+    await button('项目任务').waitFor()
+    await page.waitForFunction(id => {
+      const active = [...document.querySelectorAll('[data-conversation-content][data-conversation-session]')]
+        .filter(element => element.getClientRects().length).at(-1)
+      return active && active.getAttribute('data-conversation-session') !== id
+    }, forwardedSession)
+    await nativeInput.click()
+    await nativeInput.pressSequentially('/')
+    await nativeOption('打开空间存储').click()
+    await page.getByRole('region', { name: '输入验收 空间存储' }).waitFor()
+    await nativeInput.pressSequentially('@')
+    assert.equal(await nativeOption('外部 Bot').count(), 0)
+    await nativeOption('文献核对员').click()
+    await page.keyboard.type(' @')
+    await nativeOption('实验依据.txt').click()
+    await page.keyboard.type(' CHECK_SOURCE')
+    await button('发送消息').click()
+    await byName('文献核对员').getByText('并线回复 CHECK_SOURCE', { exact: true }).waitFor({ timeout: 80000 })
+    assert.equal(await byName('文献核对员').getByText('并线回复 FROM_GLOBAL', { exact: true }).count(), 0)
+
+    step = 'Bot menu and assistant reply'
+    await nav.getByRole('button', { name: '文献核对员', exact: true }).click()
+    const botInput = page.getByRole('textbox', { name: '向 文献核对员 发送消息' })
+    await botInput.fill('/')
+    await page.getByRole('listbox', { name: '指令', exact: true }).getByRole('option', { name: /原文核对/ }).waitFor()
+    await botInput.press('Escape')
+    await botInput.fill('@')
+    await page.getByRole('listbox', { name: '引用与邀请', exact: true }).getByRole('option', { name: '项目助手' }).click()
+    await botInput.pressSequentially('ASK_ASSISTANT')
+    let releaseBinding
+    const bindingGate = new Promise(resolve => { releaseBinding = resolve })
+    const projectRoute = '**/api/labweave/workspace-page'
+    const holdBinding = async route => {
+      if (route.request().postDataJSON()?.action === 'bot_session') await bindingGate
+      await route.continue()
+    }
+    await page.route(projectRoute, holdBinding)
+    const sent = page.locator('.lw-bot-msg[data-role="user"]').filter({ hasText: 'ASK_ASSISTANT' })
+    try {
+      await botInput.press('Enter')
+      await sent.filter({ hasText: '发送中…' }).waitFor()
+      assert.equal(await botInput.inputValue(), '')
+    } finally {
+      releaseBinding()
+      await page.unroute(projectRoute, holdBinding)
+    }
+    await byName('项目助手').getByText('并线回复 ASK_ASSISTANT', { exact: true }).waitFor({ timeout: 80000 })
+    assert.equal(await sent.count(), 1)
+    assert.equal(await sent.getAttribute('data-pending'), null)
+    await page.setViewportSize({ width: 850, height: 760 })
+    await page.evaluate(() => { document.body.style.zoom = '1.25' })
+    await botInput.fill('/')
+    const menu = page.getByRole('listbox', { name: '指令', exact: true })
+    const position = await menu.boundingBox()
+    assert.ok(position && position.x >= 0 && position.x + position.width <= 850)
+  } catch (error) {
+    console.error(step, (await page.locator('body').innerText({ timeout: 3000 }).catch(() => '')).slice(-1600))
+    throw error
+  } finally {
+    await browser.close()
+  }
+}
+
+main().catch(error => {
+  console.error(error.message.replace(/(?:token=|sk-)\S+/g, '[redacted]'))
+  process.exitCode = 1
+})

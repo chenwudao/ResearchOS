@@ -15,13 +15,25 @@ TOOLS = {
     "assistant_name_get": ("Read the global assistant's current display name.", {}),
     "assistant_rename": ("Change the global assistant's display name when requested in the conversation.", {"name": {"type": "string"}}),
     "feature_labels": ("Read active research feature IDs and their current display names for this conversation scope. A global conversation may optionally specify projectId.", {}),
-    "feature_list": ("List active Feature Bots for the current project or explicitly specified projectId. Global assistant itself retains only the core chat assistant.", {}),
-    "feature_create": ("Add a custom Feature Bot with a name, description, symbol and keywords. Global chat must specify an explicit projectId or 'all'; project chat adds only to its own project.", {"label":{"type":"string"},"hint":{"type":"string"},"symbol":{"type":"string","enum":list(features.BOT_SYMBOLS)},"keywords":{"type":"array","items":{"type":"string"}}}),
+    "feature_list": ("List active Feature Bots in the project. clusterParent identifies grouped members. Use includeArchived to find completed temporary Bots and their preserved results.", {"includeArchived":{"type":"boolean"}}),
+    "feature_create": ("Create a Bot with one paradigm and one compatible layout. Use goals: checklist/path, notes: library/timeline, mindmap: graph/lineage, ideas: branches/reasoning or engineering: sequence/matrix. For a project extension, use its ext_ ID and fixed layout from project_get_context. Global chat must specify the project explicitly.", {
+        "label":{"type":"string"}, "paradigm":{"type":"string"},
+        "layout":{"type":"string","enum":[layout for layouts in features.BOT_LAYOUTS.values() for layout in layouts]},
+        "hint":{"type":"string"}, "temporary":{"type":"boolean","description":"Use only for a one-time assignment without a suitable existing Bot. Successful archived deliveries retire it automatically."}}),
     "feature_delete": ("Remove a non-chat Feature Bot (builtin feed/ideas/goals/library or custom feature) from the specified projectId/'all' (global chat) or current project. Cannot delete 'chat'.", {"featureId": {"type": "string"}}),
-    "feature_entries": ("Read the categories and current archived entries in a project Feature Bot's right-side category archive.", {"featureId": {"type": "string"}}),
+    "project_paradigm_create": ("Create a project-local paradigm with one layout, a matching avatar icon, and typed display fields. Assign unique title, summary, group, date, status, source or relation roles as needed. Other fields use detail. Use date for date roles, url for source, and reference for relation to another record within the same Bot. Optionally pass symbol (e.g. lucide:book-open, lucide:bug, lucide:database, lucide:flask-conical) or omit it to let Weave auto-match a fitting icon.", {
+        "label": {"type": "string"}, "description": {"type": "string"}, "base": {"type": "string"},
+        "layout": {"type": "string"},
+        "symbol": {"type": "string", "description": "Optional avatar icon ID (e.g. lucide:book-open, lucide:bug, lucide:database). Omit for automatic matching."},
+        "fields": {"type": "array", "minItems": 1, "maxItems": 12, "items": {
+            "type": "object", "required": ["name", "type", "role"], "additionalProperties": False,
+            "properties": {"name": {"type": "string"}, "type": {"type": "string", "enum": list(features.FIELD_TYPES)},
+                           "role": {"type": "string", "enum": list(features.FIELD_ROLES)}}}},
+        "elements": {"type": "array", "items": {"type": "string"}, "description": "Legacy text-only detail names."}}),
+    "feature_entries": ("Read current entries pushed to a project Feature Bot.", {"featureId": {"type": "string"}}),
     "feature_push": (
-        "Push a categorized message or illustrated summary card into a project Feature Bot's context stream, "
-        "or pass id to update/recategorize an existing entry. Decide based on the Bot's purpose and message intent "
+        "Save a record in a project Bot's assigned layout. Use category for resource folders or goal priorities, parentId for a related record in the same Bot, and dependsOn for goal prerequisites. "
+        "or pass id to update an existing entry. Decide based on the Bot's purpose and message intent "
         "whether to include a figure/diagram (imagePath in project folder, inline imageSvg diagram/chart, imageData, "
         "or imageUrl) plus title and caption, or concise text only. For sourced pushes, include the original "
         "publication or repository link as url and its publisher, journal, or repository name as source.",
@@ -30,7 +42,6 @@ TOOLS = {
             "id": {"type": "string"},
             "title": {"type": "string"},
             "text": {"type": "string"},
-            "category": {"type": "string"},
             "caption": {"type": "string"},
             "imagePath": {"type": "string"},
             "imageSvg": {"type": "string"},
@@ -39,6 +50,14 @@ TOOLS = {
             "url": {"type": "string"},
             "source": {"type": "string"},
             "kind": {"type": "string"},
+            "category": {"type": "string"}, "parentId": {"type": ["string", "null"]},
+            "due": {"type": "string"}, "done": {"type": "boolean"},
+            "dependsOn": {"type": "array", "items": {"type": "string"}},
+            "eventDate": {"type": "string", "description": "Known publication or event date in YYYY-MM-DD."},
+            **{name: {"type": "string", "description": label}
+               for name, (label, _) in features.BOT_RECORD_TEXT_FIELDS.items()},
+            "elements": {"type": "object", "additionalProperties": {"type": ["string", "number", "boolean", "null"]},
+                         "description": "Values keyed by the names of the Bot's typed extension fields. Use null to clear a field."},
         },
     ),
     "rename_feature": ("Rename a research Feature Bot only in response to the user's conversation. Built-in IDs are chat, feed, ideas, goals, library; custom feature IDs (feat_*) are also supported. In a project conversation this changes only that project; global changes shared builtin defaults unless projectId is specified.", {"featureId": {"type": "string"}, "label": {"type": "string"}}),
@@ -47,12 +66,9 @@ TOOLS = {
     "evidence_search": ("Search project hypotheses, experiments, conclusions and linked evidence, including source integrity.", {"query": {"type": "string"}}),
     "evidence_add": ("Propose a knowledge object with insufficient evidence status. sources must include location and optionally project-relative path.", {"kind": {"type": "string"}, "text": {"type": "string"}, "sources": {"type": "array", "items": {"type": "object"}}}),
     "evidence_link": ("Link two existing project knowledge objects; relation is supports, contradicts, tests, uses, derived_from or motivates.", {key: {"type": "string"} for key in ("source", "target", "relation", "note")}),
-    "workflow_list": ("List approved experimental workflows and checkpoints. Drafts do not execute until the user approves in the UI.", {}),
-    "workflow_get": ("Inspect a workflow, protocol, experiment runs, diagnostics and recommendations.", {"id": {"type": "string"}}),
-    "workflow_draft": ("Save an editable experiment plan only. plan requires question, hypothesis, python, inputs, methods [{name,script,args}], matrix {seeds,budgets}, protocol {metric,direction,baseline,split,minSeeds,minImprovement,maxStd}, budget {maxRuns,concurrency,timeoutSeconds,retries,wallSeconds}. args must contain {seed}, {budget}, {metrics}. Scripts output JSON or one-row CSV with primary metric and split_id. Do not run the experiment yourself; wait for human budget approval.", {"plan": {"type": "object"}, "id": {"type": "string"}, "revision": {"type": "integer"}, "parentId": {"type": "string"}}),
     "task_get": ("Read a project task result and execution events.", {"id": {"type": "string"}}),
     "experiment_list": ("List experiment parameters, metrics and logs.", {}),
-    "experiment_record": ("Create or update an experiment run.", {"id": {"type": "string"}, "name": {"type": "string"}, "parameters": {"type": "object"}, "metrics": {"type": "object"}, "status": {"type": "string"}, "logs": {"type": "string"}, "taskId": {"type": "string"}}),
+    "experiment_record": ("Create or update an experiment run. Put the actual environment, script, command parameters and project-relative output paths (artifacts array) in parameters. Update the same id with observed logs and metrics.", {"id": {"type": "string"}, "name": {"type": "string"}, "parameters": {"type": "object"}, "metrics": {"type": "object"}, "status": {"type": "string"}, "logs": {"type": "string"}, "taskId": {"type": "string"}}),
     "benchmark_list": ("List research task quality evaluations.", {}),
     "benchmark_record": ("Record evidence-backed quality scores. Each dimension is 0 to 5; rationale is required. Set evaluator to Weave.", {"taskId": {"type": "string"}, "scores": {"type": "object", "properties": {key: {"type": "number"} for key in ("completeness", "correctness", "evidence", "reproducibility")}}, "rationale": {"type": "string"}, "evaluator": {"type": "string"}}),
 
@@ -60,7 +76,7 @@ TOOLS = {
     "paper_citations": ("Get real bibliographic references from Crossref for a DOI.", {"doi": {"type": "string"}}),
     "project_list": ("List available research projects.", {}),
     "project_create": ("Create a workspace project from the global assistant.", {"name": {"type": "string"}}),
-    "project_get_context": ("Read the current project details, notes, and resources.", {}),
+    "project_get_context": ("Read current project progress, notes, resources and a compact selection of shared project memories. Use memory_search for full records and other relevant memories.", {}),
     "resource_search": ("Find project resources.", {"query": {"type": "string"}}),
     "resource_read": ("Read a registered text resource, repository listing or PDF page.", {"id": {"type": "string"}, "page": {"type": "integer"}}),
     "paper_read": ("Read one page of a registered PDF with page attribution.", {"id": {"type": "string"}, "page": {"type": "integer"}}),
@@ -70,10 +86,12 @@ TOOLS = {
     "goal_create": ("Create goal or subtask with existing parent/dependency IDs.", {"text": {"type": "string"}, "due": {"type": "string"}, "parentId": {"type": "string"}, "dependsOn": {"type": "array", "items": {"type": "string"}}}),
     "goal_update": ("Update a goal's text, due date or completion.", {"id": {"type": "string"}, "text": {"type": "string"}, "due": {"type": "string"}, "done": {"type": "boolean"}}),
     "task_create": ("Queue a new task for user confirmation.", {"text": {"type": "string"}, "goalId": {"type": "string"}}),
-    "memory_search": ("Search persistent project research decisions and results (FTS5 + recency + pinned).", {
+    "memory_search": ("Search the shared project memories, including rules, decisions and results from the project chat and its Bots. Use a short task-specific query or a category filter. The global assistant must identify the target project explicitly.", {
         "query": {"type": "string"}, "category": {"type": "string"}, "limit": {"type": "integer"}}),
-    "memory_write": ("Save or deduplicate a durable research decision or observation in the project.", {
+    "memory_write": ("Save a durable decision or verified observation for the project chat and every Bot in the same project. For a user-established project rule use category 'rule' and pinned:true.", {
         "text": {"type": "string"}, "category": {"type": "string"}, "pinned": {"type": "boolean"}}),
+    "memory_update": ("Revise an existing shared project memory by its ID when a confirmed decision, result or user rule changes.", {
+        "id": {"type": "string"}, "text": {"type": "string"}, "category": {"type": "string"}, "pinned": {"type": "boolean"}}),
     "memory_pin": ("Pin or unpin a project memory so it remains in core prompt context.", {
         "id": {"type": "string"}, "pinned": {"type": "boolean"}}),
     "global_memory_search": ("Search Weave global assistant's persistent cross-session memories (global chat only).", {
@@ -98,7 +116,8 @@ def dispatch(request, scope, *, protocol_version="2024-11-05"):
             result = {"tools": [{"name": name, "description": description,
                                 "inputSchema": {"type": "object",
                                                 "properties": schema if name.startswith("global_memory_") else {**schema, "projectId": {"type": "string"}},
-                                                "additionalProperties": False}}
+                                                "additionalProperties": False,
+                                                **({"required": ["label", "paradigm"]} if name == "feature_create" else {})}}
                                for name, (description, schema) in TOOLS.items()]}
         elif method == "tools/call":
             params = request.get("params", {})
@@ -140,11 +159,14 @@ def dispatch(request, scope, *, protocol_version="2024-11-05"):
                             project_service.project(workspace.snapshot(), resolved_id)
                             value = features.feature_labels_map(resolved_id)
                     elif name == "feature_list":
-                        value = features.list_features(scope, project_id=target)
+                        value = [item for item in features.list_features(scope, project_id=target)
+                                 if arguments.get("includeArchived") or not item.get("archived")]
                     elif name == "feature_create":
                         value = features.create_feature(
                             scope, arguments.get("label"), arguments.get("hint", ""), project_id=target,
-                            symbol=arguments.get("symbol","✦"), keywords=arguments.get("keywords"))
+                            symbol=arguments.get("symbol"), keywords=arguments.get("keywords"),
+                            paradigm=arguments.get("paradigm", "notes"), layout=arguments.get("layout"),
+                            temporary=arguments.get("temporary", False))
                     elif name == "feature_delete":
                         value = features.delete_feature(scope, arguments.get("featureId"), project_id=target)
                     else:

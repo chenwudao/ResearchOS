@@ -11,6 +11,9 @@ async function main() {
   page.setDefaultTimeout(12000)
   const button = (name, area = page) => area.getByRole('button', { name, exact: true })
   const chat = page.locator('[data-conversation-content][data-conversation-session]:visible').last()
+  const brandMark = page.locator('[data-slot="sidebar"] .lw-brand-mark')
+  const wordmark = page.locator('[data-slot="sidebar"] .lw-wordmark')
+  const tree = page.locator('.lw-tree')
   async function send(suffix, message) {
     const marker = 'ROUTE_CASE_' + suffix
     await chat.locator('[contenteditable=true]').last().fill(message + '\n' + marker)
@@ -40,8 +43,50 @@ async function main() {
 
   try {
     await page.goto(url)
+    step = 'assistant sidebar entrance'
+    const welcome = page.locator('.lw-welcome')
+    await welcome.getByRole('heading', { name: /^(早上|下午|晚上)好$/ }).waitFor()
+    assert.equal(await page.locator('[data-composer-card]:visible').count(), 0)
+    await brandMark.waitFor()
+    const treeTop = (await tree.boundingBox()).y
+    await page.evaluate(() => {
+      const mark = document.querySelector('[data-slot="sidebar"] .lw-brand-mark')
+      mark.addEventListener('transitionrun', () => {
+        const properties = mark.getAnimations().map(animation => animation.transitionProperty)
+        window.sidebarBrandExit = {
+          upward: properties.includes('translate'),
+          fading: properties.includes('opacity'),
+          flight: Boolean(document.querySelector('.lw-assistant-flight')),
+        }
+      }, { once: true })
+    })
+    await button('打开助手').click()
+    await brandMark.waitFor({ state: 'hidden' })
+    await wordmark.waitFor({ state: 'hidden' })
+    assert.deepEqual(await page.evaluate(() => window.sidebarBrandExit), { upward: true, fading: true, flight: true })
+    const compactTop = (await tree.boundingBox()).y
+    assert.ok(compactTop < treeTop, 'Project navigation should move up when the brand exits')
+
+    step = 'fold and reopen the assistant'
+    await button('收回助手').click()
+    await welcome.waitFor()
+    assert.equal(await page.locator('[data-composer-card]:visible').count(), 0)
+    await wordmark.waitFor()
+    await button('打开助手').click()
+    await page.locator('.lw-hero-profile-entry').waitFor()
+    await wordmark.waitFor({ state: 'hidden' })
+
     step = 'automatic model and effort'
     const globalSession = await send('QUICK', '你好')
+    await page.locator('.lw-active-profile-entry').waitFor()
+    assert.equal(await brandMark.isVisible(), false)
+    assert.equal(await wordmark.isVisible(), false)
+    assert.ok(Math.abs((await tree.boundingBox()).y - compactTop) <= 1)
+    await button('收回助手').click()
+    await welcome.waitFor()
+    await button('打开助手').click()
+    await page.locator('.lw-active-profile-entry').waitFor()
+    assert.equal(await chat.getAttribute('data-conversation-session'), globalSession)
     await checkWindow(96)
     assert.equal(await send('REASON', '请比较这两个实验方案并推导可区分它们的判据'), globalSession)
     await send('LONG', '论'.repeat(36000))
@@ -51,16 +96,31 @@ async function main() {
     await page.setViewportSize({ width: 980, height: 700 })
     await page.evaluate(() => { document.documentElement.style.zoom = '125%' })
     const permission = settings.getByLabel('助手权限', { exact: true })
-    await page.waitForFunction(() => document.querySelector('select[aria-label="助手权限"]')?.value === 'read-only')
-    assert.equal(await permission.getByRole('option').filter({ hasText: /DSH|沿用/ }).count(), 0)
-    assert.equal(await permission.locator('option[value=""]').count(), 0)
-    await permission.selectOption('workspace-write')
-    await page.waitForFunction(() => document.querySelector('select[aria-label="助手权限"]')?.value === 'workspace-write')
+    // Dropdowns are DSH-style comboboxes with a floating listbox, never the browser's native <select>.
+    const pick = async (trigger, value) => {
+      await trigger.click()
+      await page.locator(`[role="listbox"] [role="option"][data-value='${value}']`).click()
+      await page.locator('[role="listbox"]').waitFor({ state: 'detached' })
+    }
+    const selectedValue = label => page.evaluate(label => {
+      const trigger = document.querySelector(`[role="combobox"][aria-label="${label}"]`)
+      return trigger?.querySelector('.lw-sel-text')?.textContent || ''
+    }, label)
+    assert.equal(await page.locator('select').count(), 0)
+    await page.waitForFunction(() => document.querySelector('[role="combobox"][aria-label="助手权限"] .lw-sel-text')?.textContent === '仅可查看')
+    await permission.click()
+    assert.equal(await page.locator('[role="listbox"] [role="option"]').filter({ hasText: /DSH|沿用/ }).count(), 0)
+    assert.equal(await page.locator('[role="listbox"] [role="option"][data-value=""]').count(), 0)
+    assert.equal(await page.locator('[role="listbox"] [role="option"][aria-selected="true"]').count(), 1)
+    await page.keyboard.press('Escape')
+    await page.locator('[role="listbox"]').waitFor({ state: 'detached' })
+    await pick(permission, 'workspace-write')
+    await page.waitForFunction(() => document.querySelector('[role="combobox"][aria-label="助手权限"] .lw-sel-text')?.textContent === '工作区内修改')
     await settings.getByRole('radio', { name: /^固定模型/ }).click()
-    await settings.getByLabel('使用的模型').selectOption('["customgw","gpt-fixture-pro"]')
-    await settings.getByLabel('推理强度', { exact: true }).selectOption('low')
-    await settings.getByLabel('上下文窗口', { exact: true }).selectOption('384000')
-    await page.waitForFunction(() => document.querySelector('select[aria-label="上下文窗口"]')?.value === '384000')
+    await pick(settings.getByLabel('使用的模型', { exact: true }), '["customgw","gpt-fixture-pro"]')
+    await pick(settings.getByLabel('推理强度', { exact: true }), 'low')
+    await pick(settings.getByLabel('上下文窗口', { exact: true }), '384000')
+    await page.waitForFunction(() => !/默认/.test(document.querySelector('[role="combobox"][aria-label="上下文窗口"] .lw-sel-text')?.textContent || '默认'))
     assert.deepEqual(await readPreference(), {
       mode: 'fixed', provider: 'customgw', model: 'gpt-fixture-pro', reasoningEffort: 'low', contextWindow: 384000,
     })
@@ -85,6 +145,9 @@ async function main() {
       return chat && chat.getAttribute('data-conversation-session') !== id
     }, globalSession)
     await send('PROJECT', '你好')
+    await brandMark.waitFor()
+    await wordmark.waitFor()
+    await page.waitForFunction(top => Math.abs(document.querySelector('.lw-tree').getBoundingClientRect().top - top) <= 1, treeTop)
     await checkWindow(512)
     step = 'project settings and local sources'
     const projectSettings = page.getByRole('dialog', { name: '项目设置', exact: true })

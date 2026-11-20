@@ -1,7 +1,7 @@
 export function registerProjectTools(ctx, { call, caller, output }) {
   function target(exec) {
     const { row, workspace } = caller(exec)
-    if (row.scope === 'global') throw Error('请在具体科研项目的对话里使用工作区文件、Git 或存储空间。')
+    if (row.scope === 'global') throw Error('请在具体科研项目的对话里使用工作区文件或 Git。')
     return { row, workspace }
   }
   const projectId = { type: 'string', description: 'Ignored in a project chat; the current project is used.' }
@@ -48,53 +48,6 @@ export function registerProjectTools(ctx, { call, caller, output }) {
     async execute(args, exec) {
       const { workspace } = target(exec)
       return JSON.stringify(await call('project', { workspace, action: 'tools/git', args: { treeId: args.treeId } }, exec.signal))
-    },
-  })
-
-  ctx.tools.register({
-    name: 'labweave_storage_list',
-    description: 'List this project\'s keyword-category storage space and the files in each category.',
-    parameters: { type: 'object', additionalProperties: false, properties: { projectId } }, output,
-    async execute(_args, exec) {
-      const { workspace } = target(exec)
-      return JSON.stringify(await call('project', { workspace, action: 'tools/storage/list', args: {} }, exec.signal))
-    },
-  })
-
-  ctx.tools.register({
-    name: 'labweave_storage_define',
-    description: 'Create or update a keyword storage category in this project. Same name updates the existing category and its keywords. Use this when the user asks to organize files by topic.',
-    parameters: { type: 'object', additionalProperties: false, properties: {
-      name: { type: 'string' }, keywords: { type: 'array', items: { type: 'string' } }, id: { type: 'string' }, projectId,
-    }, required: ['name'] }, output,
-    async execute(args, exec) {
-      const { workspace } = target(exec)
-      return JSON.stringify(await call('project', { workspace, action: 'tools/storage/define', args }, exec.signal))
-    },
-  })
-
-  ctx.tools.register({
-    name: 'labweave_storage_save',
-    description: 'Copy an existing project-relative file into a keyword storage category. Pass the category name or id, and the source path relative to the project folder.',
-    parameters: { type: 'object', additionalProperties: false, properties: {
-      category: { type: 'string' }, source: { type: 'string' }, name: { type: 'string' }, projectId,
-    }, required: ['category', 'source'] }, output,
-    async execute(args, exec) {
-      const { workspace } = target(exec)
-      return JSON.stringify(await call('project', { workspace, action: 'tools/storage/save', args }, exec.signal))
-    },
-  })
-
-  ctx.tools.register({
-    name: 'labweave_storage_remove',
-    description: 'Remove a file from a storage category, or delete the category and its files when path is omitted.',
-    parameters: { type: 'object', additionalProperties: false, properties: {
-      category: { type: 'string' }, path: { type: 'string' }, projectId,
-    }, required: ['category'] }, output,
-    async execute(args, exec) {
-      const { workspace } = target(exec)
-      const action = args.path ? 'tools/storage/remove-file' : 'tools/storage/remove-category'
-      return JSON.stringify(await call('project', { workspace, action, args: { category: args.category, id: args.category, path: args.path } }, exec.signal))
     },
   })
 }

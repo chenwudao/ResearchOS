@@ -55,8 +55,7 @@ def _find(sources, source_id):
     return match
 
 
-def save(project_id, args):
-    raw = args.get("path")
+def _prepare(raw, name=None):
     if not isinstance(raw, str) or not raw.strip() or not Path(raw.strip()).is_absolute():
         raise workspace.WorkspaceError(400, "请输入本机文件夹的绝对路径。")
     try:
@@ -65,7 +64,28 @@ def save(project_id, args):
         raise workspace.WorkspaceError(400, "无法打开这个本机文件夹。") from error
     if not canonical.is_dir() or _protected(canonical):
         raise workspace.WorkspaceError(400, "请选择可读取的本机资料文件夹。")
-    name = workspace.text(args.get("name"), 80) or canonical.name or str(canonical)
+    name = workspace.text(name, 80) or canonical.name or str(canonical)
+    return canonical, name
+
+
+def prepare_initial(paths):
+    if paths is None:
+        return []
+    if not isinstance(paths, list):
+        raise workspace.WorkspaceError(400, "来源文件夹必须是路径列表。")
+    records = {}
+    for index, path in enumerate(paths, 1):
+        try:
+            canonical, name = _prepare(path)
+        except workspace.WorkspaceError as error:
+            raise workspace.WorkspaceError(error.status, f"来源文件夹 {index}：{error}") from error
+        if canonical not in records:
+            records[canonical] = {"id": uuid4().hex, "name": name, "path": str(canonical)}
+    return list(records.values())
+
+
+def save(project_id, args):
+    canonical, name = _prepare(args.get("path"), args.get("name"))
     source_id = args.get("id")
     path = str(canonical)
 
