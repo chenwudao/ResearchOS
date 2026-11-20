@@ -584,6 +584,11 @@ window.__ModuleLoader__.load({
       .lw-goal-task-dates input,.lw-goal-form input[type=date]{color-scheme:inherit;background:transparent;border:1px solid var(--lw-border,#8884);border-radius:4px;margin-left:4px;padding:2px}
       .lw-goal-board[data-view=看板]{grid-template-columns:repeat(2,minmax(0,1fr))}
       .lw-goal-board h3{margin:0 0 6px;font-size:inherit}
+      .lw-goal-ai,.lw-goal-drafts{border-top:1px solid var(--lw-border,#8884);padding-top:7px}
+      .lw-goal-drafts h3{margin:0 0 6px;font-size:inherit}
+      .lw-goal-draft{display:grid;gap:3px;min-width:0;border-left:2px solid var(--lw-paradigm-accent,#6779d3);padding-left:7px;margin-bottom:8px}
+      .lw-goal-draft small,.lw-goal-milestone{color:var(--dsw-alias-label-secondary);font-size:var(--lw-ui-xs,12px)}
+      .lw-goal-draft>button{text-align:left;overflow-wrap:anywhere}
       @container (max-width:640px){.lw-goal-columns{grid-template-columns:minmax(0,1fr)}}
       [data-done=true]>.lw-paradigm-record>.lw-paradigm-title{color:var(--dsw-alias-label-secondary);text-decoration:line-through}
       .lw-paradigm-view :is(button,summary,input):focus-visible{outline:2px solid var(--dsw-focus-ring-color,#3b82f6);outline-offset:2px}
@@ -3623,13 +3628,28 @@ window.__ModuleLoader__.load({
                           activeItem.ts && h('span', { className: 'lw-hint lw-mono' }, fmtDateTime(activeItem.ts)))),
                       editingId === activeItem.id ? h('form', { className: 'lw-form', onSubmit: e => {
                         e.preventDefault(); if (!editDraft.text.trim()) return
-                        const actName = feature === 'goals' ? 'goal_update' : 'idea_update'
                         run(async () => {
-                          await action(actName, { id: activeItem.id, text: editDraft.text.trim(), ...(feature === 'goals' ? { due: editDraft.due } : {}) })
+                          const changes = { id: activeItem.id, text: editDraft.text.trim() }
+                          if (goalPlanner) {
+                            await action('feature_push', { ...changes, featureId: activeItem.canvasRail || feature,
+                              title: editDraft.title, plannedDate: editDraft.plannedDate || null, due: editDraft.due,
+                              completionCriteria: editDraft.completionCriteria, kind: editDraft.milestone ? 'milestone' : 'task' })
+                          } else {
+                            await action(feature === 'goals' ? 'goal_update' : 'idea_update', {
+                              ...changes, ...(feature === 'goals' && { due: editDraft.due }),
+                            })
+                          }
                           setEditingId(null)
                         })
                       } },
+                        goalPlanner && h('label', null, LW('标题'),
+                          h('input', { className: 'lw-input', value: editDraft.title, onChange: e => setEditDraft({ ...editDraft, title: e.target.value }) })),
                         h('textarea', { className: 'lw-textarea', rows: 3, value: editDraft.text, onChange: e => setEditDraft({ ...editDraft, text: e.target.value }) }),
+                        goalPlanner && [['安排日期', 'plannedDate', 'date'], ['截止日期', 'due', 'date'], ['完成条件', 'completionCriteria', 'text']].map(([label, key, type]) =>
+                          h('label', { key }, LW(label), h('input', { type, className: 'lw-input', value: editDraft[key],
+                            onChange: e => setEditDraft({ ...editDraft, [key]: e.target.value }) }))),
+                        goalPlanner && h('label', null, h('input', { type: 'checkbox', checked: editDraft.milestone,
+                          onChange: e => setEditDraft({ ...editDraft, milestone: e.target.checked }) }), LW('标记为里程碑')),
                         feature === 'goals' && h('input', { type: 'date', className: 'lw-input', value: editDraft.due || '', onChange: e => setEditDraft({ ...editDraft, due: e.target.value }) }),
                         h('div', { className: 'lw-actions' },
                           Btn({ variant: 'primary', size: 'xs', type: 'submit', disabled: busy }, LW('保存')),
@@ -3639,6 +3659,7 @@ window.__ModuleLoader__.load({
                         return h(React.Fragment, null,
                           recordText !== recordTitle && h(RecordBody, { source: recordText }),
                           h(ExtensionElements, { values: Object.fromEntries([
+                            [LW('安排日期'), activeItem.plannedDate], [LW('截止日期'), activeItem.due],
                             [LW('完成条件'), activeItem.completionCriteria], [LW('假设'), activeItem.hypothesis],
                             [LW('最小验证'), activeItem.validation], [LW('结果'), activeItem.result],
                             [LW('关系类型'), activeItem.relationLabel], [LW('核查状态'), activeItem.relationStatus],
@@ -3674,7 +3695,13 @@ window.__ModuleLoader__.load({
                               setNotice('已转化为项目目标。')
                             }) }, linkedIdeaIds.has(activeItem.id) ? LW('已转目标') : LW('转为目标')),
                             feature === 'goals' && Btn({ variant: 'primary', size: 'xs', disabled: busy, onClick: () => run(() => action('goal_update', { id: activeItem.id, done: !activeItem.done })) }, activeItem.done ? LW('标为未完成') : LW('标记完成')),
-                            (feature === 'ideas' || feature === 'goals') && Btn({ variant: 'ghost', size: 'xs', onClick: () => { setEditingId(activeItem.id); setEditDraft({ text: activeItem.text, due: activeItem.due || '' }) } }, LW('编辑'))),
+                            (feature === 'ideas' || feature === 'goals' || goalPlanner) &&
+                              Btn({ variant: 'ghost', size: 'xs', onClick: () => {
+                                setEditingId(activeItem.id)
+                                setEditDraft({ text: activeItem.text, title: activeItem.title || '', due: activeItem.due || '',
+                                  plannedDate: activeItem.plannedDate || '', completionCriteria: activeItem.completionCriteria || '',
+                                  milestone: activeItem.kind === 'milestone' })
+                              } }, LW('编辑'))),
                           deletingItem === activeItem.id && h('div', { className: 'lw-actions lw-record-delete-confirm' },
                             h('span', null, LW('删除这条记录及其连线？')),
                             Btn({ size: 'xs', disabled: busy, onClick: () => setDeletingItem(null) }, LW('取消')),
@@ -3689,7 +3716,16 @@ window.__ModuleLoader__.load({
                   goalPlanner && h(React.Suspense, { fallback: h('p', { className: 'lw-hint' }, LW('正在读取待办…')) },
                     h(GoalPlanner, { items: ordered, busy, openEntry, onSave: changes => saveGoal(null, changes),
                       onMove: (item, plannedDate) => saveGoal(item, { plannedDate }),
-                      onToggle: item => saveGoal(item, { done: !item.done }) })),
+                      onToggle: item => saveGoal(item, { done: !item.done }),
+                      onDecision: (item, accept) => run(() => action('goal_draft_decision', {
+                        featureId: item.canvasRail || feature, id: item.id, accept,
+                      })),
+                      onSuggest: request => run(async () => {
+                        await bot.sendPrompt(LW('请结合这个项目的资料和进度，把下面的计划拆成少量、可验收的待办草稿。') +
+                          LW('用本目标 Bot 的记录工具逐条保存，给出归属阶段和完成条件；日期不明确时不要猜。') +
+                          LW('只提出建议，不改正式排期或完成状态。') + '\n\n' + request)
+                        return true
+                      }) })),
                   typedLayout && !engineering && !goalPlanner && h(BotParadigmView, {
                     layout: botLayout, items: ordered, fields: extensionFields, activeId: activeItemId, openEntry, busy,
                     addNode, deleteNode, emptyTitle,

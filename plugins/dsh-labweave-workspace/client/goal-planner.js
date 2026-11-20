@@ -33,7 +33,7 @@ export function createGoalPlanner(React) {
   const itemTitle = item => item.title || item.text
   const btn = (label, props = {}) => h('button', { type: 'button', ...props }, label)
 
-  return function GoalPlanner({ items, busy, openEntry, onSave, onMove, onToggle }) {
+  return function GoalPlanner({ items, busy, openEntry, onSave, onMove, onToggle, onDecision, onSuggest }) {
     const today = dateKey(new Date())
     const [selected, setSelected] = React.useState(today)
     const [scale, setScale] = React.useState('周')
@@ -41,13 +41,17 @@ export function createGoalPlanner(React) {
     const [title, setTitle] = React.useState('')
     const [stage, setStage] = React.useState('')
     const [deadline, setDeadline] = React.useState('')
+    const [milestone, setMilestone] = React.useState(false)
+    const [request, setRequest] = React.useState('')
     const [filter, setFilter] = React.useState('选中日期')
     const [dropDay, setDropDay] = React.useState('')
     const [dragging, setDragging] = React.useState(null)
     const { dates, label } = calendarPeriod(selected, scale)
     const byDay = new Map()
     const stages = new Map()
-    for (const item of items) {
+    const drafts = items.filter(item => item.planningDraft)
+    const tasks = items.filter(item => !item.planningDraft && !item.canvasDraft)
+    for (const item of tasks) {
       const date = planned(item)
       if (date) {
         if (!byDay.has(date)) byDay.set(date, [])
@@ -57,11 +61,11 @@ export function createGoalPlanner(React) {
       if (!stages.has(name)) stages.set(name, [])
       stages.get(name).push(item)
     }
-    const overdue = items.filter(item => !item.done && validDate(item.due) && item.due < today)
-    const unscheduled = items.filter(item => !planned(item) && !item.done)
+    const overdue = tasks.filter(item => !item.done && validDate(item.due) && item.due < today)
+    const unscheduled = tasks.filter(item => !planned(item) && !item.done)
     const visible = filter === '未排期' ? unscheduled : filter === '逾期' ? overdue : byDay.get(selected) || []
     const selectable = (name, active, select) => btn(name, { key: name, 'aria-pressed': active === name, onClick: () => select(name) })
-    const movable = item => !busy && !item.canvasDraft
+    const movable = item => !busy && !item.planningDraft && !item.canvasDraft
     function step(amount) {
       const current = dayAt(selected)
       const next = scale === '月' ? new Date(current.getFullYear(), current.getMonth() + amount, 1, 12)
@@ -72,9 +76,11 @@ export function createGoalPlanner(React) {
       event.preventDefault()
       if (!title.trim() || busy) return
       if (await onSave({ text: title.trim(), plannedDate: filter === '未排期' ? null : selected,
-        ...(stage.trim() && { category: stage.trim() }), ...(deadline && { due: deadline }) })) {
+        ...(stage.trim() && { category: stage.trim() }), ...(deadline && { due: deadline }),
+        ...(milestone && { kind: 'milestone' }) })) {
         setTitle('')
         setDeadline('')
+        setMilestone(false)
       }
     }
     function row(item, compact = false) {
@@ -88,7 +94,7 @@ export function createGoalPlanner(React) {
         !compact && h('input', { type: 'checkbox', checked: Boolean(item.done), disabled: !movable(item),
           'aria-label': '完成 ' + name, onChange: () => onToggle(item) }),
         btn(name, { onClick: () => openEntry(item), title: name }),
-        item.canvasDraft && h('small', null, 'AI 草稿'),
+        item.kind === 'milestone' && h('small', { className: 'lw-goal-milestone' }, '里程碑'),
         !compact && h('div', { className: 'lw-goal-task-dates' },
           h('label', null, '安排', h('input', { type: 'date', value: validDate(item.plannedDate) ? item.plannedDate : '', disabled: !movable(item),
             'aria-label': '安排日期 ' + name, onChange: event => onMove(item, event.target.value || null) })),
@@ -127,8 +133,8 @@ export function createGoalPlanner(React) {
                 'aria-current': key === today ? 'date' : undefined, onClick: () => { setSelected(key); setFilter('选中日期') } }),
               (byDay.get(key) || []).map(item => row(item, true))))))
         : h('div', { className: 'lw-goal-board', 'data-view': view },
-          (view === '看板' ? [['待办', items.filter(item => !item.done)], ['已完成', items.filter(item => item.done)]]
-            : [...byDay].sort(([left], [right]) => left.localeCompare(right)).concat([['未排期', items.filter(item => !planned(item))]]))
+          (view === '看板' ? [['待办', tasks.filter(item => !item.done)], ['已完成', tasks.filter(item => item.done)]]
+            : [...byDay].sort(([left], [right]) => left.localeCompare(right)).concat([['未排期', tasks.filter(item => !planned(item))]]))
             .map(([name, list]) => h('section', { key: name }, h('h3', null, name),
               list.length ? list.map(item => row(item)) : h('p', { className: 'lw-hint' }, '暂无待办')))),
         h('aside', { className: 'lw-goal-agenda', 'aria-label': '待办' },
@@ -142,6 +148,31 @@ export function createGoalPlanner(React) {
             h('input', { className: 'lw-input', value: stage, placeholder: '所属阶段（可选）', 'aria-label': '所属阶段',
               onChange: event => setStage(event.target.value) }),
             h('label', null, '截止日期', h('input', { type: 'date', value: deadline, onChange: event => setDeadline(event.target.value) })),
-            h('button', { type: 'submit', disabled: busy || !title.trim() }, '添加待办')))))
+            h('label', null, h('input', { type: 'checkbox', checked: milestone, onChange: event => setMilestone(event.target.checked) }), '标记为里程碑'),
+            h('button', { type: 'submit', disabled: busy || !title.trim() }, '添加待办')),
+          h('details', { className: 'lw-goal-ai' },
+            h('summary', null, '请 AI 拆分待办'),
+            h('form', { className: 'lw-goal-form', onSubmit: async event => {
+              event.preventDefault()
+              if (request.trim() && !busy && await onSuggest(request.trim())) setRequest('')
+            } },
+              h('textarea', { className: 'lw-textarea', rows: 2, value: request,
+                'aria-label': '计划描述', placeholder: '例如：下周读完这几篇论文，再准备实验',
+                onChange: event => setRequest(event.target.value) }),
+              h('button', { type: 'submit', disabled: busy || !request.trim() }, '生成待办草稿'))),
+          drafts.length > 0 && h('section', { className: 'lw-goal-drafts', 'aria-label': '待确认排期' },
+            h('h3', null, '待确认排期'),
+            drafts.map(item => h('article', { key: item.id, className: 'lw-goal-draft' },
+              h('small', null, 'AI 建议'),
+              btn(itemTitle(item), { onClick: () => openEntry(item) }),
+              planned(item) && h('small', null, '建议日期 ' + planned(item)),
+              h('div', null,
+                btn('采纳', { 'aria-label': '采纳 ' + itemTitle(item), disabled: busy, onClick: async () => {
+                  if (await onDecision(item, true)) {
+                    if (planned(item)) setSelected(planned(item))
+                    setFilter(planned(item) ? '选中日期' : '未排期')
+                  }
+                } }),
+                btn('忽略', { 'aria-label': '忽略 ' + itemTitle(item), disabled: busy, onClick: () => onDecision(item, false) }))))))))
   }
 }

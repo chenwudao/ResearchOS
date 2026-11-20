@@ -1,9 +1,11 @@
 const assert = require('node:assert/strict')
+const { execFileSync } = require('node:child_process')
 const { readFileSync } = require('node:fs')
 const { chromium } = require('playwright')
 
 async function main() {
   const url = readFileSync(0, 'utf8').trim()
+  const [python, fixture, data] = process.argv.slice(2)
   const browser = await chromium.launch({ channel: process.env.PLAYWRIGHT_CHANNEL || (process.platform === 'win32' ? 'msedge' : 'chromium') })
   const page = await browser.newPage({ locale: 'zh-CN', viewport: { width: 1360, height: 850 } })
   const errors = []
@@ -49,8 +51,10 @@ async function main() {
     await agenda.getByRole('textbox', { name: '新待办名称' }).fill(task)
     await agenda.getByRole('textbox', { name: '所属阶段' }).fill('实验验证')
     await agenda.getByLabel('截止日期', { exact: true }).fill(dates[6])
+    await agenda.getByRole('checkbox', { name: '标记为里程碑' }).check()
     await button(agenda, '添加待办').click()
     await button(agenda, task).waitFor()
+    await agenda.getByText('里程碑', { exact: true }).waitFor()
     await agenda.getByLabel('安排日期 ' + task).fill(dates[1])
     await button(planner, dates[1]).click()
     await button(agenda, task).waitFor()
@@ -72,6 +76,18 @@ async function main() {
     assert.equal(await planner.locator('.lw-goal-day').count(), 42)
     await button(planner, '日').click()
     assert.equal(await planner.locator('.lw-goal-day').count(), 1)
+
+    execFileSync(python, [fixture, '--suggest', data, dates[1]], { timeout: 10000 })
+    const proposals = planner.getByRole('region', { name: '待确认排期' })
+    await button(proposals, '采纳 核对评分表').waitFor()
+    assert.equal(await agenda.getByRole('checkbox', { name: '完成 核对评分表' }).count(), 0)
+    assert.equal(await planner.getByRole('progressbar', { name: '实验验证 完成进度' }).getAttribute('max'), '1')
+    await button(proposals, '忽略 检查额外资料').click()
+    await button(proposals, '忽略 检查额外资料').waitFor({ state: 'detached' })
+    await button(proposals, '采纳 核对评分表').click()
+    await proposals.waitFor({ state: 'detached' })
+    await agenda.getByRole('checkbox', { name: '完成 核对评分表' }).waitFor()
+    assert.equal(await planner.getByRole('progressbar', { name: '实验验证 完成进度' }).getAttribute('max'), '2')
 
     await page.setViewportSize({ width: 900, height: 760 })
     await page.locator('html').evaluate(node => { node.style.zoom = '1.15' })

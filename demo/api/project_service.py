@@ -315,7 +315,7 @@ def _entry_elements(args, entry, extension, records):
     entry["elements"] = merged
 
 
-def create_entry(project_id, rail, args):
+def create_entry(project_id, rail, args, *, planning_draft=False):
     import features
     if not features.is_valid_rail(project_id, rail):
         raise workspace.WorkspaceError(400, "未找到对应的项目功能。")
@@ -330,6 +330,8 @@ def create_entry(project_id, rail, args):
         raise workspace.WorkspaceError(400, "条目内容为空。")
     entry = {"id": "n_" + uuid4().hex, "text": text, "ts": timestamp(),
              "source": workspace.text(args.get("source"), 240) or "Weave"}
+    if planning_draft:
+        entry.update(planningDraft=True, source="AI 建议")
     for field in ("due", "url", "parentId", "ideaId", "paperId", "dependsOn", "kind", "path", "taskId", "category", "libraryId"):
         if field in args and args[field] is not None:
             entry[field] = args[field]
@@ -350,7 +352,7 @@ def create_entry(project_id, rail, args):
     return mutate(project_id, operation)
 
 
-def update_entry(project_id, rail, args):
+def update_entry(project_id, rail, args, *, draft_only=False):
     import features
     if not features.is_valid_rail(project_id, rail):
         raise workspace.WorkspaceError(400, "未找到对应的项目功能。")
@@ -362,6 +364,10 @@ def update_entry(project_id, rail, args):
         entry = next((note for note in item["rails"].get(rail, []) if note["id"] == args.get("id")), None)
         if not entry:
             raise workspace.WorkspaceError(404, "条目不存在。")
+        if draft_only and not entry.get("planningDraft"):
+            raise workspace.WorkspaceError(409, "正式排期由用户修改。请创建待确认的排期建议。")
+        if entry.get("planningDraft") and "done" in args:
+            raise workspace.WorkspaceError(409, "请先确认排期，再更新完成状态。")
         if "text" in args and args["text"] is not None:
             text = workspace.text(args["text"], 16000)
             if not text:
@@ -428,6 +434,35 @@ def update_entry(project_id, rail, args):
                 entry["done"] = bool(args["done"])
         entry["updatedAt"] = timestamp()
         return entry
+    return mutate(project_id, operation)
+
+
+def decide_goal_draft(project_id, feature_id, entry_id, accept):
+    import features
+    bot = next((f for f in features.list_features(project_id, project_id) if f["id"] == feature_id), {})
+    if bot.get("layout") != "calendar" or type(accept) is not bool:
+        raise workspace.WorkspaceError(400, "无效的排期草稿操作。")
+
+    def operation(item):
+        records = item["rails"].get(feature_id, [])
+        draft = next((record for record in records if record["id"] == entry_id), None)
+        if not draft:
+            raise workspace.WorkspaceError(404, "排期草稿不存在。")
+        if not draft.get("planningDraft"):
+            if accept:
+                return draft
+            raise workspace.WorkspaceError(409, "该条目已确认，请在待办详情中编辑。")
+        if accept:
+            draft.pop("planningDraft")
+            draft["updatedAt"] = timestamp()
+            return draft
+        records.remove(draft)
+        for record in records:
+            if record.get("parentId") == entry_id:
+                record.pop("parentId", None)
+            if entry_id in (record.get("dependsOn") or []):
+                record["dependsOn"] = [value for value in record["dependsOn"] if value != entry_id]
+        return {"id": entry_id, "discarded": True}
     return mutate(project_id, operation)
 
 
@@ -768,7 +803,7 @@ def delete_project(project_id, *, session_ids=None):
     return {"ok": True}
 
 
-def call(name, args, project_id):
+def call(name, args, project_id, *, assistant=False):
     if name == "project_list":
         return [{"id": p["id"], "name": p["name"]} for p in workspace.snapshot().get("state", {}).get("projects", [])
                 if project_id == "global" or p["id"] == project_id]
@@ -922,9 +957,11 @@ def call(name, args, project_id):
         fid = args.get("featureId")
         if fid == "chat" or not features.is_valid_rail(project_id, fid):
             raise workspace.WorkspaceError(400, "未找到对应的项目功能。")
+        draft = assistant and any(f["id"] == fid and f.get("layout") == "calendar"
+                                  for f in features.list_features(project_id, project_id))
         if args.get("id"):
-            return update_entry(project_id, fid, args)
-        return create_entry(project_id, fid, args)
+            return update_entry(project_id, fid, args, draft_only=draft)
+        return create_entry(project_id, fid, args, planning_draft=draft)
     if name in ("idea_update", "goal_update"):
         return update_entry(project_id, "ideas" if name.startswith("idea") else "goals", args)
     if name == "task_create":

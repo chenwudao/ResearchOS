@@ -33,7 +33,8 @@ TOOLS = {
     "feature_entries": ("Read current entries pushed to a project Feature Bot.", {"featureId": {"type": "string"}}),
     "feature_push": (
         "Save a record in a project Bot's assigned layout. Use category for resource folders or goal priorities, parentId for a related record in the same Bot, and dependsOn for goal prerequisites. "
-        "or pass id to update an existing entry. Decide based on the Bot's purpose and message intent "
+        "or pass id to update an existing entry. In a calendar Bot, new entries are planning drafts and only the user can confirm or edit the confirmed schedule. "
+        "For a milestone set kind to milestone. Decide based on the Bot's purpose and message intent "
         "whether to include a figure/diagram (imagePath in project folder, inline imageSvg diagram/chart, imageData, "
         "or imageUrl) plus title and caption, or concise text only. For sourced pushes, include the original "
         "publication or repository link as url and its publisher, journal, or repository name as source.",
@@ -174,7 +175,7 @@ def dispatch(request, scope, *, protocol_version="2024-11-05"):
                         value = features.rename_feature(
                             scope, arguments.get("featureId"), arguments.get("label"), project_id=target)
                 else:
-                    value = project_service.call(name, arguments, scope)
+                    value = project_service.call(name, arguments, scope, assistant=True)
                 result = {"content": [{"type": "text", "text": json.dumps(value, ensure_ascii=False)}]}
             except Exception as exc:
                 result = {"isError": True, "content": [{"type": "text", "text": str(exc)}]}

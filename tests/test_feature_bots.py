@@ -63,6 +63,30 @@ class FeatureBotsTests(unittest.TestCase):
         self.assertNotIn("plannedDate", unscheduled)
         self.assertEqual(unscheduled["due"], "2026-11-26")
 
+    def test_assistant_calendar_entries_require_a_user_decision(self):
+        a, b = self.projects
+        bot_id = features.create_feature(a, "安排", paradigm="goals")["feature"]["id"]
+        actor = self.records[a]
+        command = {"featureId": bot_id, "text": "确认评测条件", "plannedDate": "2026-11-21"}
+        draft = self.mcp(a, "feature_push", command)
+        self.assertTrue(draft["planningDraft"])
+        self.assertEqual(draft["source"], "AI 建议")
+        target = {"featureId": bot_id, "id": draft["id"]}
+        self.assertTrue(self.mcp(a, "feature_push", {**target, "done": True})["isError"])
+        self.assertTrue(self.mcp(a, "goal_draft_decision", {**target, "accept": True})["isError"])
+        with self.assertRaises(workspace.WorkspaceError):
+            web.dispatch("project", {"workspace": self.records[b], "action": "goal_draft_decision",
+                                     "args": {**target, "accept": True}})
+        decision = {"workspace": actor, "action": "goal_draft_decision", "args": {**target, "accept": True}}
+        self.assertNotIn("planningDraft", web.dispatch("project", decision))
+        self.assertEqual(web.dispatch("project", decision)["id"], draft["id"])
+        self.assertTrue(self.mcp(a, "feature_push", {**target, "plannedDate": "2026-11-27"})["isError"])
+        second = self.mcp(a, "feature_push", {**command, "text": "可忽略的建议"})
+        decision["args"] = {"featureId": bot_id, "id": second["id"], "accept": False}
+        self.assertTrue(web.dispatch("project", decision)["discarded"])
+        entries = self.mcp(a, "feature_entries", {"featureId": bot_id})["entries"]
+        self.assertEqual([(entry["id"], entry["plannedDate"]) for entry in entries], [(draft["id"], "2026-11-21")])
+
     def test_global_stays_chat_only_and_scopes_create_rename_delete(self):
         a, b = self.projects
         global_list = self.mcp("global", "feature_list", {})

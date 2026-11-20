@@ -200,6 +200,8 @@ def project_action(scope, data):
         )
     if action == "feature_push":
         return projects.call("feature_push", args, scope)
+    if action == "goal_draft_decision":
+        return projects.decide_goal_draft(scope, args.get("featureId"), args.get("id"), args.get("accept"))
     if action == "rename":
         return {"name": projects.call("project_update", {"name": naming.display_name(args.get("name"))}, scope)["name"]}
     if action == "description":
