@@ -106,6 +106,29 @@ class FeatureBotsTests(unittest.TestCase):
         self.assertEqual(web.dispatch("project", request)["recordRefs"], [])
         self.assertEqual(self.mcp(a, "feature_entries", {"featureId": "library"})["entries"][0]["id"], note["id"])
 
+    def test_notebook_suggestions_cannot_overwrite_a_newer_user_revision(self):
+        a, b = self.projects
+        feature_id = features.create_feature(a, "研究笔记", paradigm="notes")["feature"]["id"]
+        target = {"featureId": feature_id}
+        def act(name, args):
+            return web.dispatch("project", {"workspace": self.records[a], "action": name, "args": args})
+        note = act("feature_push", {**target, "title": "实验记录", "text": "原始正文", "kind": "note"})
+        target["id"] = note["id"]
+        self.assertTrue(self.mcp(a, "feature_push", {**target, "text": "直接覆盖"})["isError"])
+        suggestion = self.mcp(a, "note_suggest_edit", {**target, "text": "候选正文", "baseVersion": 1})
+        self.assertEqual(act("note/history", target)["versions"][0]["text"], "原始正文")
+        self.assertTrue(self.mcp(b, "note_suggest_edit", {**target, "text": "跨项目", "baseVersion": 1})["isError"])
+        act("feature_push", {**target, "text": "人工补充", "expectedNoteVersion": 1})
+        decision = {**target, "suggestionId": suggestion["id"], "accept": True}
+        with self.assertRaises(workspace.WorkspaceError):
+            act("note/decision", decision)
+        self.assertEqual(act("note/history", target)["versions"][0]["text"], "人工补充")
+        suggestion = self.mcp(a, "note_suggest_edit", {**target, "text": "整理后的正文", "baseVersion": 2})
+        act("note/decision", {**decision, "suggestionId": suggestion["id"]})
+        history = act("note/history", target)["versions"]
+        self.assertEqual([(v["version"], v["author"], v["text"]) for v in history],
+                         [(3, "assistant", "整理后的正文"), (2, "user", "人工补充"), (1, "user", "原始正文")])
+
     def test_global_stays_chat_only_and_scopes_create_rename_delete(self):
         a, b = self.projects
         global_list = self.mcp("global", "feature_list", {})

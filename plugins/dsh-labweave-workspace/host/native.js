@@ -468,7 +468,7 @@ export async function registerNative(ctx, port, token) {
           ...(tool.name === 'experiment_record' && { featureId: source?.id, sessionId: exec.agent.session.id }) }, exec.signal)
         if ([
           'project_create', 'project_update', 'assistant_rename', 'feature_create', 'feature_delete',
-          'rename_feature', 'feature_push', 'idea_create', 'goal_create',
+          'rename_feature', 'feature_push', 'idea_create', 'goal_create', 'note_suggest_edit',
           'global_memory_write', 'global_memory_pin',
         ].includes(tool.name)) await refreshAfterWrite()
         if (['assistant_rename', 'global_memory_write', 'global_memory_pin'].includes(tool.name)) void refreshGlobalProfile()

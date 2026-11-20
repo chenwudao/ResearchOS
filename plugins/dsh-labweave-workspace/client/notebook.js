@@ -1,4 +1,4 @@
-const titleOf = item => item.title || item.text.split('\n', 1)[0].slice(0, 80)
+const titleOf = item => item.title || String(item.text || '').split('\n', 1)[0].slice(0, 80)
 const folderOf = item => item.category || ''
 
 export function createNotebook(React, { Btn, Markdown, formatDate, resourceImage, safeUrl }) {
@@ -10,7 +10,8 @@ export function createNotebook(React, { Btn, Markdown, formatDate, resourceImage
     ['表格', '\n', '\n', '| 指标 | 结果 |\n| --- | --- |\n| 准确率 | 0.90 |'],
     ['公式', '$', '$', 'x^2 + y^2 = z^2'],
   ]
-  return function Notebook({ items, resources, requested, busy, save, upload, previewFile, changeLink, links, readHistory }) {
+  return function Notebook({ items, resources, requested, busy, save, upload, previewFile, changeLink, links,
+    readHistory, askAssistant, decideSuggestion }) {
     const [folder, setFolder] = React.useState('')
     const [selected, setSelected] = React.useState('')
     const [tag, setTag] = React.useState('')
@@ -22,10 +23,15 @@ export function createNotebook(React, { Btn, Markdown, formatDate, resourceImage
     const [attachment, setAttachment] = React.useState('')
     const [image, setImage] = React.useState(null)
     const [history, setHistory] = React.useState(null)
+    const [aiRequest, setAiRequest] = React.useState('')
+    const [excerpt, setExcerpt] = React.useState('')
     const textarea = React.useRef(null)
+    const noteText = React.useRef(null)
     const input = React.useRef(null)
     const documents = items.filter(item => item.kind !== 'note-folder')
     const active = documents.find(item => item.id === selected)
+    const proposal = active?.noteSuggestion
+    const proposalCurrent = proposal?.baseVersion === active?.noteVersion
     const paths = [...new Set(items.flatMap(item => folderOf(item).split('/').filter(Boolean)
       .map((_, n, parts) => parts.slice(0, n + 1).join('/'))))].sort((a, b) => a.localeCompare(b, 'zh-CN'))
     const tags = [...new Set(documents.flatMap(item => item.noteTags || []))].sort()
@@ -33,7 +39,7 @@ export function createNotebook(React, { Btn, Markdown, formatDate, resourceImage
       (!tag || item.noteTags?.includes(tag)) && (!query.trim() || (titleOf(item) + '\n' + item.text).toLowerCase().includes(query.trim().toLowerCase())))
     const attached = new Set((active?.recordRefs || []).filter(ref => ref.featureId === 'library').map(ref => ref.id))
     const open = id => {
-      setSelected(id); setEditor(null); setPreview(false); setAttachment(''); setImage(null); setHistory(null)
+      setSelected(id); setEditor(null); setPreview(false); setAttachment(''); setImage(null); setHistory(null); setAiRequest(''); setExcerpt('')
     }
     React.useEffect(() => { if (requested) open(requested.id) }, [requested])
 
@@ -74,6 +80,20 @@ export function createNotebook(React, { Btn, Markdown, formatDate, resourceImage
       const src = resourceImage(resource)
       if (src) return setImage({ src, name: titleOf(resource) })
       if (resource.path || /\/api\/workspace\/pdf\//.test(resource.url || '')) previewFile(resource.id)
+    }
+    function captureSelection() {
+      const selection = window.getSelection()
+      const selectedText = selection?.anchorNode && selection.focusNode && noteText.current?.contains(selection.anchorNode)
+        && noteText.current.contains(selection.focusNode) ? selection.toString().trim().slice(0, 1500) : ''
+      setExcerpt(selectedText)
+    }
+    async function suggest(event) {
+      event.preventDefault()
+      if (!active || editor || !aiRequest.trim() || busy) return
+      if (await askAssistant(active, aiRequest.trim(), excerpt)) {
+        setAiRequest('')
+        setExcerpt('')
+      }
     }
     const toggle = (label, active, onClick) => Btn({ variant: 'ghost', size: 'xs', 'aria-pressed': active, onClick }, label)
     const field = (label, key, props = {}) => h('label', null, label,
@@ -133,7 +153,8 @@ export function createNotebook(React, { Btn, Markdown, formatDate, resourceImage
                 formatDate(active.noteEditedAt || active.ts)].filter(Boolean).join(' · ')),
               active.noteTags?.length > 0 && h('ul', { className: 'lw-notebook-tags', 'aria-label': '笔记标签' },
                 active.noteTags.map(name => h('li', { key: name }, name))),
-              h(Markdown, { source: active.text, notebook: true }),
+              h('div', { ref: noteText, onMouseUp: captureSelection, onKeyUp: captureSelection },
+                h(Markdown, { source: active.text, notebook: true })),
               h('div', { className: 'lw-actions' },
                 Btn({ size: 'xs', onClick: () => setEditor({ id: active.id, expectedNoteVersion: active.noteVersion || 1,
                   title: titleOf(active), text: active.text, category: folderOf(active), noteTags: (active.noteTags || []).join(', ') }) }, '编辑笔记'),
@@ -142,7 +163,19 @@ export function createNotebook(React, { Btn, Markdown, formatDate, resourceImage
               history?.versions && h('section', { 'aria-label': '笔记版本历史' }, history.versions.map(version =>
                 h('details', { key: version.version },
                   h('summary', null, '第 ' + version.version + ' 版 · ' + (version.author === 'assistant' ? 'AI' : '用户') + ' · ' + formatDate(version.at)),
-                  h(Markdown, { source: version.text, notebook: true }))))) :
+                  h(Markdown, { source: version.text, notebook: true })))),
+              proposal && h('section', { className: 'lw-note-proposal', 'aria-label': 'AI 整理草稿' },
+                h('h3', null, 'AI 整理草稿'),
+                proposal.reason && h('p', { className: 'lw-hint' }, proposal.reason),
+                !proposalCurrent && h('p', { role: 'status', className: 'lw-hint' }, '原笔记有新版本，请重新生成建议。'),
+                h('div', { className: 'lw-note-comparison' },
+                  h('div', null, h('h4', null, '当前正文'), h(Markdown, { source: active.text, notebook: true })),
+                  h('div', null, h('h4', null, '建议正文'), h(Markdown, { source: proposal.text, notebook: true }))),
+                h('div', { className: 'lw-actions' },
+                  Btn({ variant: 'primary', size: 'xs', disabled: busy || !proposalCurrent,
+                    onClick: async () => { if (await decideSuggestion(active, proposal, true)) setHistory(null) } }, '采纳整理'),
+                  Btn({ variant: 'ghost', size: 'xs', disabled: busy,
+                    onClick: () => decideSuggestion(active, proposal, false) }, '忽略草稿')))) :
             h('p', { className: 'lw-hint' }, '从左侧选择一篇笔记，或新建笔记。'),
           image && h('figure', { className: 'lw-notebook-attachment-preview' },
             h('figcaption', null, image.name, Btn({ variant: 'ghost', size: 'xs', onClick: () => setImage(null) }, '关闭预览')),
@@ -165,6 +198,16 @@ export function createNotebook(React, { Btn, Markdown, formatDate, resourceImage
               event.target.value = ''
               if (file) upload(active, file)
             } })),
-          links(active))))
+          links(active),
+          h('details', { className: 'lw-notebook-ai' },
+            h('summary', null, 'AI 辅助整理'),
+            h('form', { className: 'lw-notebook-form', onSubmit: suggest },
+              excerpt && h('div', { className: 'lw-actions' },
+                h('span', { className: 'lw-hint' }, '仅整理选中的段落'),
+                Btn({ variant: 'ghost', size: 'xs', onClick: () => setExcerpt('') }, '取消选段')),
+              h('textarea', { className: 'lw-textarea', rows: 2, maxLength: 1000, value: aiRequest,
+                'aria-label': '笔记整理要求', placeholder: '例如：按观察、证据、下一步整理',
+                onChange: event => setAiRequest(event.target.value) }),
+              Btn({ type: 'submit', size: 'xs', disabled: busy || Boolean(editor) || !aiRequest.trim() }, '生成整理草稿'))))))
   }
 }

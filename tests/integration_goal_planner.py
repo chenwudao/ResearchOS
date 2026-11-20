@@ -52,8 +52,25 @@ def publish_test_suggestions(data, planned_date):
         assert json.loads(reply["content"][0]["text"])["planningDraft"]
 
 
+def publish_test_note_suggestion(data):
+    launcher.workspace.DATA = Path(data)
+    scope = next(row["scope"] for row in native_web.catalog() if row["name"] == "排期验收")
+    view = native_web.project_view(scope)
+    bot = next(row for row in view["features"] if row["label"] == "实验日志")
+    note = next(row for row in view["rails"][bot["id"]] if row.get("title") == "凉亭广场的对照记录")
+    result = research_mcp.dispatch({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+        "name": "note_suggest_edit", "arguments": {
+            "featureId": bot["id"], "id": note["id"], "baseVersion": note["noteVersion"],
+            "text": "保留同一机位，单独检查台阶改动。", "reason": "把复验条件写清楚。",
+        },
+    }}, scope)["result"]
+    assert not result.get("isError"), result
+
+
 if __name__ == "__main__":
     if len(sys.argv) == 4 and sys.argv[1] == "--suggest":
         publish_test_suggestions(*sys.argv[2:])
+    elif len(sys.argv) == 3 and sys.argv[1] == "--suggest-note":
+        publish_test_note_suggestion(sys.argv[2])
     else:
         main()

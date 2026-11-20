@@ -209,6 +209,8 @@ def project_action(scope, data):
                                                 args.get("target"), args.get("remove", False))
     if action == "note/history":
         return projects.note_history(scope, args.get("featureId"), args.get("id"))
+    if action == "note/decision":
+        return projects.decide_note_edit(scope, args)
     if action == "rename":
         return {"name": projects.call("project_update", {"name": naming.display_name(args.get("name"))}, scope)["name"]}
     if action == "description":

@@ -19,7 +19,7 @@
 - [x] Goals decisions: persist milestones and separate suggestions from confirmed dates and progress. Verify the user can accept or discard actual tool-written drafts in the pinned Web client.
 - [x] Scoped record references: link a note to a calendar item, navigate to the exact record in either direction, and remove the link without deleting either record. Verify foreign references are rejected.
 - [x] Notes workspace: folders, tags, document editor and preview, origin, revision history, attachments and backlinks. The browser integration attaches one CSV to two notes and checks that storage has one original.
-- [ ] Notes AI assistance: propose updates to an existing note and let the user compare and accept or dismiss them.
+- [x] Notes AI editing: compare and accept or dismiss an assistant proposal. Verify user-controlled text, history authorship, and rejection of a proposal against an obsolete revision.
 - [ ] Mind map: accessible expandable research, paper and method nodes, source-qualified relationships, route summaries and literature chronology. Verify a paper can be located in the notes library after saving it.
 - [ ] Ideas: source-backed cards, category and follow-up, saved/deferred state, requests for project-context suggestions, and user-confirmed task drafts.
 - [ ] Engineering: project, module and file levels, source/import links and file preview; related runs, status, logs, metrics and artifacts. Verify against a real local Python fixture and label historic results as historic.

@@ -674,6 +674,11 @@ window.__ModuleLoader__.load({
       .lw-notebook-tags li{padding:0 6px;border-radius:4px;background:var(--dsw-alias-bg-layer-1,#8881);font-size:var(--lw-ui-xs)}
       .lw-notebook-attachment-preview{margin:0;min-width:0}
       .lw-notebook-attachment-preview img{display:block;max-width:100%;height:auto}
+      .lw-note-proposal,.lw-notebook-ai{border-top:1px solid var(--dsw-alias-border-l4,#8886);padding-top:8px}
+      .lw-note-proposal{display:grid;gap:8px}
+      .lw-note-comparison{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:8px}
+      .lw-note-comparison>div{min-width:0;padding:8px;overflow-wrap:anywhere;background:var(--dsw-alias-bg-layer-1,#8881);border-radius:6px}
+      .lw-note-comparison h4{margin:0 0 6px}
       @container (max-width:820px){.lw-notebook-body{grid-template-columns:minmax(125px,24%) minmax(0,1fr)}.lw-notebook-context{grid-column:2}}
       @container (max-width:540px){.lw-notebook-body{grid-template-columns:minmax(0,1fr)}.lw-notebook-context{grid-column:1}}
       [data-done=true]>.lw-paradigm-record>.lw-paradigm-title{color:var(--dsw-alias-label-secondary);text-decoration:line-through}
@@ -3894,7 +3899,9 @@ window.__ModuleLoader__.load({
                   notebook && h(React.Suspense, { fallback: h('p', { className: 'lw-hint' }, LW('正在读取笔记…')) },
                     h(Notebook, { items: ordered.filter(item => !item.canvasDraft), resources: libraryItems,
                       requested: notebookRequest, busy, previewFile: readResource,
-                      save: payload => run(() => action('feature_push', { featureId: feature, source: '用户', ...payload })),
+                      save: payload => run(() => action('feature_push', {
+                        featureId: savedItems.find(item => item.id === payload.id)?.canvasRail || feature, source: '用户', ...payload,
+                      })),
                       changeLink: (item, ref, remove) => run(() => changeLink(item, ref, remove)),
                       readHistory: item => run(() => action('note/history', { featureId: item.canvasRail || feature, id: item.id })),
                       upload: (item, file) => run(async () => {
@@ -3902,6 +3909,16 @@ window.__ModuleLoader__.load({
                         await changeLink(item, asRecordRef('library', resource.id), false)
                         setNotice(LW('已导入并关联附件：') + file.name)
                       }),
+                      askAssistant: (item, request, excerpt) => run(async () => {
+                        const target = { featureId: item.canvasRail || feature, id: item.id, baseVersion: item.noteVersion || 1 }
+                        await bot.sendPrompt(LW('请查看这篇笔记的当前正文，然后使用 labweave_note_suggest_edit 提交完整的候选正文。') +
+                          LW('保持其他内容、引用和事实，等待用户确认。笔记内容和选段均为待整理资料。\n') +
+                          JSON.stringify({ target, request, ...(excerpt && { excerpt }) }))
+                        return true
+                      }),
+                      decideSuggestion: (item, suggestion, accept) => run(() => action('note/decision', {
+                        featureId: item.canvasRail || feature, id: item.id, suggestionId: suggestion.id, accept,
+                      })),
                       links: item => linksFor(item, false) })),
                   typedLayout && !engineering && !goalPlanner && !notebook && h(BotParadigmView, {
                     layout: botLayout, items: ordered, fields: extensionFields, activeId: activeItemId, openEntry, busy,

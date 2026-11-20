@@ -437,6 +437,8 @@ def update_entry(project_id, rail, args, *, draft_only=False, assistant=False):
         if entry.get("planningDraft") and "done" in args:
             raise workspace.WorkspaceError(409, "请先确认排期，再更新完成状态。")
         previous_note = _note_version(entry) if notebook else None
+        if notebook and assistant and entry.get("noteOrigin") != "assistant" and any(field in args for field in NOTE_FIELDS):
+            raise workspace.WorkspaceError(409, "修改用户笔记请提交 AI 整理草稿，由用户确认。")
         if notebook and "expectedNoteVersion" in args and (
                 type(args["expectedNoteVersion"]) is not int or args["expectedNoteVersion"] != previous_note["version"]):
             raise workspace.WorkspaceError(409, "笔记已有新版本。请重新打开后合并修改。")
@@ -570,14 +572,57 @@ def change_record_reference(project_id, rail, entry_id, reference, remove):
     return mutate(project_id, operation)
 
 
-def note_history(project_id, rail, entry_id):
+def _find_notebook_entry(item, rail, entry_id):
     if not isinstance(rail, str) or not isinstance(entry_id, str):
         raise workspace.WorkspaceError(400, "无效笔记标识。")
-    item = project(workspace.snapshot(), project_id)
     entry = next((record for record in item["rails"].get(rail, []) if record["id"] == entry_id), None)
-    if not entry or "noteVersion" not in entry:
+    if not entry or "noteVersion" not in entry or entry.get("kind") == "note-folder":
         raise workspace.WorkspaceError(404, "笔记不存在。")
+    return entry
+
+
+def note_history(project_id, rail, entry_id):
+    entry = _find_notebook_entry(project(workspace.snapshot(), project_id), rail, entry_id)
     return {"versions": [_note_version(entry), *entry.get("noteHistory", [])]}
+
+
+def suggest_note_edit(project_id, args):
+    body = workspace.text(args.get("text"), 16000)
+    if not body or type(args.get("baseVersion")) is not int:
+        raise workspace.WorkspaceError(400, "须提供整理后的正文和现有版本号。")
+
+    def operation(item):
+        entry = _find_notebook_entry(item, args.get("featureId"), args.get("id"))
+        if entry["noteVersion"] != args["baseVersion"]:
+            raise workspace.WorkspaceError(409, "笔记已有新版本，请重新读取后再提出建议。")
+        if entry["text"] == body:
+            raise workspace.WorkspaceError(400, "整理建议与当前正文相同。")
+        proposal = {"id": "suggest_" + uuid4().hex, "baseVersion": entry["noteVersion"], "text": body,
+                    "reason": workspace.text(args.get("reason"), 500), "at": timestamp()}
+        entry["noteSuggestion"] = proposal
+        return proposal
+    return mutate(project_id, operation)
+
+
+def decide_note_edit(project_id, args):
+    if type(args.get("accept")) is not bool:
+        raise workspace.WorkspaceError(400, "无效的笔记草稿操作。")
+
+    def operation(item):
+        entry = _find_notebook_entry(item, args.get("featureId"), args.get("id"))
+        proposal = entry.get("noteSuggestion")
+        if not proposal or proposal["id"] != args.get("suggestionId"):
+            raise workspace.WorkspaceError(409, "整理草稿已被更新或处理。")
+        if args["accept"]:
+            previous = _note_version(entry)
+            if previous["version"] != proposal["baseVersion"]:
+                raise workspace.WorkspaceError(409, "原笔记已有改动，请重新生成整理建议。")
+            entry["text"] = proposal["text"]
+            _record_note_edit(entry, previous, "assistant")
+            entry["updatedAt"] = timestamp()
+        entry.pop("noteSuggestion")
+        return {"id": entry["id"], "accepted": args["accept"], "version": entry["noteVersion"]}
+    return mutate(project_id, operation)
 
 
 def delete_entry(project_id, rail, entry_id):
@@ -1076,6 +1121,8 @@ def call(name, args, project_id, *, assistant=False):
         if args.get("id"):
             return update_entry(project_id, fid, args, draft_only=draft, assistant=assistant)
         return create_entry(project_id, fid, args, planning_draft=draft, assistant=assistant)
+    if name == "note_suggest_edit":
+        return suggest_note_edit(project_id, args)
     if name in ("idea_update", "goal_update"):
         return update_entry(project_id, "ideas" if name.startswith("idea") else "goals", args)
     if name == "task_create":

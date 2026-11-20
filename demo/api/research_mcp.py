@@ -31,10 +31,15 @@ TOOLS = {
                            "role": {"type": "string", "enum": list(features.FIELD_ROLES)}}}},
         "elements": {"type": "array", "items": {"type": "string"}, "description": "Legacy text-only detail names."}}),
     "feature_entries": ("Read current entries pushed to a project Feature Bot.", {"featureId": {"type": "string"}}),
+    "note_suggest_edit": ("Propose a replacement body for an existing notebook record; the user must confirm it. Preserve unselected content. Read the current noteVersion before proposing.", {
+        "featureId": {"type": "string"}, "id": {"type": "string"}, "baseVersion": {"type": "integer"},
+        "text": {"type": "string"}, "reason": {"type": "string"},
+    }),
     "feature_push": (
         "Save a record in a project Bot's assigned layout. Use category for resource folders or goal priorities, parentId for a related record in the same Bot, and dependsOn for goal prerequisites. "
         "or pass id to update an existing entry. In a calendar Bot, new entries are planning drafts and only the user can confirm or edit the confirmed schedule. "
-        "For a milestone set kind to milestone. Decide based on the Bot's purpose and message intent "
+        "For a milestone set kind to milestone. For edits to a user-authored notebook entry, use note_suggest_edit instead. "
+        "Decide based on the Bot's purpose and message intent "
         "whether to include a figure/diagram (imagePath in project folder, inline imageSvg diagram/chart, imageData, "
         "or imageUrl) plus title and caption, or concise text only. For sourced pushes, include the original "
         "publication or repository link as url and its publisher, journal, or repository name as source.",
