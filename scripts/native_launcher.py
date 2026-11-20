@@ -119,7 +119,7 @@ def prepare_profile(home):
     dependencies[name] = "file:" + PLUGIN.as_posix()
     target = profile / "node_modules" / name
     for src in PLUGIN.rglob("*"):
-        if src != package_path and src.suffix in (".js", ".json", ".yml", ".svg", ".png") and src.is_file():
+        if src != package_path and src.suffix in (".js", ".json", ".yml", ".svg", ".png", ".py") and src.is_file():
             destination = target / src.relative_to(PLUGIN)
             destination.parent.mkdir(parents=True, exist_ok=True)
             write_changed(destination, src.read_bytes())
@@ -135,6 +135,8 @@ def native_env(home, backend, configured):
     env = {k: v for k, v in os.environ.items() if not k.upper().startswith(("DSH_", "DEEPSEEK_", "LABWEAVE_BRIDGE", "LABWEAVE_DSH_WEB_HOME"))
            and k.upper() not in strip_keys}
     env.update(DSH_HOME=str(home), LABWEAVE_BRIDGE_PORT=str(backend.server_port), LABWEAVE_BRIDGE_TOKEN=backend.token)
+    if os.name == "nt":
+        env["LABWEAVE_WINDOWS_PICKER_PYTHON"] = sys.executable
     if configured:
         for k, v in model_config.configured_env_vars().items():
             if v:
@@ -175,7 +177,8 @@ def native_services(port=8770, *, home=None, configured=True, background=True, t
                         tasks.recover()
                         stop_jobs = automation.start()
                     process = start_process([*resolve_bundled_launch_args(), "web", "--host", "127.0.0.1",
-                                             "--port", str(port), "--no-open"], cwd=ROOT,
+                                             "--port", str(port), "--no-open"],
+                                            cwd=model_config.runtime_working_directory(ROOT),
                                             env=native_env(home, backend, configured), stdout=subprocess.PIPE,
                                             stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
                     ready = queue.Queue()

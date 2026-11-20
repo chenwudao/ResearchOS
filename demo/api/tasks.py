@@ -172,9 +172,11 @@ def execute(task_id):
             *runtime_cfg["patches"],
         ]
         patch.write_text(json.dumps(patch_items), encoding="utf-8")
+        project_cwd = folder.resolve()
         config = dict(
             dsh_home=str((workspace.DATA / "dsh-home").resolve()),
-            cwd=str(folder.resolve()), profile="sdk", patches=[str(patch.resolve())],
+            cwd=str(project_cwd), runtime_cwd=str(model_config.runtime_working_directory(project_cwd)),
+            profile="sdk", patches=[str(patch.resolve())],
             env=runtime_cfg["env"],
             provider=runtime_cfg["provider"], model=runtime_cfg["model"],
         )

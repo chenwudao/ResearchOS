@@ -60,6 +60,17 @@ class StubOpenAIServer(http.server.BaseHTTPRequestHandler):
 
 
 class ModelConfigTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == "nt", "Windows snapshot paths")
+    def test_windows_runtime_uses_a_supported_snapshot_drive(self):
+        project = Path("D:/project")
+        choose = model_config.runtime_working_directory
+        with mock.patch.dict(os.environ, {"DSH_RUNTIME_MODE": "exe"}), \
+                mock.patch.object(Path, "is_dir", autospec=True, side_effect=lambda path: path == Path("C:/")):
+            self.assertEqual(choose(project), Path("C:/"))
+            self.assertEqual(str(choose(Path("c:/project"))), r"C:\project")
+        with mock.patch.dict(os.environ, {"DSH_RUNTIME_MODE": "node"}):
+            self.assertEqual(choose(project), project)
+
     def test_parse_simple_yaml_handles_dsh_credentials_and_patches(self):
         creds = model_config.parse_simple_yaml(
             'version: 1\nrefs:\n  OPENAI_API_KEY: "sk-openai:123"\n  CUSTOM_KEY: sk-custom\n'

@@ -1,3 +1,7 @@
+import { execFile } from 'node:child_process'
+import { isSea } from 'node:sea'
+import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
 import { toolLabels } from './assistant-history.js'
 import { displayAssignment } from './bot-assignments.js'
 import { registerBranding } from './branding.js'
@@ -14,6 +18,25 @@ const token = process.env.LABWEAVE_BRIDGE_TOKEN
 if (token) delete process.env.LABWEAVE_BRIDGE_TOKEN
 
 export async function apply(ctx) {
+  const pickerPython = process.env.LABWEAVE_WINDOWS_PICKER_PYTHON
+  if (process.platform === 'win32' && isSea() && pickerPython) {
+    // The 0.2.2rc2 EXE treats the native picker worker path as a profile name.
+    const script = fileURLToPath(new URL('./windows-directory-picker.py', import.meta.url))
+    const runFile = promisify(execFile)
+    ctx.inject(['directoryPicker'], scope => {
+      const capability = scope.directoryPicker.capability()
+      if (capability.kind !== 'native') return
+      scope.effect(() => {
+        const original = capability.pick
+        const pick = async signal => {
+          const { stdout } = await runFile(pickerPython, ['-I', script], { signal, windowsHide: true })
+          return JSON.parse(stdout)
+        }
+        capability.pick = pick
+        return () => { if (capability.pick === pick) capability.pick = original }
+      }, 'Weave Windows native directory picker')
+    })
+  }
   registerBranding(ctx)
   registerBrowser(ctx)
   const labels = JSON.stringify(toolLabels).replaceAll('<', '\\u003c')
