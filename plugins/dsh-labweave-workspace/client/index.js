@@ -650,6 +650,8 @@ window.__ModuleLoader__.load({
       .lw-goal-task[data-done=true] button{text-decoration:line-through;opacity:.65}
       .lw-goal-day .lw-goal-task{background:color-mix(in srgb,var(--lw-paradigm-accent,#6879d9) 11%,transparent);border-radius:4px;margin:2px 0}
       .lw-goal-day .lw-goal-task button{font-size:var(--lw-ui-xs,12px);padding:2px 4px}
+      .lw-goal-days[data-scale=周] .lw-goal-day{min-height:clamp(112px,20vh,180px)}
+      .lw-goal-days:not([data-scale=月]) .lw-goal-day .lw-goal-task button{white-space:normal;overflow-wrap:anywhere}
       .lw-goal-task-dates{display:flex;width:100%;flex-wrap:wrap;align-items:center;gap:5px;font-size:var(--lw-ui-xs,12px)}
       .lw-goal-task-dates input,.lw-goal-form input[type=date]{color-scheme:inherit;background:transparent;border:1px solid var(--lw-border,#8884);border-radius:4px;margin-left:4px;padding:2px}
       .lw-goal-board[data-view=看板]{grid-template-columns:repeat(2,minmax(0,1fr))}
