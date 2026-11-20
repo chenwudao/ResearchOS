@@ -153,7 +153,7 @@ async function main() {
     const projectSettings = page.getByRole('dialog', { name: '项目设置', exact: true })
     await button('项目设置 路由测试项目').click()
     await projectSettings.getByLabel('项目简介').fill('读取本机研究材料')
-    await projectSettings.getByLabel('研究主题').fill('验证项目来源')
+    await projectSettings.getByLabel('项目主题').fill('验证项目来源')
     await button('保存', projectSettings).click()
     await projectSettings.getByText('已保存项目信息。', { exact: true }).waitFor()
     await button('来源文件夹', projectSettings).click()

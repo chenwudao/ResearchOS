@@ -76,7 +76,7 @@ def review(project, stored, settings):
         return {"reply": "项目复盘正在进行，请查看任务记录。", "actions": [], "taskId": active["id"]}
     task = tasks.create({"projectId": project["id"], "prompt":
         "复盘项目：检查目标依赖、延期、近期动态和项目记忆，提出一到三个后续建议。"
-        "使用 researchos 工具保存有依据的新点子和重要研究决策，避免重复。"})
+        "使用 researchos 工具保存有依据的新点子和重要项目决策，避免重复。"})
     task["scheduledReview"] = True
     tasks.store(task)
     tasks.approve({"id": task["id"]})

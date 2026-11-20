@@ -181,7 +181,7 @@ export function createBotDelegation(ctx, { call, caller, output, refresh = async
   }, leaderOnly)
   ctx.tools.register({
     name: 'labweave_bot_delegate', output,
-    description: 'Delegate one-time research work to existing Bots in the current project main chat. Use feature_list to find Bot IDs. Submit independent assignments together to run in parallel, and wait for their results before starting dependent work. Returns each result to this conversation and saves completed items to the Bot when writing is permitted.',
+    description: 'Delegate one-time work to existing Bots in the current project main chat. Use feature_list to find Bot IDs. Submit independent assignments together to run in parallel, and wait for their results before starting dependent work. Returns each result to this conversation and saves completed items to the Bot when writing is permitted.',
     parameters: { type: 'object', additionalProperties: false, required: ['assignments'], properties: {
       assignments: { type: 'array', minItems: 1, maxItems: MAX_ACTIVE, items: {
         type: 'object', additionalProperties: false, required: ['featureId', 'task'], properties: {

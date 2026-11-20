@@ -105,7 +105,7 @@ export function botAssignments(ctx, {rows, caller, registry, call, output, refre
   }
   async function index(scope) {
     const row=rows().find(r=>r.scope===scope && scope!=='global')
-    if(!row||!registry.get(row.workspaceId))throw fail('请选择当前项目内有效的科研项目。',404)
+    if(!row||!registry.get(row.workspaceId))throw fail('请选择有效的项目。',404)
     const entries=[]
     for(const bot of (row.features||[]).filter(f=>f.id!=='chat')){
       const tasks=await list(target(scope,bot.id))

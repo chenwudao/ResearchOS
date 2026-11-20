@@ -37,5 +37,5 @@ Bot 的主排布放在上方画布，对话与输入放在下方。沿用项目�
 ## 项目复用入口
 
 - 创建、命名与原生 Bot 页面复用现有客户端的创建入口和项目页，业务层复用 Bot 目录和会话绑定。 [客户端](../../../../plugins/dsh-labweave-workspace/client/index.js) · [Bot 业务层](../../../../demo/api/features.py)
-- 目标依赖、项目资源、研究状态及证据网络已有服务。实现时按实际数据模型扩展范式专属元素和关联。 [项目业务服务](../../../../demo/api/project_service.py) · [科研证据服务](../../../../demo/api/research_ledger.py)
+- 目标依赖、项目资源、项目状态及证据网络已有服务。实现时按实际数据模型扩展范式专属元素和关联。 [项目业务服务](../../../../demo/api/project_service.py) · [项目证据服务](../../../../demo/api/research_ledger.py)
 - 工程台复用试跑、正式审批和运行记录。现有接口说明描述当前实现，其中的工作台入口属于迁移基线。 [实验工作流](../../../../demo/api/research_workflows.py) · [开发基线与接口地图](../../../../docs/开发基线与接口地图.md)

@@ -74,7 +74,7 @@ def analyze(plan, runs):
 def register_resource(project, identity, text, relative):
     def operation(item):
         if not any(n['id'] == identity for n in item['rails']['library']):
-            item['rails']['library'].append({'id': identity, 'text': text, 'path': relative, 'kind': 'output', 'source': '科研工作流', 'ts': projects.timestamp()})
+            item['rails']['library'].append({'id': identity, 'text': text, 'path': relative, 'kind': 'output', 'source': '实验工作流', 'ts': projects.timestamp()})
     projects.mutate(project, operation)
 
 
@@ -83,7 +83,7 @@ def register_goals(flow, completed=False):
         goals = item['rails']['goals']
         root = 'wf_' + flow['id']
         if not any(n['id'] == root for n in goals):
-            goals.append({'id': root, 'text': flow['plan']['question'], 'ts': projects.timestamp(), 'source': '科研工作流', 'workflowId': flow['id']})
+            goals.append({'id': root, 'text': flow['plan']['question'], 'ts': projects.timestamp(), 'source': '实验工作流', 'workflowId': flow['id']})
         for step in flow['steps']:
             identity = root + '_' + step['id']
             existing = next((n for n in goals if n['id'] == identity), None)
@@ -109,7 +109,7 @@ def report(flow):
         writer.writerow(['run_id', 'method', 'seed', 'budget', result['metric'], 'split_id', 'attempts', 'directory'])
         for run in flow['runs']:
             writer.writerow([run['id'], run['method'], run['seed'], run['budget'], run['metrics'][result['metric']], run['metrics']['split_id'], len(run['attempts']), run['attempts'][-1]['directory']])
-    lines = ['# 科研对照实验报告', '', flow['plan']['question'], '', '## 预注册协议', '',
+    lines = ['# 对照实验报告', '', flow['plan']['question'], '', '## 预注册协议', '',
              '- 假设：' + flow['plan']['hypothesis'], '- 基线：' + result['baseline'],
              '- 主指标：' + result['metric'] + '（' + result['direction'] + '）',
              '- 数据划分：' + flow['plan']['protocol']['split'],
@@ -169,7 +169,7 @@ def publish(flow):
     marker = '工作流 ' + flow['id']
     already_saved = marker in current['decisions'] and set(flow['evidenceIds']).issubset(current['evidence'])
     if not already_saved and current['revision'] != flow.get('acceptedStateRevision', flow['stateRevisionAtReport']):
-        raise workspace.WorkspaceError(409, '科研状态已更新，请重新核对状态后确认报告。')
+        raise workspace.WorkspaceError(409, '项目状态已更新，请重新核对状态后确认报告。')
     result = flow['analysis']
     decision = marker + '：' + result['decision']
     decisions = current['decisions'] if marker in current['decisions'] else (current['decisions'] + '\n' + decision).strip()

@@ -19,7 +19,7 @@ async function main() {
   page.on('pageerror', err => netLogs.push(`PAGEERR ${err.message}`))
   const evidence = path.join(root, 'session-proof.json')
   page.setDefaultTimeout(20000)
-  let step = '打开科研工作区'
+  let step = '打开工作区'
   async function preview(name) {
     if (process.env.LABWEAVE_PREVIEW_DIR) {
       fs.mkdirSync(process.env.LABWEAVE_PREVIEW_DIR, { recursive: true })
@@ -221,12 +221,21 @@ async function main() {
       assert.equal(generated.suggestedFilename(), '结果.dat')
       assert.deepEqual(fs.readFileSync(await generated.path()), report)
       await preview('11-project-file-storage')
+      await openSettings()
+      await button('深色').click()
+      await page.getByRole('button', { name: '深色', pressed: true }).waitFor()
+      await page.keyboard.press('Escape')
+      await page.locator('[data-shortcut-modal="settings"]').waitFor({ state: 'hidden' })
+      await button('工具').click()
+      await page.locator('[data-sidebar-right-open]').waitFor({ state: 'detached' })
       await page.setViewportSize({ width: 900, height: 700 })
       await page.evaluate(() => { document.documentElement.style.zoom = '125%' })
-      if (!await store.isVisible()) await button('工具').click()
+      await button('工具').click()
       await store.waitFor()
-      const bounds = await store.boundingBox()
-      assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 901)
+      await page.waitForFunction(el => {
+        const bounds = el.getBoundingClientRect()
+        return bounds.left >= 0 && bounds.right <= window.innerWidth + 1
+      }, await store.elementHandle(), { timeout: 3000 })
       await page.evaluate(() => { document.documentElement.style.zoom = '' })
       await page.setViewportSize({ width: 1280, height: 820 })
     }
@@ -281,7 +290,7 @@ async function main() {
       assert.equal((await owner('project', {
         sessionId: second.sessionId, action: 'files/download', args: { id: stored.data[0].id },
       })).code, 404)
-      console.log('工具引导、时间线导入下载、窄窗口缩放、跨项目隔离通过。')
+      console.log('工具引导、时间线导入下载、窄窗口缩放与深色设置下重新打开、跨项目隔离通过。')
       return
     }
     const unauthed = await fetch(new URL('/api/labweave/catalog', url))

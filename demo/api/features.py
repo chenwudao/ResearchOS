@@ -265,7 +265,7 @@ def _resolve_target(caller_scope, project_id=None, *, require_project_from_globa
             raise workspace.WorkspaceError(400, "全局助手操作项目功能时，必须显式指定 projectId（或 'all'）。")
         return "global", projects
     if project_id not in projects:
-        raise workspace.WorkspaceError(404, "未找到目标科研项目。")
+        raise workspace.WorkspaceError(404, "未找到目标项目。")
     return project_id, projects
 
 
@@ -911,7 +911,7 @@ def bind_bot_session(project_id, feature_id, session_id):
     sid = session_id.strip()
     projects = _projects_index()
     if project_id not in projects:
-        raise workspace.WorkspaceError(404, "未找到科研项目。")
+        raise workspace.WorkspaceError(404, "未找到项目。")
     if not any(item["id"] == fid for item in list_features("global", project_id)):
         raise workspace.WorkspaceError(404, "当前项目中不存在该功能。")
     now = int(time.time())

@@ -1,4 +1,4 @@
-"""Read-only local folders explicitly associated with a research project."""
+"""Read-only local folders explicitly associated with a project."""
 import codecs
 from contextlib import contextmanager
 from itertools import islice

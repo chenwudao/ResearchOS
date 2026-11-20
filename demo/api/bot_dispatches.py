@@ -54,7 +54,7 @@ def start(project, parent, jobs):
         _ensure(db)
         db.execute("BEGIN IMMEDIATE")
         if db.execute("SELECT 1 FROM projects WHERE id=?", (project,)).fetchone() is None:
-            raise workspace.WorkspaceError(404, "科研项目不存在。")
+            raise workspace.WorkspaceError(404, "项目不存在。")
         db.executemany("""INSERT INTO labweave_bot_dispatches
             (project,id,feature,bot_name,parent_session,task,created_at,updated_at,status)
             VALUES(?,?,?,?,?,?,?,?,'queued') ON CONFLICT(project,id) DO NOTHING""", pending)

@@ -2115,7 +2115,7 @@ window.__ModuleLoader__.load({
           } },
           infoField('name', LW('项目名称'), false, { required: true, maxLength: 80 }),
           infoField('description', LW('项目简介'), true, { rows: 4, maxLength: 2000 }),
-          infoField('topic', LW('研究主题'), false, { maxLength: 2000 }),
+          infoField('topic', LW('项目主题'), false, { maxLength: 2000 }),
           h('div', { className: 'lw-actions lw-dialog-actions' },
             deleteButton,
             Btn({ variant: 'primary', type: 'submit', disabled: busy || !info.name.trim() || !Object.keys(edits).length }, LW('保存')))),
@@ -2376,7 +2376,7 @@ window.__ModuleLoader__.load({
           const saved = await applyProfile({ soul: soulDraft }, LW('SOUL 核心准则已保存。'))
           if (saved) setSoulDraft(saved.soul)
         } },
-          h('p', { className: 'lw-hint' }, LW('SOUL 定义了全局助手在科研协作中的核心准则、证据要求与行为边界，会在每次全局对话中作为行为规范生效。')),
+          h('p', { className: 'lw-hint' }, LW('SOUL 定义了全局助手的核心准则、证据要求与行为边界，会在每次全局对话中作为行为规范生效。')),
           err && h('p', { role: 'alert', className: 'lw-error' }, err),
           noticeText && h('p', { role: 'status', className: 'lw-notice' }, noticeText),
           h('label', null, LW('核心准则（SOUL）'),
@@ -2392,7 +2392,7 @@ window.__ModuleLoader__.load({
               Btn({ variant: 'primary', size: 'sm', type: 'submit', disabled: busy }, busy ? LW('保存中…') : LW('保存 SOUL')))))
 
         : h(MemorySection, {
-            hint: LW('记录全局研究偏好、跨项目方法规范与长期备忘，仅保存在本机并作用于全局助手对话。'),
+            hint: LW('记录全局偏好、跨项目工作规范与长期备忘，仅保存在本机并作用于全局助手对话。'),
             placeholder: LW('输入要让全局助手长期记住的偏好或备忘…'),
             listLabel: LW('全局记忆列表'),
             emptyText: LW('暂无全局记忆，可在上方添加第一条。'),
@@ -3627,7 +3627,7 @@ window.__ModuleLoader__.load({
                             }) }, libraryUrls.has(activeItem.url) ? LW('已收藏') : LW('收藏到资源库')),
                             feature === 'ideas' && Btn({ variant: 'primary', size: 'xs', disabled: busy || linkedIdeaIds.has(activeItem.id), onClick: () => run(async () => {
                               await action('goal_create', { text: activeItem.text, ideaId: activeItem.id })
-                              setNotice('已转化为研究目标。')
+                              setNotice('已转化为项目目标。')
                             }) }, linkedIdeaIds.has(activeItem.id) ? LW('已转目标') : LW('转为目标')),
                             feature === 'goals' && Btn({ variant: 'primary', size: 'xs', disabled: busy, onClick: () => run(() => action('goal_update', { id: activeItem.id, done: !activeItem.done })) }, activeItem.done ? LW('标为未完成') : LW('标记完成')),
                             (feature === 'ideas' || feature === 'goals') && Btn({ variant: 'ghost', size: 'xs', onClick: () => { setEditingId(activeItem.id); setEditDraft({ text: activeItem.text, due: activeItem.due || '' }) } }, LW('编辑'))),
@@ -4335,7 +4335,7 @@ window.__ModuleLoader__.load({
         const openGlobal = () => {
           const global = rows.find(r => r.scope === 'global')
           if (disposed || turn !== generation) return
-          if (!global) { notice(LW('无法打开全局助手，请重新连接科研服务。')); return }
+          if (!global) { notice(LW('无法打开全局助手，请重新连接 Weave 服务。')); return }
           forgetPage()
           const last = sessionsFor(global.workspaceId, ctx.workspaces.list.getSnapshot(), ctx.sessions.list.getSnapshot(), allBotSessionIds())[0]
           if (!options && last) openChat(last.id)
@@ -4394,7 +4394,7 @@ window.__ModuleLoader__.load({
           if (key === 'hero.headline') return room?.scope === 'global' || !room ? (globalRow()?.name || 'Weave') : room.name
           if (key === 'hero.preview') return ''
           if (key === 'placeholder.hero' && /[\u3400-\u9fff]/.test(originalText)) return room?.scope === 'global' || !room
-            ? LW('和助手聊聊你的研究…') : LW('在这个项目里继续讨论…')
+            ? LW('和助手聊聊你的想法…') : LW('在这个项目里继续讨论…')
         }
         if (!['workspace', 'schedule.manager'].includes(ns)) return originalText
         const cn = /[\u3400-\u9fff]/.test(originalText)
@@ -5112,10 +5112,7 @@ window.__ModuleLoader__.load({
           const blank = sessionsFor(row.workspaceId, workspaces, sessions, allBotSessionIds())
             .find(session => session.blank && !session.running)
           if (!blank) return startProjectChat(row)
-          if (currentSession()?.id !== blank.id || ctx.layout.panelInfo.getSnapshot().activePanelId !== null || chatSplit) {
-            hideActiveSandbox()
-            return jump(blank.id)
-          }
+          if (currentSession()?.id !== blank.id || ctx.layout.panelInfo.getSnapshot().activePanelId !== null || chatSplit) return jump(blank.id)
           return closeDrawer()
         }
         selectPage(row.workspaceId, feature); closeDrawer()
@@ -5696,13 +5693,13 @@ window.__ModuleLoader__.load({
         const activePanes = (splitPanes.length ? splitPanes : (choice ? [choice] : []))
           .map(p => ({ ...p, row: rows.find(r => r.workspaceId === p.workspaceId && r.scope !== 'global') }))
           .filter(p => p.row && hasFeature(p.row, p.feature))
-        if (!activePanes.length) return h('p', { className: 'lw-hint', style: { padding: 24 }, role: 'status' }, LW('请从侧栏选择科研项目。'))
+        if (!activePanes.length) return h('p', { className: 'lw-hint', style: { padding: 24 }, role: 'status' }, LW('请从侧栏选择项目。'))
         const paneCount = activePanes.length + (chatSplit ? 1 : 0)
         if (activePanes.length === 1) {
           const p = activePanes[0]
           return h(ProjectPage, { key: p.workspaceId + ':' + p.feature, row: p.row, feature: p.feature, paneIndex: 0, paneCount })
         }
-        return h('div', { className: 'lw-split-grid', 'aria-label': LW('分屏科研工作区') },
+        return h('div', { className: 'lw-split-grid', 'aria-label': LW('分屏工作区') },
           activePanes.map((p, idx) => h(ProjectPage, { key: p.workspaceId + ':' + p.feature, row: p.row, feature: p.feature, paneIndex: idx, paneCount })))
       })
 
@@ -6100,7 +6097,6 @@ window.__ModuleLoader__.load({
               else if (ctx.sidebarRight.toggleExpanded) ctx.sidebarRight.toggleExpanded()
               ctx.layout.closeRightbar()
             } else {
-              if (!isBotSandboxChat(sid)) hideActiveSandbox()
               const hasOpenTab = Boolean(ctx.sidebarRight.openTabs?.getSnapshot?.().some(t => t.sessionId === sid))
               if (!hasOpenTab) ctx.sidebarRight.openTabIn(sid, 'guide')
               actions?.setExpanded?.(sid, true)
@@ -6745,7 +6741,7 @@ window.__ModuleLoader__.load({
           }
         }, [activeSplit, splitPanes.map(p => p.workspaceId + ':' + p.feature).join('|'), panel.activePanelId])
         const splitPortal = activeSplit && splitTarget ? ReactDOM.createPortal(
-          h('div', { className: 'lw-split-grid', 'aria-label': LW('分屏科研工作区') },
+          h('div', { className: 'lw-split-grid', 'aria-label': LW('分屏工作区') },
             splitPanes.map((p, idx) => {
               const row = rows.find(r => r.workspaceId === p.workspaceId && r.scope !== 'global')
               if (!row) return null
@@ -6758,7 +6754,7 @@ window.__ModuleLoader__.load({
         return h(React.Fragment, null,
           h(ModelMenuNativeBack),
           splitPortal,
-          error && h(Dialog, { title: LW('科研工作区'), close: () => setError('') }, h('p', { role: 'alert' }, error),
+          error && h(Dialog, { title: LW('工作区'), close: () => setError('') }, h('p', { role: 'alert' }, error),
             Btn({ variant: 'secondary', onClick: () => setError('') }, LW('关闭'))),
           options && h(PluginForm, { rows: options, close: () => setOptions(null) }),
           profileOpen && h(AssistantProfileModal, {

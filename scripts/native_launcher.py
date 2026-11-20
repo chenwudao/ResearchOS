@@ -196,7 +196,7 @@ def native_services(port=8770, *, home=None, configured=True, background=True, t
                     except queue.Empty as exc:
                         raise RuntimeError("等待本机 Weave 启动超时。") from exc
                     if not url or errors or not backend.ready.wait(timeout):
-                        raise RuntimeError("Weave 科研插件未能启动，请检查本地运行环境。")
+                        raise RuntimeError("Weave 工作区插件未能启动，请检查本地运行环境。")
                     yield url, process
                 finally:
                     stop_process(process)
@@ -238,7 +238,7 @@ def offline_backup(identity=None):
             print("恢复完成。操作前的备份", backup.archive_path(result["rollback"]))
         else:
             result = backup.create(native_home=home)
-            print("已备份科研数据和原生会话", backup.archive_path(result["id"]))
+            print("已备份工作区数据和原生会话", backup.archive_path(result["id"]))
 
 
 def request_stop():
@@ -251,22 +251,22 @@ def request_stop():
         except FileNotFoundError:
             return None
         if not isinstance(instance, str) or not re.fullmatch(r"[0-9a-f]{32}", instance):
-            raise RuntimeError("无法识别本地科研工作区的运行记录。")
+            raise RuntimeError("无法识别本地工作区的运行记录。")
         return instance
 
     instance = current_instance()
     if instance is None:
-        print("当前没有由项目启动器运行的科研工作区。")
+        print("当前没有由项目启动器运行的工作区。")
         return
     request = home / ("stop-" + instance)
     request.touch()
     deadline = time.monotonic() + 45
     while current_instance() == instance:
         if time.monotonic() >= deadline:
-            raise RuntimeError("科研服务尚未响应停止请求。")
+            raise RuntimeError("Weave 服务尚未响应停止请求。")
         time.sleep(.2)
     request.unlink(missing_ok=True)
-    print("科研工作区已关闭。")
+    print("工作区已关闭。")
 
 
 def launch(port, no_open):
@@ -274,7 +274,7 @@ def launch(port, no_open):
         raise KeyboardInterrupt
     signal.signal(signal.SIGTERM, interrupt)
     with business_owner():
-        print("正在启动本机 Weave 科研工作区…", flush=True)
+        print("正在启动本机 Weave 工作区…", flush=True)
         home = profile_home()
         marker = home / "instance.json"
         instance = secrets.token_hex(16)
@@ -289,7 +289,7 @@ def launch(port, no_open):
                     print(url, flush=True)  # Explicit terminal-only login link, like upstream --no-open.
                 elif not webbrowser.open(url):
                     print("请在本机浏览器打开以下一次性登录地址：", url, flush=True)
-                print(f"科研工作区已启动于 {origin}。按 Ctrl+C 或使用 --stop 关闭。", flush=True)
+                print(f"工作区已启动于 {origin}。按 Ctrl+C 或使用 --stop 关闭。", flush=True)
                 while process.poll() is None and not request.exists():
                     time.sleep(.3)
                 if process.returncode:

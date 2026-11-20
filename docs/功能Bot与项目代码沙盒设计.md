@@ -1,5 +1,7 @@
 # 功能 Bot 与项目代码沙盒
 
+> 本文记录旧版界面。当前项目工具侧栏已移除项目代码沙盒，现行入口见 [工作区适配记录](DSH前端适配路线.md#项目聊天右侧工具栏)。
+
 桌面端已接入项目代码沙盒。对话中的 `labweave_sandbox_run` 提交短时 Python 试跑，`labweave_sandbox_status` 读取真实进程和输出，`labweave_workflow_draft` 提交正式对照计划，`labweave_sandbox_run_approved` 可启动已经批准的正式计划。右侧沙盒位于项目主聊天的「工具」中。功能 Bot 的右栏展示对话分配的任务，分配内容以 Markdown 编译视图呈现，职责可直接在右栏编辑并同步给项目，运行记录可回到对应项目聊天查看。
 
 ## 当前执行器

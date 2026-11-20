@@ -129,7 +129,7 @@ def project_action(scope, data):
     if action == "view":
         return project_view(scope)
     if scope == "global":
-        raise workspace.WorkspaceError(403, "请选择明确的科研项目。")
+        raise workspace.WorkspaceError(403, "请选择明确的项目。")
     if action == "bot_dispatches":
         return bot_dispatches.view(scope, summary=args.get("summary") is True)
     if action == "bot_canvas":

@@ -1,7 +1,7 @@
 export function registerProjectTools(ctx, { call, caller, output }) {
   function target(exec) {
     const { row, workspace } = caller(exec)
-    if (row.scope === 'global') throw Error('请在具体科研项目的对话里使用工作区文件或 Git。')
+    if (row.scope === 'global') throw Error('请在具体项目的对话里使用工作区文件或 Git。')
     return { row, workspace }
   }
   const projectId = { type: 'string', description: 'Ignored in a project chat; the current project is used.' }

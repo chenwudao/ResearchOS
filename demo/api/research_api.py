@@ -21,7 +21,7 @@ def call_tool(name, args, project):
         return ledger.put_node(project, args)
     if name == 'evidence_link':
         return ledger.link(project, args)
-    raise workspace.WorkspaceError(404, '未知科研工具。')
+    raise workspace.WorkspaceError(404, '未知项目工具。')
 
 
 POST = {

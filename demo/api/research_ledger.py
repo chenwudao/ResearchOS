@@ -82,7 +82,7 @@ def save_state(project, args, *, proposal=False):
         revision = row[0] if row else 0
         body = json.loads(row[1]) if row else {**{key: '' for key in FIELDS}, 'evidence': [], 'proposals': []}
         if not proposal and args.get('revision') != revision:
-            raise workspace.WorkspaceError(409, '科研状态已更新，请重新读取后保存。')
+            raise workspace.WorkspaceError(409, '项目状态已更新，请重新读取后保存。')
         changes = {key: workspace.text(args[key], 8000) for key in FIELDS if key in args}
         if proposal:
             body['proposals'] = [*body.get('proposals', []), {'id': uuid4().hex, 'changes': changes,

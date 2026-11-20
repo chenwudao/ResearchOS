@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
-    parser = argparse.ArgumentParser(description="启动和管理本机 Weave 科研工作区。")
+    parser = argparse.ArgumentParser(description="启动和管理本机 Weave 工作区。")
     parser.add_argument("--install-only", action="store_true", help="准备 Weave 运行环境")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--backup", action="store_true", help="备份已关闭的工作区及其会话")
