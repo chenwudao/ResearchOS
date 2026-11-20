@@ -16,7 +16,7 @@ TOOLS = {
     "assistant_rename": ("Change the global assistant's display name when requested in the conversation.", {"name": {"type": "string"}}),
     "feature_labels": ("Read active feature IDs and their current display names for this conversation scope. A global conversation may optionally specify projectId.", {}),
     "feature_list": ("List active Feature Bots in the project. clusterParent identifies grouped members. Use includeArchived to find completed temporary Bots and their preserved results.", {"includeArchived":{"type":"boolean"}}),
-    "feature_create": ("Create a Bot with one paradigm and one compatible layout. Use goals: checklist/path, notes: library/timeline, mindmap: graph/lineage, ideas: branches/reasoning or engineering: sequence/matrix. For a project extension, use its ext_ ID and fixed layout from project_get_context. Global chat must specify the project explicitly.", {
+    "feature_create": ("Create a Bot with one paradigm and one compatible layout. Use goals: calendar/checklist/path, notes: library/timeline, mindmap: graph/lineage, ideas: branches/reasoning or engineering: sequence/matrix. For a project extension, use its ext_ ID and fixed layout from project_get_context. Global chat must specify the project explicitly.", {
         "label":{"type":"string"}, "paradigm":{"type":"string"},
         "layout":{"type":"string","enum":[layout for layouts in features.BOT_LAYOUTS.values() for layout in layouts]},
         "hint":{"type":"string"}, "temporary":{"type":"boolean","description":"Use only for a one-time assignment without a suitable existing Bot. Successful archived deliveries retire it automatically."}}),
@@ -52,6 +52,7 @@ TOOLS = {
             "kind": {"type": "string"},
             "category": {"type": "string"}, "parentId": {"type": ["string", "null"]},
             "due": {"type": "string"}, "done": {"type": "boolean"},
+            "plannedDate": {"type": ["string", "null"], "description": "Scheduled work date (YYYY-MM-DD), separate from the deadline."},
             "dependsOn": {"type": "array", "items": {"type": "string"}},
             "eventDate": {"type": "string", "description": "Known publication or event date in YYYY-MM-DD."},
             **{name: {"type": "string", "description": label}
@@ -83,8 +84,8 @@ TOOLS = {
     "paper_search": ("Search real Crossref paper metadata.", {"query": {"type": "string"}}),
     "idea_create": ("Save a project idea with an optional source URL.", {"text": {"type": "string"}, "url": {"type": "string"}}),
     "idea_update": ("Edit an existing idea.", {"id": {"type": "string"}, "text": {"type": "string"}}),
-    "goal_create": ("Create goal or subtask with existing parent/dependency IDs.", {"text": {"type": "string"}, "due": {"type": "string"}, "parentId": {"type": "string"}, "dependsOn": {"type": "array", "items": {"type": "string"}}}),
-    "goal_update": ("Update a goal's text, due date or completion.", {"id": {"type": "string"}, "text": {"type": "string"}, "due": {"type": "string"}, "done": {"type": "boolean"}}),
+    "goal_create": ("Create goal or subtask with existing parent/dependency IDs.", {"text": {"type": "string"}, "due": {"type": "string"}, "plannedDate": {"type": ["string", "null"]}, "parentId": {"type": "string"}, "dependsOn": {"type": "array", "items": {"type": "string"}}}),
+    "goal_update": ("Update a goal's text, scheduled date, deadline or completion.", {"id": {"type": "string"}, "text": {"type": "string"}, "due": {"type": "string"}, "plannedDate": {"type": ["string", "null"]}, "done": {"type": "boolean"}}),
     "task_create": ("Queue a new task for user confirmation.", {"text": {"type": "string"}, "goalId": {"type": "string"}}),
     "memory_search": ("Search the shared project memories, including rules, decisions and results from the project chat and its Bots. Use a short task-specific query or a category filter. The global assistant must identify the target project explicitly.", {
         "query": {"type": "string"}, "category": {"type": "string"}, "limit": {"type": "integer"}}),

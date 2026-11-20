@@ -268,6 +268,13 @@ def _bot_record_fields(args, entry):
             entry["eventDate"] = args["eventDate"]
         else:
             raise workspace.WorkspaceError(400, "事件日期须使用 YYYY-MM-DD。")
+    if "plannedDate" in args:
+        if args["plannedDate"] in (None, ""):
+            entry.pop("plannedDate", None)
+        elif _valid_date(args["plannedDate"]):
+            entry["plannedDate"] = args["plannedDate"]
+        else:
+            raise workspace.WorkspaceError(400, "安排日期须使用 YYYY-MM-DD。")
 
 
 def _entry_elements(args, entry, extension, records):

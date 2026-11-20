@@ -1,0 +1,90 @@
+const assert = require('node:assert/strict')
+const { readFileSync } = require('node:fs')
+const { chromium } = require('playwright')
+
+async function main() {
+  const url = readFileSync(0, 'utf8').trim()
+  const browser = await chromium.launch({ channel: process.env.PLAYWRIGHT_CHANNEL || (process.platform === 'win32' ? 'msedge' : 'chromium') })
+  const page = await browser.newPage({ locale: 'zh-CN', viewport: { width: 1360, height: 850 } })
+  const errors = []
+  const consoleErrors = []
+  page.on('pageerror', error => errors.push(error.message))
+  page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()) })
+  try {
+    page.setDefaultTimeout(12000)
+    const button = (target, name) => target.getByRole('button', { name, exact: true })
+    const planner = page.getByRole('region', { name: '目标日历与待办' })
+    const agenda = planner.getByRole('complementary', { name: '待办' })
+    const nav = page.getByRole('navigation', { name: '排期验收 项目功能' })
+    const task = '整理同机位渲染对照'
+    const setup = page.getByRole('dialog', { name: '配置模型 API' })
+    async function dismissSetup() {
+      await setup.waitFor()
+      await button(setup, '稍后配置').click()
+      await setup.waitFor({ state: 'hidden' })
+    }
+    async function openGoals() {
+      if (!await nav.isVisible()) await button(page, '排期验收').click()
+      await button(nav, '实验排期').click()
+      await planner.waitFor()
+    }
+    await page.goto(url)
+    await page.locator('.lw-wordmark').waitFor()
+    await dismissSetup()
+    await button(page, '新建工作区项目').click()
+    const projectForm = page.getByRole('dialog', { name: '新建工作区项目' })
+    await projectForm.getByLabel('项目名称').fill('排期验收')
+    await button(projectForm, '创建').click()
+    await nav.waitFor()
+    await button(page, '在排期验收创建功能 Bot').click()
+    const botForm = page.getByRole('dialog', { name: '创建功能 Bot' })
+    await botForm.getByRole('radio', { name: '目标', exact: true }).check()
+    await botForm.getByLabel('名字').fill('实验排期')
+    await button(botForm, '创建').click()
+    await botForm.waitFor({ state: 'hidden' })
+    await openGoals()
+    const dates = await planner.locator('.lw-goal-day > button').evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label')))
+    assert.equal(dates.length, 7)
+    await button(planner, dates[0]).click()
+    await agenda.getByRole('textbox', { name: '新待办名称' }).fill(task)
+    await agenda.getByRole('textbox', { name: '所属阶段' }).fill('实验验证')
+    await agenda.getByLabel('截止日期', { exact: true }).fill(dates[6])
+    await button(agenda, '添加待办').click()
+    await button(agenda, task).waitFor()
+    await agenda.getByLabel('安排日期 ' + task).fill(dates[1])
+    await button(planner, dates[1]).click()
+    await button(agenda, task).waitFor()
+    assert.equal(await agenda.getByText('截止 ' + dates[6]).count(), 1)
+    await agenda.getByRole('checkbox', { name: '完成 ' + task }).click()
+    await agenda.locator('input[type=checkbox]:checked').waitFor()
+    await button(planner, '看板').click()
+    await planner.locator('.lw-goal-board section').filter({ has: page.getByRole('heading', { name: '已完成' }) })
+      .getByRole('button', { name: task }).waitFor()
+
+    await page.reload()
+    await dismissSetup()
+    if (!await planner.isVisible()) await openGoals()
+    await button(planner, dates[1]).click()
+    await button(agenda, task).waitFor()
+    assert.equal(await agenda.getByLabel('安排日期 ' + task).inputValue(), dates[1])
+    assert.equal(await agenda.getByRole('checkbox', { name: '完成 ' + task }).isChecked(), true)
+    await button(planner, '月').click()
+    assert.equal(await planner.locator('.lw-goal-day').count(), 42)
+    await button(planner, '日').click()
+    assert.equal(await planner.locator('.lw-goal-day').count(), 1)
+
+    await page.setViewportSize({ width: 900, height: 760 })
+    await page.locator('html').evaluate(node => { node.style.zoom = '1.15' })
+    const columns = planner.locator('.lw-goal-columns')
+    assert.equal(await columns.evaluate(node => node.scrollWidth <= node.clientWidth + 1), true)
+    assert.deepEqual(errors, [])
+    console.log('Goal planner: scheduled date, deadline, completion, reload, calendar ranges and narrow layout passed.')
+  } catch (error) {
+    console.error({ title: await page.title(), body: (await page.locator('body').innerText()).slice(0, 600), errors, consoleErrors })
+    throw error
+  } finally {
+    await browser.close()
+  }
+}
+
+main().catch(error => { console.error(error); process.exitCode = 1 })

@@ -44,6 +44,25 @@ class FeatureBotsTests(unittest.TestCase):
             return result
         return json.loads(result["content"][0]["text"])
 
+    def test_calendar_uses_separate_scoped_planning_dates(self):
+        a, b = self.projects
+        for scope in (a, b):
+            features.enable_builtin(scope, "goals")
+        calendar = features.create_feature(a, "排期", paradigm="goals")["feature"]
+        self.assertEqual(calendar["layout"], "calendar")
+        self.assertEqual(next(f["layout"] for f in web.project_view(a)["features"] if f["id"] == "goals"), "checklist")
+        goal = self.mcp(a, "goal_create", {
+            "text": "核对结果", "plannedDate": "2026-11-21", "due": "2026-11-26",
+        })
+        args = {"id": goal["id"], "plannedDate": "2026-11-22"}
+        self.assertTrue(self.mcp(b, "goal_update", args)["isError"])
+        moved = self.mcp(a, "goal_update", args)
+        self.assertEqual((moved["plannedDate"], moved["due"]), ("2026-11-22", "2026-11-26"))
+        self.assertTrue(self.mcp(a, "goal_update", {**args, "plannedDate": "2026-02-30"})["isError"])
+        unscheduled = self.mcp(a, "goal_update", {**args, "plannedDate": None})
+        self.assertNotIn("plannedDate", unscheduled)
+        self.assertEqual(unscheduled["due"], "2026-11-26")
+
     def test_global_stays_chat_only_and_scopes_create_rename_delete(self):
         a, b = self.projects
         global_list = self.mcp("global", "feature_list", {})

@@ -553,6 +553,38 @@ window.__ModuleLoader__.load({
       .lw-paradigm-title{background:none;border:0;padding:0;text-align:start;justify-self:start;cursor:pointer;min-width:0;overflow-wrap:anywhere}
       .lw-paradigm-title:hover{text-decoration:underline;text-underline-offset:3px}
       .lw-paradigm-title[aria-current=true]{text-decoration:underline;text-decoration-color:var(--lw-paradigm-accent,currentColor);text-underline-offset:4px}
+      .lw-goal-planner{display:grid;gap:12px;min-width:0;container-type:inline-size;color:inherit}
+      .lw-goal-planner :is(button,input){font:inherit;color:inherit;min-width:0}
+      .lw-goal-planner button{background:transparent;border:1px solid transparent;border-radius:5px;padding:4px 7px;cursor:pointer}
+      .lw-goal-planner button:hover,.lw-goal-planner button[aria-pressed=true]{background:color-mix(in srgb,var(--lw-paradigm-accent,#6879d9) 15%,transparent)}
+      .lw-goal-planner :is(button,input):focus-visible{outline:2px solid var(--dsw-focus-ring-color,#6978da);outline-offset:1px}
+      .lw-goal-stages,.lw-goal-toolbar,.lw-goal-toolbar>div{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+      .lw-goal-toolbar{justify-content:space-between}
+      .lw-goal-stage{flex:1 1 150px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 8px;padding:8px 10px;border:1px solid var(--lw-border,#8884);border-radius:8px}
+      .lw-goal-stage progress{grid-column:1/-1;grid-row:2;width:100%;height:6px;accent-color:var(--lw-paradigm-accent,#6779d3)}
+      .lw-goal-columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,32%);gap:12px;align-items:start}
+      .lw-goal-calendar,.lw-goal-agenda,.lw-goal-board>section{min-width:0;border:1px solid var(--lw-border,#8884);border-radius:8px;padding:8px}
+      .lw-goal-agenda,.lw-goal-board,.lw-goal-form{display:grid;gap:7px}
+      .lw-goal-form{padding-top:8px;border-top:1px solid var(--lw-border,#8884)}
+      .lw-goal-form input{max-width:100%}
+      .lw-goal-form button[type=submit]{border:1px solid var(--lw-border,#8884)}
+      .lw-goal-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;margin-top:6px}
+      .lw-goal-days[data-scale=日]{grid-template-columns:minmax(0,1fr)}
+      .lw-goal-weekday{text-align:center;font-size:var(--lw-ui-xs,12px);opacity:.8}
+      .lw-goal-day{border:1px solid var(--lw-border,#8884);border-radius:5px;min-height:66px;min-width:0;padding:2px;overflow:hidden}
+      .lw-goal-day[data-outside=true]{opacity:.6}
+      .lw-goal-day[data-selected=true],.lw-goal-day[data-drop=true]{border-color:var(--lw-paradigm-accent,#6779d3)}
+      .lw-goal-day button[aria-current=date]{font-weight:700}
+      .lw-goal-task{display:flex;align-items:center;gap:4px;flex-wrap:wrap;min-width:0}
+      .lw-goal-task button{text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+      .lw-goal-task[data-done=true] button{text-decoration:line-through;opacity:.65}
+      .lw-goal-day .lw-goal-task{background:color-mix(in srgb,var(--lw-paradigm-accent,#6879d9) 11%,transparent);border-radius:4px;margin:2px 0}
+      .lw-goal-day .lw-goal-task button{font-size:var(--lw-ui-xs,12px);padding:2px 4px}
+      .lw-goal-task-dates{display:flex;width:100%;flex-wrap:wrap;align-items:center;gap:5px;font-size:var(--lw-ui-xs,12px)}
+      .lw-goal-task-dates input,.lw-goal-form input[type=date]{color-scheme:inherit;background:transparent;border:1px solid var(--lw-border,#8884);border-radius:4px;margin-left:4px;padding:2px}
+      .lw-goal-board[data-view=看板]{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .lw-goal-board h3{margin:0 0 6px;font-size:inherit}
+      @container (max-width:640px){.lw-goal-columns{grid-template-columns:minmax(0,1fr)}}
       [data-done=true]>.lw-paradigm-record>.lw-paradigm-title{color:var(--dsw-alias-label-secondary);text-decoration:line-through}
       .lw-paradigm-view :is(button,summary,input):focus-visible{outline:2px solid var(--dsw-focus-ring-color,#3b82f6);outline-offset:2px}
       .lw-paradigm-preview{font-size:var(--lw-ui-sm);color:var(--dsw-alias-label-secondary);line-height:1.55;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
@@ -2506,7 +2538,7 @@ window.__ModuleLoader__.load({
       return key ? botParadigms[key].accent : undefined
     }
     const botLayoutLabels = {
-      checklist: '目标清单', path: '目标路径', library: '资料库', timeline: '文件动态',
+      calendar: '目标日历', checklist: '目标清单', path: '目标路径', library: '资料库', timeline: '文件动态',
       graph: '关系图', lineage: '文献脉络', branches: '发散探索', reasoning: '线性推演',
       sequence: '实验流程', matrix: '并行实验',
     }
@@ -2986,6 +3018,8 @@ window.__ModuleLoader__.load({
     let workbenchViews
     const getWorkbenchViews = () => workbenchViews ||= import(new URL('./labweave-bot-workbench.js', document.baseURI).href)
       .then(module => module.createWorkbenchViews(React, project, { Btn, Icon, Tag, Select, fmtDateTime, Canvas: BotParadigmView }))
+    const GoalPlanner = React.lazy(() => import(new URL('./labweave-goal-planner.js', document.baseURI).href)
+      .then(module => ({ default: module.createGoalPlanner(React) })))
     const BotExperiments = React.lazy(() => getWorkbenchViews().then(views => ({ default: views.Experiments })))
 
     function openComposerFile(input, imagesOnly) {
@@ -3343,7 +3377,11 @@ window.__ModuleLoader__.load({
       const run = async act => {
         if (busy) return
         setBusy(true); setError('')
-        try { await act(); window.dispatchEvent(new Event(updated)) }
+        try {
+          const result = await act()
+          window.dispatchEvent(new Event(updated))
+          return result
+        }
         catch (err) { setError(err.message) } finally { setBusy(false) }
       }
 
@@ -3363,6 +3401,12 @@ window.__ModuleLoader__.load({
       const extensionFields = featMeta.extension?.fields || []
       const effectiveParadigm = featMeta.extension?.base || featMeta.paradigm
       const engineering = effectiveParadigm === 'engineering'
+      const goalPlanner = effectiveParadigm === 'goals' && botLayout === 'calendar'
+      const saveGoal = (item, changes) => run(() => action('feature_push', {
+        featureId: item?.canvasRail || feature,
+        ...(item ? { id: item.id } : { source: '用户' }),
+        ...changes,
+      }))
       const paradigmAccent = botParadigms[effectiveParadigm]?.accent
       const addNode = parent => setNodeEdit({ parent, title: '', text: '' })
       const deleteNode = item => setNodeEdit({ remove: item })
@@ -3642,7 +3686,11 @@ window.__ModuleLoader__.load({
                             }) }, LW('确认删除'))))
                       })()))), document.body),
 
-                  typedLayout && !engineering && h(BotParadigmView, {
+                  goalPlanner && h(React.Suspense, { fallback: h('p', { className: 'lw-hint' }, LW('正在读取待办…')) },
+                    h(GoalPlanner, { items: ordered, busy, openEntry, onSave: changes => saveGoal(null, changes),
+                      onMove: (item, plannedDate) => saveGoal(item, { plannedDate }),
+                      onToggle: item => saveGoal(item, { done: !item.done }) })),
+                  typedLayout && !engineering && !goalPlanner && h(BotParadigmView, {
                     layout: botLayout, items: ordered, fields: extensionFields, activeId: activeItemId, openEntry, busy,
                     addNode, deleteNode, emptyTitle,
                     toggleGoal: effectiveParadigm === 'goals' ? item => run(() =>
