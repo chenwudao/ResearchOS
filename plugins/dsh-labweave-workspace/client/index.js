@@ -1278,6 +1278,12 @@ window.__ModuleLoader__.load({
       .lw-record-content .lw-paradigm-fields{margin:0;grid-template-columns:repeat(auto-fit,minmax(min(100%,195px),1fr))}
       .lw-record-content .lw-fbot-detail-figure{margin:0}
       .lw-record-content .lw-push-source{margin:0;padding-block:12px 0}
+      .lw-record-links{display:grid;gap:8px;padding-top:10px;border-top:1px solid var(--dsw-alias-border-l4,#8886);min-width:0}
+      .lw-record-links h3,.lw-record-links h4{margin:0;font-size:inherit}
+      .lw-record-links ul{display:grid;gap:4px;margin:0;padding:0;list-style:none}
+      .lw-record-links li,.lw-record-link-form{display:flex;align-items:center;gap:7px;flex-wrap:wrap;min-width:0}
+      .lw-record-links li button{max-width:100%;white-space:normal;overflow-wrap:anywhere;text-align:left}
+      .lw-record-link-form select{flex:1 1 210px;min-width:0}
       .lw-record-actions{padding-block-start:4px}
       .lw-record-delete{margin-inline-end:auto}
       .lw-record-delete-confirm{padding:9px 10px;border-radius:8px;background:var(--dsw-alias-interactive-bg-hover-danger,#b3483511)}
@@ -3331,9 +3337,50 @@ window.__ModuleLoader__.load({
       return result.concat(items.filter(item => remaining.has(item.id)))
     }
 
+    const refKey = reference => reference.featureId + ':' + reference.id
+    const asRecordRef = (featureId, id) => ({ featureId, id })
+
+    function RecordLinks({ rails, featureList, feature, item, busy, navigate, change }) {
+      const [choice, setChoice] = React.useState('')
+      const featureNames = new Map(featureList.map(row => [row.id, row.label]))
+      const current = refKey(asRecordRef(feature, item.id))
+      const outgoing = new Map((item.recordRefs || []).map(ref => [refKey(ref), ref]))
+      const records = featureList.flatMap(row => (rails[row.id] || []).filter(record => !record.planningDraft)
+        .map(record => ({ ...asRecordRef(row.id, record.id), title: entryHeadlineBody(record)[0], refs: record.recordRefs || [] })))
+      const index = new Map(records.map(record => [refKey(record), record]))
+      const incoming = records.filter(record => record.refs.some(ref => refKey(ref) === current))
+      const available = records.filter(record => refKey(record) !== current && !outgoing.has(refKey(record)))
+      const chosen = available.find(record => refKey(record) === choice)
+      function open(record) {
+        return record ? Btn({ variant: 'ghost', size: 'xs', onClick: () => navigate(record) },
+          featureNames.get(record.featureId) + ' · ' + record.title)
+          : h('small', { className: 'lw-hint' }, LW('原记录已移除或不可访问'))
+      }
+      return h('section', { className: 'lw-record-links', 'aria-label': LW('关联项目记录') },
+        h('h3', null, LW('关联记录')),
+        outgoing.size > 0 && h('ul', null, [...outgoing].map(([key, ref]) => h('li', { key },
+          open(index.get(key)), change && Btn({ variant: 'ghost', size: 'xs', disabled: busy,
+            'aria-label': LW('移除关联 ') + (index.get(key)?.title || LW('不可访问的记录')), onClick: () => change(ref, true) }, LW('移除'))))),
+        incoming.length > 0 && h(React.Fragment, null,
+          h('h4', null, LW('被这些记录引用')),
+          h('ul', null, incoming.map(record => h('li', { key: refKey(record) }, open(record))))),
+        change && available.length > 0 && h('div', { className: 'lw-record-link-form' },
+          h('select', { className: 'lw-select', value: chosen ? choice : '', 'aria-label': LW('选择项目记录'),
+            onChange: event => setChoice(event.target.value) },
+            h('option', { value: '' }, LW('选择项目记录')),
+            featureList.map(row => {
+              const options = available.filter(record => record.featureId === row.id)
+              return options.length > 0 && h('optgroup', { key: row.id, label: row.label },
+                options.map(record => h('option', { key: refKey(record), value: refKey(record) }, record.title)))
+            })),
+          Btn({ size: 'xs', disabled: busy || !chosen, onClick: async () => {
+            if (await change(chosen, false)) setChoice('')
+          } }, LW('添加关联'))))
+    }
+
     function Panel({
       workspaceId, row, feature, featMeta, title, subtitle, emptyTitle,
-      value, loadError, persisted, bot, live, openModels, onRenamed,
+      value, loadError, persisted, bot, live, openModels, onRenamed, recordRequest, navigateRecord,
       openExperiment,
     }) {
       const [busy, setBusy] = React.useState(false)
@@ -3367,6 +3414,16 @@ window.__ModuleLoader__.load({
         const log = conversationRef.current
         if (log) log.scrollTop = log.scrollHeight
       }, [bot.messages.length])
+      React.useEffect(() => {
+        if (!recordRequest || !value?.rails || persisted.recordRequest !== recordRequest) return
+        delete persisted.recordRequest
+        if ((value.rails[feature] || []).some(item => item.id === recordRequest.id)) {
+          setActiveItemId(recordRequest.id)
+          setActiveReview(null); setReading(null); setBrowserLink(null); setEditingId(null); setDeletingItem(null)
+        } else {
+          setNotice(LW('关联记录已移除或不可访问。'))
+        }
+      }, [recordRequest, value, feature, persisted])
       const fileInputRef = React.useRef(null)
       const textareaRef = React.useRef(null)
       const changeDraft = text => { setDraftText(text); persisted.draft = text }
@@ -3677,6 +3734,18 @@ window.__ModuleLoader__.load({
                             isReadableEntry(activeItem) && Btn({ size: 'xs', disabled: busy,
                               onClick: () => readResource(attachment.id, 1, activeItem) }, LW('预览文件'))),
                           h(EntrySource, { item: activeItem }),
+                          !activeItem.canvasDraft && h(RecordLinks, {
+                            key: activeItem.id, rails: value.rails, featureList: value.features || [],
+                            feature: activeItem.canvasRail || feature, item: activeItem, busy,
+                            navigate: ref => {
+                              if (ref.featureId === feature) openEntry((value.rails[feature] || []).find(record => record.id === ref.id))
+                              else navigateRecord(ref)
+                            },
+                            change: (ref, remove) => run(() => action('entry_reference', {
+                              featureId: activeItem.canvasRail || feature, id: activeItem.id,
+                              target: asRecordRef(ref.featureId, ref.id), remove,
+                            })),
+                          }),
                           !activeItem.canvasDraft && h('div', { className: 'lw-actions lw-record-actions' },
                             Btn({ variant: 'danger', size: 'xs', className: 'lw-record-delete', disabled: busy,
                               onClick: () => setDeletingItem(activeItem.id) }, feature === 'feed' ? LW('删除动态') : LW('删除记录')),
@@ -4314,6 +4383,12 @@ window.__ModuleLoader__.load({
         chatSplit = false
         ctx.layout.selectPanel(pageKey)
         changed()
+      }
+      function openProjectRecord(workspaceId, reference) {
+        const row = rows.find(item => item.workspaceId === workspaceId && item.scope !== 'global')
+        if (!row || !hasFeature(row, reference.featureId)) return
+        paneStateFor(workspaceId, reference.featureId).recordRequest = { id: reference.id }
+        selectPage(workspaceId, reference.featureId)
       }
       function rememberChat(id) {
         const sess = ctx.sessions.list.getSnapshot().byId[id]
@@ -5763,6 +5838,7 @@ window.__ModuleLoader__.load({
           h(Panel, {
             workspaceId: row.workspaceId, row, feature, featMeta, title, subtitle, emptyTitle,
             value, loadError, persisted, bot, live, openModels: () => openSettingsRef?.('models'), draft, onRenamed: refresh,
+            recordRequest: persisted.recordRequest, navigateRecord: reference => openProjectRecord(row.workspaceId, reference),
           }))
       }
 

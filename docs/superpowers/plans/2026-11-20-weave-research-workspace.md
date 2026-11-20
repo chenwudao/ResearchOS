@@ -17,7 +17,7 @@
 
 - [x] Goals foundation: persist separate planning dates, display the same records in month/week/day, board and timeline, and calculate progress from actual completion. Verify date changes and completion after reload, invalid dates, scope isolation, and a narrow zoomed window.
 - [x] Goals decisions: persist milestones and separate suggestions from confirmed dates and progress. Verify the user can accept or discard actual tool-written drafts in the pinned Web client.
-- [ ] Goals follow-through: contextual project references through the shared record-link slice.
+- [x] Scoped record references: link a note to a calendar item, navigate to the exact record in either direction, and remove the link without deleting either record. Verify foreign references are rejected.
 - [ ] Notes: folder and tag organization, document editor and preview, attachments, origin, history, AI-assisted editing and backlinks. Verify uploading a real fixture and attaching it to a note without duplicating the resource.
 - [ ] Mind map: accessible expandable research, paper and method nodes, source-qualified relationships, route summaries and literature chronology. Verify a paper can be located in the notes library after saving it.
 - [ ] Ideas: source-backed cards, category and follow-up, saved/deferred state, requests for project-context suggestions, and user-confirmed task drafts.

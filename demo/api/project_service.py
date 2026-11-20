@@ -315,6 +315,31 @@ def _entry_elements(args, entry, extension, records):
     entry["elements"] = merged
 
 
+def _record_reference(value, rails, source):
+    if not isinstance(value, dict):
+        raise workspace.WorkspaceError(400, "关联记录格式无效。")
+    feature_id, entry_id = value.get("featureId"), value.get("id")
+    if not isinstance(feature_id, str) or not isinstance(entry_id, str) or (feature_id, entry_id) == source:
+        raise workspace.WorkspaceError(400, "请选择本项目中的另一条记录。")
+    if not any(record["id"] == entry_id for record in rails.get(feature_id, [])):
+        raise workspace.WorkspaceError(404, "关联记录不存在于本项目。")
+    return {"featureId": feature_id, "id": entry_id}
+
+
+def _apply_record_references(args, entry, rail, rails):
+    if "recordRefs" not in args:
+        return
+    values = args["recordRefs"]
+    if not isinstance(values, list) or len(values) > 32:
+        raise workspace.WorkspaceError(400, "每条记录最多可关联 32 条项目记录。")
+    references = []
+    for value in values:
+        ref = _record_reference(value, rails, (rail, entry["id"]))
+        if ref not in references:
+            references.append(ref)
+    entry["recordRefs"] = references
+
+
 def create_entry(project_id, rail, args, *, planning_draft=False):
     import features
     if not features.is_valid_rail(project_id, rail):
@@ -340,6 +365,7 @@ def create_entry(project_id, rail, args, *, planning_draft=False):
     def operation(item):
         records = item["rails"].setdefault(rail, [])
         _entry_elements(args, entry, extension, records)
+        _apply_record_references(args, entry, rail, item["rails"])
         if rail == "goals" or rail.startswith("feat_") or "parentId" in entry:
             ids = {record["id"] for record in records}
             dependencies = entry.get("dependsOn", [])
@@ -387,6 +413,7 @@ def update_entry(project_id, rail, args, *, draft_only=False):
         _bot_record_fields(args, entry)
         records = item["rails"].get(rail, [])
         _entry_elements(args, entry, extension, records)
+        _apply_record_references(args, entry, rail, item["rails"])
         if "parentId" in args and (is_goal or rail.startswith("feat_")):
             parent = args["parentId"]
             if parent is None:
@@ -463,6 +490,34 @@ def decide_goal_draft(project_id, feature_id, entry_id, accept):
             if entry_id in (record.get("dependsOn") or []):
                 record["dependsOn"] = [value for value in record["dependsOn"] if value != entry_id]
         return {"id": entry_id, "discarded": True}
+    return mutate(project_id, operation)
+
+
+def change_record_reference(project_id, rail, entry_id, reference, remove):
+    import features
+    if not features.is_valid_rail(project_id, rail) or type(remove) is not bool:
+        raise workspace.WorkspaceError(400, "无效关联操作。")
+
+    def operation(item):
+        rails = item["rails"]
+        entry = next((record for record in rails.get(rail, []) if record["id"] == entry_id), None)
+        if not entry:
+            raise workspace.WorkspaceError(404, "条目不存在。")
+        refs = entry.setdefault("recordRefs", [])
+        if remove:
+            if not isinstance(reference, dict):
+                raise workspace.WorkspaceError(400, "关联记录格式无效。")
+            target = {"featureId": reference.get("featureId"), "id": reference.get("id")}
+            if target in refs:
+                refs.remove(target)
+        else:
+            target = _record_reference(reference, rails, (rail, entry_id))
+            if target not in refs:
+                if len(refs) >= 32:
+                    raise workspace.WorkspaceError(400, "每条记录最多可关联 32 条项目记录。")
+                refs.append(target)
+        entry["updatedAt"] = timestamp()
+        return entry
     return mutate(project_id, operation)
 
 

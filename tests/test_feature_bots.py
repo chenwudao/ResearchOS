@@ -87,6 +87,25 @@ class FeatureBotsTests(unittest.TestCase):
         entries = self.mcp(a, "feature_entries", {"featureId": bot_id})["entries"]
         self.assertEqual([(entry["id"], entry["plannedDate"]) for entry in entries], [(draft["id"], "2026-11-21")])
 
+    def test_record_references_keep_project_scope_and_target_identity(self):
+        a, b = self.projects
+        for scope in (a, b):
+            features.enable_builtin(scope, "library")
+        note = self.mcp(a, "feature_push", {"featureId": "library", "text": "同机位渲染"})
+        foreign = self.mcp(b, "feature_push", {"featureId": "library", "text": "其他项目"})
+        bot = features.create_feature(a, "工程台", paradigm="engineering")["feature"]["id"]
+        ref = {"featureId": "library", "id": note["id"]}
+        record = self.mcp(a, "feature_push", {"featureId": bot, "text": "结果", "recordRefs": [ref, ref]})
+        self.assertEqual(record["recordRefs"], [ref])
+        request = {"workspace": self.records[a], "action": "entry_reference", "args": {
+            "featureId": bot, "id": record["id"], "target": {"featureId": "library", "id": foreign["id"]},
+        }}
+        with self.assertRaises(workspace.WorkspaceError):
+            web.dispatch("project", request)
+        request["args"].update(target=ref, remove=True)
+        self.assertEqual(web.dispatch("project", request)["recordRefs"], [])
+        self.assertEqual(self.mcp(a, "feature_entries", {"featureId": "library"})["entries"][0]["id"], note["id"])
+
     def test_global_stays_chat_only_and_scopes_create_rename_delete(self):
         a, b = self.projects
         global_list = self.mcp("global", "feature_list", {})

@@ -54,6 +54,9 @@ TOOLS = {
             "category": {"type": "string"}, "parentId": {"type": ["string", "null"]},
             "due": {"type": "string"}, "done": {"type": "boolean"},
             "plannedDate": {"type": ["string", "null"], "description": "Scheduled work date (YYYY-MM-DD), separate from the deadline."},
+            "recordRefs": {"type": "array", "description": "Related records from this project. Use their exact Bot and record IDs.",
+                           "items": {"type": "object", "required": ["featureId", "id"],
+                                     "properties": {"featureId": {"type": "string"}, "id": {"type": "string"}}}},
             "dependsOn": {"type": "array", "items": {"type": "string"}},
             "eventDate": {"type": "string", "description": "Known publication or event date in YYYY-MM-DD."},
             **{name: {"type": "string", "description": label}
