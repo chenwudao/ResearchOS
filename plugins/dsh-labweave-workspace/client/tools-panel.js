@@ -1,7 +1,10 @@
 export function createToolPane(React, project, ui = {}) {
-  const {useEffect, useState} = React
+  const {useEffect, useRef, useState} = React
   const h = React.createElement
   const Icon = ui.Icon || (() => null)
+  const {Btn, useProject, fileUploadData, updated} = ui
+  const dayFormat = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })
+  const timeFormat = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
 
   function ToolStyles() {
     return h('style', null, `
@@ -52,6 +55,12 @@ export function createToolPane(React, project, ui = {}) {
       .lw-wsp-details>summary::before{content:'▸';display:inline-block;width:1em;color:var(--dsw-alias-label-dimmed,GrayText)}
       .lw-wsp-details[open]>summary::before{content:'▾'}
       .lw-wsp-details>summary:hover{color:var(--dsw-alias-label-primary,CanvasText);background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.1))}
+      .lw-wsp-files .lw-wsp-head{height:auto;min-height:42px;padding-block:4px}
+      .lw-wsp-timeline{margin:8px 0 0 18px;padding:0 0 0 9px;border-inline-start:1px solid var(--dsw-alias-border-l3,rgba(128,128,128,.28))}
+      .lw-wsp-timeline-day+.lw-wsp-timeline-day{margin-block-start:12px}
+      .lw-wsp-timeline-date{position:relative;margin:0;padding:0 8px 4px;font-size:12px;font-weight:500;color:var(--dsw-alias-label-secondary,GrayText)}
+      .lw-wsp-timeline-date::before{content:'';position:absolute;inset-inline-start:-13px;top:6px;width:7px;height:7px;border-radius:50%;background:var(--dsw-alias-label-tertiary,GrayText);box-shadow:0 0 0 3px var(--dsw-alias-bg-base,Canvas)}
+      .lw-wsp-files .lw-wsp-row-actions{opacity:1}
     `)
   }
 
@@ -131,7 +140,95 @@ export function createToolPane(React, project, ui = {}) {
     )
   }
 
-  return function ToolPane({row}) {
-    return h(GitView, {row})
+  function FilesView({row}) {
+    const {value: files, error: loadError} = useProject(row.workspaceId, 'files/list')
+    const input = useRef(null)
+    const [importing, setImporting] = useState(false)
+    const [downloading, setDownloading] = useState(false)
+    const [error, setError] = useState('')
+    const [notice, setNotice] = useState('')
+
+    async function importFiles(event) {
+      const selected = [...event.currentTarget.files]
+      event.currentTarget.value = ''
+      setImporting(true)
+      setError('')
+      setNotice('')
+      let saved = 0
+      const failures = []
+      for (const file of selected) {
+        try {
+          const data = await fileUploadData(file)
+          await project(row.workspaceId, 'upload', { name: file.name, data })
+          saved++
+        } catch (err) {
+          failures.push(file.name + '：' + err.message)
+        }
+      }
+      if (saved) {
+        setNotice(`已存入 ${saved} 个文件。`)
+        window.dispatchEvent(new Event(updated))
+      }
+      setError(failures.join('；'))
+      setImporting(false)
+    }
+
+    async function download(file) {
+      setDownloading(true)
+      setError('')
+      try {
+        const {name, data} = await project(row.workspaceId, 'files/download', { id: file.id })
+        const bytes = Uint8Array.from(atob(data), character => character.charCodeAt(0))
+        const url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }))
+        const link = document.createElement('a')
+        link.href = url
+        link.download = name
+        link.click()
+        setTimeout(() => URL.revokeObjectURL(url), 1000)
+      } catch (err) {
+        setError(err.message)
+      } finally {
+        setDownloading(false)
+      }
+    }
+
+    const days = new Map()
+    for (const file of files || []) {
+      const date = file.storedAt ? new Date(file.storedAt) : null
+      const known = date && Number.isFinite(date.getTime())
+      const day = known ? dayFormat.format(date) : '未记录日期'
+      if (!days.has(day)) days.set(day, [])
+      days.get(day).push({ ...file, time: known ? timeFormat.format(date) : '' })
+    }
+    const timeline = [...days].map(([day, entries]) => {
+      const rows = entries.map(file => h('li', {key: file.id, className: 'lw-wsp-row'},
+        h(Icon, {name: 'file'}),
+        h('span', {className: 'lw-wsp-row-name', title: file.path || file.name}, file.name),
+        file.time && h('time', {className: 'lw-wsp-row-meta', dateTime: file.storedAt}, file.time),
+        h('span', {className: 'lw-wsp-row-actions'},
+          IconButton({label: '下载 ' + file.name, disabled: downloading, onClick: () => download(file)},
+            h(Icon, {name: 'download'})))))
+      return h('section', {key: day, className: 'lw-wsp-timeline-day'},
+        h('h3', {className: 'lw-wsp-timeline-date'}, day),
+        h('ul', {className: 'lw-wsp-list'}, rows))
+    })
+
+    return h('section', {className: 'lw-wsp lw-wsp-files', 'aria-label': row.name + ' 空间存储'},
+      h(ToolStyles),
+      h('div', {className: 'lw-wsp-head'},
+        h('span', {className: 'lw-wsp-head-text'}, files ? files.length + ' 个文件' : '空间存储'),
+        h('input', {ref: input, type: 'file', multiple: true, hidden: true, onChange: importFiles}),
+        Btn({size: 'xs', disabled: importing, onClick: () => input.current?.click()},
+          h(Icon, {name: 'upload'}), importing ? '正在存入…' : '导入文件')),
+      h('div', {className: 'lw-wsp-body', 'aria-busy': importing || (!files && !loadError)},
+        (error || loadError) && h('p', {className: 'lw-wsp-error', role: 'alert'}, error || loadError),
+        notice && h('p', {className: 'lw-wsp-note', role: 'status'}, notice),
+        !files && !loadError && h('p', {className: 'lw-wsp-note', role: 'status'}, '正在读取文件…'),
+        files?.length === 0 && h(Empty, {icon: 'cube', title: '还没有存入文件'}, '项目对话生成的文件会自动出现在这里。'),
+        timeline.length > 0 && h('div', {className: 'lw-wsp-timeline'}, timeline)))
+  }
+
+  return function ToolPane({row, kind}) {
+    return h(kind === 'labweave-files' ? FilesView : GitView, {row})
   }
 }

@@ -66,10 +66,10 @@ export function registerBranding(ctx) {
   serve(['/weave-orbit.svg', '/labweave-orbit.svg', '/favicon.svg', '/favicon-dark.svg'], 'image/svg+xml', asset('labweave-orbit.svg'))
   serve(['/labweave-bot-avatars.svg'], 'image/svg+xml', asset('bot-avatars.svg'))
   serve(['/labweave-bot-avatars.json'], 'application/json', asset('bot-avatars.json'))
-  serve(['/labweave-sandbox-panel.js'], 'text/javascript; charset=utf-8',
-    readFileSync(new URL('../client/sandbox-panel.js', import.meta.url)))
   serve(['/labweave-tools-panel.js'], 'text/javascript; charset=utf-8',
     readFileSync(new URL('../client/tools-panel.js', import.meta.url)))
+  serve(['/labweave-browser-panel.js'], 'text/javascript; charset=utf-8',
+    readFileSync(new URL('../client/browser-panel.js', import.meta.url)))
   serve(['/labweave-bot-workbench.js'], 'text/javascript; charset=utf-8',
     readFileSync(new URL('../client/bot-workbench.js', import.meta.url)))
   serve(['/icon-192.png', '/apple-touch-icon.png'], 'image/png', asset('orbit-192.png'))

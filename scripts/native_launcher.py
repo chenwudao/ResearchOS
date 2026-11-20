@@ -22,10 +22,16 @@ sys.path.insert(0, str(ROOT / "demo" / "api"))
 import automation
 import model_config
 import native_web
-import project_sandbox
-import research_workflows
+import session_cleanup
 import tasks
 import workspace
+
+
+def prune_deleted_sessions(home):
+    try:
+        session_cleanup.purge_offline(home)
+    except (OSError, ValueError):
+        print("部分已删除对话的磁盘日志将在下次启停时重试清理。", flush=True)
 
 
 def start_process(command, **kwargs):
@@ -102,10 +108,9 @@ def prepare_profile(home):
     dependencies = manifest.setdefault("dependencies", {})
     # Replace the obsolete registration in place, preserving the remaining
     # profile entries and the existing directory for DSH settings and sessions.
-    bundles[:] = [bundle for bundle in bundles if bundle != LEGACY_PLUGIN]
+    bundles[:] = [bundle for bundle in bundles if bundle not in (LEGACY_PLUGIN, "@deepseek-ai/dsh-client-ui-sidebar-browser")]
     dependencies.pop(LEGACY_PLUGIN, None)
-    if "@deepseek-ai/dsh-client-ui-sidebar-browser" not in bundles:
-        bundles.append("@deepseek-ai/dsh-client-ui-sidebar-browser")
+    dependencies.pop("@deepseek-ai/dsh-client-ui-sidebar-browser", None)
     package_path = PLUGIN / "package.json"
     package = package_path.read_bytes()
     name = json.loads(package)["name"]
@@ -158,6 +163,7 @@ def native_services(port=8770, *, home=None, configured=True, background=True, t
                         probe.bind(("127.0.0.1", port))
                     except OSError as exc:
                         raise RuntimeError(f"本机端口 {port} 已被占用。") from exc
+            prune_deleted_sessions(home)
             prepare_profile(home)
             with native_web.server() as backend:
                 thread = threading.Thread(target=backend.serve_forever, daemon=True)
@@ -165,10 +171,8 @@ def native_services(port=8770, *, home=None, configured=True, background=True, t
                 process = None
                 stop_jobs = None
                 try:
-                    project_sandbox.recover()
                     if background:
                         tasks.recover()
-                        research_workflows.recover()
                         stop_jobs = automation.start()
                     process = start_process([*resolve_bundled_launch_args(), "web", "--host", "127.0.0.1",
                                              "--port", str(port), "--no-open"], cwd=ROOT,
@@ -195,16 +199,15 @@ def native_services(port=8770, *, home=None, configured=True, background=True, t
                         raise RuntimeError("Weave 科研插件未能启动，请检查本地运行环境。")
                     yield url, process
                 finally:
-                    project_sandbox.shutdown()
                     stop_process(process)
                     if process and process.stdout:
                         process.stdout.close()
                     if stop_jobs is not None:
                         stop_jobs.set()
                         tasks.shutdown()
-                        research_workflows.shutdown()
                     backend.shutdown()
                     thread.join()
+                    prune_deleted_sessions(home)
     finally:
         if previous_web_home is None:
             os.environ.pop("LABWEAVE_DSH_WEB_HOME", None)

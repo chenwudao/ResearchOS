@@ -1,14 +1,24 @@
 """Project-scoped business operations shared by HTTP and DSH MCP tools."""
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import base64
+import codecs
+from hashlib import sha256
 import json
 from pathlib import Path
 import re
+import shutil
 import subprocess
+from urllib.parse import urlsplit
 from uuid import uuid4
 from xml.etree import ElementTree
 import workspace
+
+
+MAX_RESOURCE_BYTES = 25 * 1024 ** 2
+OUTPUT_DIRECTORY = "outputs"
+# The experiment services already write their run files to these project-owned directories.
+GENERATED_DIRECTORIES = (OUTPUT_DIRECTORY, "experiments/sandbox", "experiments/workflows")
 
 
 def timestamp():
@@ -35,7 +45,7 @@ def mutate(project_id, operation):
             workspace.save(saved)
             return result
         except workspace.WorkspaceError as exc:
-            if exc.status != 409:
+            if not getattr(exc, "retryable", False):
                 raise
     raise workspace.WorkspaceError(409, "项目正在更新，请重试。")
 
@@ -68,15 +78,15 @@ def context(project_id):
     import automation
     feed = automation.public_jobs().get(project_id, {}).get("feed", {})
     result = automation.project_context(item, feed)
-    result["directory"] = str(folder(project_id))
+    import memory_store
+    result["coreMemories"] = memory_store.core_memories(project_id)
+    import features
+    result["projectParadigms"] = features.project_paradigms(project_id)
+    directory = folder(project_id)
+    result["directory"] = str(directory)
+    result["outputDirectory"] = str(directory / OUTPUT_DIRECTORY)
     import research_ledger
     result['researchState'] = research_ledger.state(project_id)
-    import research_workflows
-    result['researchWorkflows'] = [{'id': w['id'], 'question': w['plan']['question'], 'status': w['status'],
-                                  'completed': sum(r['status'] == 'SUCCEEDED' for r in w['runs']),
-                                  'total': len(w['runs']), 'error': w.get('error'),
-                                  'nextAction': w.get('analysis', {}).get('nextAction')}
-                                 for w in research_workflows.all_workflows(project_id)[:10]]
     return result
 
 
@@ -236,10 +246,80 @@ def _apply_rich_fields(project_id, args, entry, allow_clear=False):
             entry.pop("imagePath", None)
 
 
+def _valid_date(value):
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return False
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _bot_record_fields(args, entry):
+    from features import BOT_RECORD_TEXT_FIELDS
+    for key, (_, limit) in BOT_RECORD_TEXT_FIELDS.items():
+        if key in args:
+            entry[key] = workspace.text(args[key], limit)
+    if "eventDate" in args:
+        if args["eventDate"] is None:
+            entry.pop("eventDate", None)
+        elif _valid_date(args["eventDate"]):
+            entry["eventDate"] = args["eventDate"]
+        else:
+            raise workspace.WorkspaceError(400, "事件日期须使用 YYYY-MM-DD。")
+
+
+def _entry_elements(args, entry, extension, records):
+    if "elements" not in args:
+        return
+    values = args["elements"]
+    if not extension or not isinstance(values, dict):
+        raise workspace.WorkspaceError(400, "只能填写这个项目扩展范式定义的元素。")
+    fields = {field["name"]: field["type"] for field in extension["fields"]}
+    merged = dict(entry.get("elements", {}))
+    for name, value in values.items():
+        kind = fields.get(name)
+        if kind is None:
+            raise workspace.WorkspaceError(400, "只能填写这个项目扩展范式定义的元素。")
+        if value is None:
+            merged.pop(name, None)
+            continue
+        valid = False
+        if kind == "number":
+            valid = type(value) in (int, float) and -1e308 <= value <= 1e308
+        elif kind == "boolean":
+            valid = isinstance(value, bool)
+        elif kind == "date":
+            valid = _valid_date(value)
+        elif isinstance(value, str) and len(value) <= 4000:
+            if kind == "url":
+                try:
+                    valid = bool(workspace.safe_link(value) and urlsplit(value).hostname)
+                except ValueError:
+                    valid = False
+            elif kind == "reference":
+                valid = value != entry["id"] and any(record["id"] == value for record in records)
+            else:
+                valid = kind == "text"
+        if not valid:
+            raise workspace.WorkspaceError(400, f"「{name}」的值不符合字段类型或引用范围。")
+        merged[name] = value
+    entry["elements"] = merged
+
+
 def create_entry(project_id, rail, args):
     import features
+    if not features.is_valid_rail(project_id, rail):
+        raise workspace.WorkspaceError(400, "未找到对应的项目功能。")
+    extension = next((feature.get("extension") for feature in features.list_features(project_id, project_id)
+                      if feature["id"] == rail), None) if "elements" in args else None
     text = workspace.text(args.get("text"), 16000)
-    if not features.is_valid_rail(project_id, rail) or not text:
+    if not text and extension and isinstance(args["elements"], dict):
+        display = {field["role"]: args["elements"].get(field["name"]) for field in extension["fields"]}
+        text = next((workspace.text(display[role], 4000) for role in ("summary", "title")
+                     if isinstance(display.get(role), str) and display[role].strip()), "")
+    if not text:
         raise workspace.WorkspaceError(400, "条目内容为空。")
     entry = {"id": "n_" + uuid4().hex, "text": text, "ts": timestamp(),
              "source": workspace.text(args.get("source"), 240) or "Weave"}
@@ -247,14 +327,18 @@ def create_entry(project_id, rail, args):
         if field in args and args[field] is not None:
             entry[field] = args[field]
     _apply_rich_fields(project_id, args, entry, allow_clear=False)
+    _bot_record_fields(args, entry)
     def operation(item):
-        if rail == "goals":
-            ids = {goal["id"] for goal in item["rails"]["goals"]}
-            if any(value not in ids for value in entry.get("dependsOn", [])):
-                raise workspace.WorkspaceError(400, "前置目标不存在。")
-            if entry.get("parentId") and entry["parentId"] not in ids:
-                raise workspace.WorkspaceError(400, "父目标不存在。")
-        item["rails"].setdefault(rail, []).append(entry)
+        records = item["rails"].setdefault(rail, [])
+        _entry_elements(args, entry, extension, records)
+        if rail == "goals" or rail.startswith("feat_") or "parentId" in entry:
+            ids = {record["id"] for record in records}
+            dependencies = entry.get("dependsOn", [])
+            if not isinstance(dependencies, list) or any(not isinstance(value, str) or value not in ids for value in dependencies):
+                raise workspace.WorkspaceError(400, "前置条目不存在。")
+            if "parentId" in entry and (not isinstance(entry["parentId"], str) or entry["parentId"] not in ids):
+                raise workspace.WorkspaceError(400, "关联条目不在这个 Bot 内。")
+        records.append(entry)
         return entry
     return mutate(project_id, operation)
 
@@ -263,6 +347,9 @@ def update_entry(project_id, rail, args):
     import features
     if not features.is_valid_rail(project_id, rail):
         raise workspace.WorkspaceError(400, "未找到对应的项目功能。")
+    bot = next((feature for feature in features.list_features(project_id, project_id) if feature["id"] == rail), {}) if rail.startswith("feat_") else {}
+    extension = bot.get("extension")
+    is_goal = rail == "goals" or bot.get("paradigm") == "goals" or bool(extension and extension["base"] == "goals")
 
     def operation(item):
         entry = next((note for note in item["rails"].get(rail, []) if note["id"] == args.get("id")), None)
@@ -284,14 +371,33 @@ def update_entry(project_id, rail, args):
         if args.get("source") is not None:
             entry["source"] = workspace.text(args["source"], 240) or "Weave"
         _apply_rich_fields(project_id, args, entry, allow_clear=True)
-        if rail == "goals":
+        _bot_record_fields(args, entry)
+        records = item["rails"].get(rail, [])
+        _entry_elements(args, entry, extension, records)
+        if "parentId" in args and (is_goal or rail.startswith("feat_")):
+            parent = args["parentId"]
+            if parent is None:
+                entry.pop("parentId", None)
+            else:
+                by_id = {record["id"]: record for record in records}
+                if not isinstance(parent, str) or parent not in by_id:
+                    raise workspace.WorkspaceError(400, "关联条目不在这个 Bot 内。")
+                seen = {entry["id"]}
+                current = parent
+                while isinstance(current, str) and current in by_id:
+                    if current in seen:
+                        raise workspace.WorkspaceError(400, "关联条目不能形成循环。")
+                    seen.add(current)
+                    current = by_id[current].get("parentId")
+                entry["parentId"] = parent
+        if is_goal:
             if "due" in args:
                 entry["due"] = args["due"]
             if "dependsOn" in args:
                 raw_deps = args["dependsOn"]
                 if not isinstance(raw_deps, list) or not all(isinstance(v, str) for v in raw_deps):
                     raise workspace.WorkspaceError(400, "前置目标格式无效。")
-                goals_by_id = {goal["id"]: goal for goal in item["rails"]["goals"]}
+                goals_by_id = {goal["id"]: goal for goal in item["rails"].get(rail, [])}
                 deps = list(dict.fromkeys(raw_deps))
                 if entry["id"] in deps or any(dep not in goals_by_id for dep in deps):
                     raise workspace.WorkspaceError(400, "前置目标不存在或形成自依赖。")
@@ -308,9 +414,9 @@ def update_entry(project_id, rail, args):
                     raise workspace.WorkspaceError(409, "已完成的目标不能依赖未完成的目标。")
                 entry["dependsOn"] = deps
             if "done" in args:
-                if args["done"] and any(not goal.get("done") for goal in item["rails"]["goals"] if goal["id"] in entry.get("dependsOn", [])):
+                if args["done"] and any(not goal.get("done") for goal in item["rails"].get(rail, []) if goal["id"] in entry.get("dependsOn", [])):
                     raise workspace.WorkspaceError(409, "请先完成前置目标。")
-                if not args["done"] and any(goal.get("done") and entry["id"] in goal.get("dependsOn", []) for goal in item["rails"]["goals"]):
+                if not args["done"] and any(goal.get("done") and entry["id"] in goal.get("dependsOn", []) for goal in item["rails"].get(rail, [])):
                     raise workspace.WorkspaceError(409, "请先撤销依赖此目标的已完成目标。")
                 entry["done"] = bool(args["done"])
         entry["updatedAt"] = timestamp()
@@ -322,6 +428,9 @@ def delete_entry(project_id, rail, entry_id):
     import features
     if not features.is_valid_rail(project_id, rail) or not isinstance(entry_id, str) or not entry_id:
         raise workspace.WorkspaceError(400, "无效条目参数。")
+    bot = next((bot for bot in features.list_features(project_id, project_id) if bot["id"] == rail), {})
+    reference_fields = [field["name"] for field in (bot.get("extension") or {}).get("fields", [])
+                        if field["type"] == "reference"]
 
     def operation(item):
         entries = item["rails"].get(rail, [])
@@ -329,12 +438,16 @@ def delete_entry(project_id, rail, entry_id):
         if not target:
             raise workspace.WorkspaceError(404, "条目不存在。")
         item["rails"][rail] = [note for note in entries if note["id"] != entry_id]
-        if rail == "goals":
-            for goal in item["rails"]["goals"]:
-                if entry_id in goal.get("dependsOn", []):
-                    goal["dependsOn"] = [dep for dep in goal["dependsOn"] if dep != entry_id]
-                if goal.get("parentId") == entry_id:
-                    goal.pop("parentId", None)
+        for entry in item["rails"][rail]:
+            if entry.get("parentId") == entry_id:
+                entry.pop("parentId", None)
+            dependencies = entry.get("dependsOn")
+            if isinstance(dependencies, list) and entry_id in dependencies:
+                entry["dependsOn"] = [dep for dep in dependencies if dep != entry_id]
+            elements = entry.get("elements") or {}
+            for name in reference_fields:
+                if elements.get(name) == entry_id:
+                    elements.pop(name)
         return {"ok": True, "id": entry_id}
 
     return mutate(project_id, operation)
@@ -395,13 +508,116 @@ def read_resource(project_id, resource_id, page=1):
     return {"text": path.read_text(encoding="utf-8", errors="replace")[:30000]}
 
 
+def _stored_file_entries(project_id):
+    item = project(workspace.snapshot(), project_id)
+    return [entry for entry in item["rails"]["library"]
+            if entry.get("kind") == "file" and str(entry.get("path", "")).startswith("resources/")]
+
+
+def _generated_directories(root):
+    for relative in GENERATED_DIRECTORIES:
+        path = root
+        for part in Path(relative).parts:
+            path /= part
+            if path.is_symlink() or path.is_junction():
+                break
+        else:
+            if path.is_dir() and path.resolve().is_relative_to(root):
+                yield path
+
+
+def _generated_files(root):
+    for directory in _generated_directories(root):
+        for parent, directories, filenames in directory.walk(follow_symlinks=False):
+            directories[:] = [name for name in directories
+                              if not (parent / name).is_symlink() and not (parent / name).is_junction()]
+            for name in filenames:
+                path = parent / name
+                if path.is_symlink() or path.is_junction() or not path.is_file():
+                    continue
+                relative = path.relative_to(root).as_posix()
+                identity = "generated_" + sha256(f"{root.name}/{relative}".encode("utf-8")).hexdigest()
+                yield identity, relative, path
+
+
+def stored_files(project_id):
+    entries = [{"id": entry["id"], "name": entry["text"], "storedAt": entry.get("ts")}
+               for entry in _stored_file_entries(project_id)]
+    if project_id != "global":
+        for identity, relative, path in _generated_files(folder(project_id)):
+            try:
+                modified = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()
+            except FileNotFoundError:
+                continue
+            entries.append({"id": identity, "name": path.name, "path": relative, "storedAt": modified})
+    return sorted(entries, key=lambda entry: (entry.get("storedAt") or "", entry["id"]), reverse=True)
+
+
+def _stored_file(project_id, file_id):
+    entries = _stored_file_entries(project_id)
+    root = folder(project_id)
+    entry = next((file for file in entries if file["id"] == file_id), None)
+    if entry:
+        path = resource_path(project_id, file_id)
+        name = entry["text"]
+        if not path.is_relative_to(root / "resources") or not path.is_file():
+            raise workspace.WorkspaceError(404, "本机上的文件已移除或不可用。")
+    elif project_id != "global" and isinstance(file_id, str) and file_id.startswith("generated_"):
+        path = next((file for identity, _, file in _generated_files(root) if identity == file_id), None)
+        if path is None or not path.resolve().is_relative_to(root):
+            raise workspace.WorkspaceError(404, "未找到这个项目的文件。")
+        name = path.name
+    else:
+        raise workspace.WorkspaceError(404, "未找到这个项目的文件。")
+    return name, path
+
+
+def read_stored_reference(project_id, file_id, page=1):
+    name, path = _stored_file(project_id, file_id)
+    with path.open("rb") as file:
+        if path.suffix.lower() == ".pdf":
+            from pypdf import PdfReader
+            from pypdf.errors import PdfReadError
+            if path.stat().st_size > 50 * 1024**2:
+                return {"name": name, "note": "PDF 超过可预览大小。"}
+            try:
+                reader = PdfReader(file)
+                if not 1 <= page <= len(reader.pages):
+                    raise workspace.WorkspaceError(400, "引用的 PDF 页码超出范围。")
+                return {"name": name, "page": page, "pages": len(reader.pages),
+                        "text": (reader.pages[page - 1].extract_text() or "")[:12000]}
+            except PdfReadError as exc:
+                raise workspace.WorkspaceError(400, "无法解析引用的 PDF。") from exc
+        data = file.read(12001)
+    try:
+        if b"\0" in data:
+            raise UnicodeError
+        truncated = len(data) > 12000
+        decoder = codecs.getincrementaldecoder("utf-8-sig")()
+        return {"name": name, "text": decoder.decode(data[:12000], final=not truncated), "truncated": truncated}
+    except UnicodeError:
+        return {"name": name, "note": "此格式只提供文件引用，可在空间存储中打开。"}
+
+
+def download_stored_file(project_id, file_id):
+    name, path = _stored_file(project_id, file_id)
+    try:
+        with path.open("rb") as file:
+            data = file.read(MAX_RESOURCE_BYTES + 1)
+    except FileNotFoundError as exc:
+        raise workspace.WorkspaceError(404, "本机上的文件已移除或不可用。") from exc
+    if len(data) > MAX_RESOURCE_BYTES:
+        raise workspace.WorkspaceError(413, "文件超过 25 MiB，无法从此面板下载。")
+    return {"name": name, "data": base64.b64encode(data).decode("ascii")}
+
+
 def upload(payload):
     project_id = payload.get("projectId")
     name = Path(workspace.text(payload.get("name"), 200)).name
     if not name or "/" in name or "\\" in name:
         raise workspace.WorkspaceError(400, "无效文件名。")
     body = base64.b64decode(payload.get("data", ""), validate=True)
-    if not body or len(body) > 25 * 1024 ** 2:
+    if not body or len(body) > MAX_RESOURCE_BYTES:
         raise workspace.WorkspaceError(413, "文件大小需在 1 字节至 25 MiB 之间。")
     relative = "resources/" + uuid4().hex + "-" + name
     destination = folder(project_id) / relative
@@ -451,12 +667,13 @@ def collect_outputs(project_id, task_id, since):
         create_entry(project_id, "library", {"text": path.name, "path": str(relative), "kind": "output", "taskId": task_id})
 
 
-def create_project(name, identity=None):
+def create_project(name, identity=None, *, source_paths=None):
     name = workspace.text(name, 200)
     if not name:
         raise workspace.WorkspaceError(400, "项目名称为空。")
     identity = identity or "proj_" + uuid4().hex
     thread = "thr_" + uuid4().hex
+    sources = None
     for _ in range(5):
         saved = workspace.snapshot()
         if saved["revision"] == 0:
@@ -464,9 +681,14 @@ def create_project(name, identity=None):
         existing = next((p for p in saved["state"]["projects"] if p["id"] == identity), None)
         if existing is not None:
             return existing
+        if sources is None and source_paths is not None:
+            from project_sources import prepare_initial
+            sources = prepare_initial(source_paths)
         item = {"id": identity, "name": name, "createdAt": timestamp(), "updatedAt": timestamp(),
                 "activeThreadId": thread, "threads": [{"id": thread, "title": "项目助手", "messages": []}],
                 "rails": {rail: [] for rail in workspace.RAILS}}
+        if sources:
+            item["sourceFolders"] = sources
         saved["state"]["projects"].append(item)
         try:
             workspace.save(saved)
@@ -474,12 +696,12 @@ def create_project(name, identity=None):
             features.suppress_optional_builtins(identity)
             return item
         except workspace.WorkspaceError as exc:
-            if exc.status != 409:
+            if not getattr(exc, "retryable", False):
                 raise
     raise workspace.WorkspaceError(409, "项目正在更新，请重试。")
 
 
-def delete_project(project_id):
+def delete_project(project_id, *, session_ids=None):
     if project_id == "global" or not isinstance(project_id, str) or not project_id.strip():
         raise workspace.WorkspaceError(403, "全局助手工作区不能删除。")
     for _ in range(5):
@@ -488,22 +710,54 @@ def delete_project(project_id):
         remaining = [p for p in items if p["id"] != project_id]
         if len(remaining) == len(items):
             raise workspace.WorkspaceError(404, "项目不存在。")
+        base = (workspace.DATA / "projects").resolve()
+        candidate = base / project_id
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", project_id) or candidate.is_symlink() or candidate.is_junction():
+            raise workspace.WorkspaceError(400, "无效项目目录。")
+        root = candidate.resolve()
+        if root.parent != base:
+            raise workspace.WorkspaceError(400, "无效项目目录。")
+
+        def commit_deletion(db):
+            if session_ids:
+                import session_cleanup
+                session_cleanup.enqueue(db, session_ids)
+            try:
+                for directory in _generated_directories(root):
+                    shutil.rmtree(directory)
+            except OSError as exc:
+                raise workspace.WorkspaceError(423, "无法删除项目生成的文件，请关闭占用文件的程序后重试。") from exc
+
         saved["state"]["projects"] = remaining
         try:
-            workspace.save(saved)
+            workspace.save(saved, before_commit=commit_deletion)
             break
         except workspace.WorkspaceError as exc:
-            if exc.status != 409:
+            if not getattr(exc, "retryable", False):
                 raise
     else:
         raise workspace.WorkspaceError(409, "项目正在更新，请重试。")
     with closing(workspace.database()) as db, db:
         if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='native_plugins'").fetchone():
             db.execute("DELETE FROM native_plugins WHERE scope=?", (project_id,))
+        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sandbox_runs'").fetchone():
+            now = timestamp()
+            for (run_id, body) in db.execute(
+                "SELECT id, body FROM sandbox_runs WHERE project=? AND status IN ('WAITING_APPROVAL','QUEUED')",
+                (project_id,),
+            ).fetchall():
+                item = json.loads(body)
+                item.update(status="CANCELLED", ended=now)
+                db.execute(
+                    "UPDATE sandbox_runs SET status='CANCELLED', body=? WHERE project=? AND id=?",
+                    (json.dumps(item, ensure_ascii=False), project_id, run_id),
+                )
         import memory_store
         memory_store.delete_project_memories(db, project_id)
     import features
     features.clear_project(project_id)
+    import bot_dispatches
+    bot_dispatches.clear_project(project_id)
     return {"ok": True}
 
 
@@ -550,8 +804,10 @@ def call(name, args, project_id):
         project_id = args.get("projectId", "global")
         if project_id == "global":
             raise workspace.WorkspaceError(400, "请先选择 projectId。")
+    if name.startswith("memory_"):
+        project(workspace.snapshot(), project_id)
 
-    if name.startswith(('research_state_', 'evidence_', 'workflow_')):
+    if name.startswith(('research_state_', 'evidence_')):
         import research_api
         return research_api.call_tool(name, args, project_id)
 
@@ -603,6 +859,9 @@ def call(name, args, project_id):
         return {"doi": doi, "references": value["message"].get("reference", [])[:150]}
     if name == "project_get_context":
         return context(project_id)
+    if name == "project_paradigm_create":
+        import features
+        return features.create_project_paradigm(project_id, args, lenient_symbol=True)
     if name == "resource_search":
         entries = project(workspace.snapshot(), project_id)["rails"]["library"]
         query = str(args.get("query", "")).casefold()
@@ -638,7 +897,8 @@ def call(name, args, project_id):
         fid = args.get("featureId")
         if fid == "chat" or not features.is_valid_rail(project_id, fid):
             raise workspace.WorkspaceError(400, "未找到对应的项目功能。")
-        meta = next(f for f in features.list_features("global", project_id) if f["id"] == fid)
+        bots = features.list_features("global", project_id)
+        meta = next(f for f in bots if f["id"] == fid)
         item = project(workspace.snapshot(), project_id)
         entries = list(item["rails"].get(fid, []))
         if fid == "feed":
@@ -646,7 +906,10 @@ def call(name, args, project_id):
             feed = automation.public_jobs().get(project_id, {}).get("feed", {})
             hidden = set(item.get("dismissedFeed", []))
             entries.extend(e for e in feed.get("items", []) if (e.get("url") or e["text"]) not in hidden)
-        return {"featureId": fid, "label": meta["label"], "entries": entries}
+        members = [{"featureId": bot["id"], "label": bot["label"],
+                    "entries": item["rails"].get(bot["id"], [])}
+                   for bot in bots if bot.get("clusterParent") == fid]
+        return {"featureId": fid, "label": meta["label"], "entries": entries, **({"members": members} if members else {})}
     if name == "feature_push":
         import features
         fid = args.get("featureId")

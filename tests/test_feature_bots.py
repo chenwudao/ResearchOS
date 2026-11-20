@@ -212,7 +212,7 @@ class FeatureBotsTests(unittest.TestCase):
 
     def test_project_plus_and_chat_share_feature_profile(self):
         a,b=self.projects
-        args={"label":"研究笔记","hint":"记录假设","symbol":"✎","keywords":["假设","证据","假设"],"requestId":"a"*32}
+        args={"label":"研究笔记","paradigm":"notes","hint":"记录假设","symbol":"✎","keywords":["假设","证据","假设"],"requestId":"a"*32}
         def create(values):
             return web.dispatch("project",{"workspace":self.records[a],"action":"create_feature_bot","args":values})
         first=create(args)["feature"]
@@ -305,6 +305,85 @@ class FeatureBotsTests(unittest.TestCase):
         })
         self.assertTrue(uploaded["image"].startswith("data:image/png;base64,"))
         self.assertTrue(uploaded["linkedItem"]["image"].startswith("data:image/png;base64,"))
+
+    def test_paradigm_avatars_for_builtin_and_custom_paradigms(self):
+        a, _ = self.projects
+        rec_a = self.records[a]
+
+        # Newly created bots default to empty symbol (inherit paradigm avatar) instead of legacy '✦'.
+        ui_bot = web.dispatch("project", {
+            "workspace": rec_a, "action": "create_feature_bot",
+            "args": {"label": "阶段目标", "paradigm": "goals", "requestId": "1" * 32},
+        })["feature"]
+        self.assertEqual(ui_bot["symbol"], "")
+        self.assertEqual(ui_bot["paradigm"], "goals")
+
+        mcp_bot = self.mcp(a, "feature_create", {"label": "文献脉络", "paradigm": "mindmap"})["feature"]
+        self.assertEqual(mcp_bot["symbol"], "")
+        self.assertEqual(mcp_bot["paradigm"], "mindmap")
+
+        # Manually created project extension paradigm automatically gets a matching avatar icon.
+        defect_ext = web.dispatch("project", {
+            "workspace": rec_a, "action": "create_project_paradigm",
+            "args": {
+                "label": "缺陷追踪",
+                "description": "记录系统故障、报错复现步骤和排查进展。",
+                "base": "engineering",
+                "layout": "sequence",
+                "fields": [{"name": "问题标题", "type": "text", "role": "title"}],
+            },
+        })
+        self.assertEqual(defect_ext["symbol"], "lucide:bug")
+
+        # Conversation-created paradigm auto-matches and tolerates an unrecognized symbol hint.
+        paper_ext = self.mcp(a, "project_paradigm_create", {
+            "label": "文献精读",
+            "description": "按主题整理核心论文与阅读笔记。",
+            "base": "notes",
+            "layout": "library",
+            "symbol": "lucide:not-a-real-icon",
+            "fields": [{"name": "论文标题", "type": "text", "role": "title"}],
+        })
+        self.assertEqual(paper_ext["symbol"], "lucide:book-open")
+
+        # Explicit valid symbol on custom paradigm is preserved (both exact and bare lucide name).
+        custom_ext = web.dispatch("project", {
+            "workspace": rec_a, "action": "create_project_paradigm",
+            "args": {
+                "label": "自定义看板",
+                "description": "通用结构化记录。",
+                "base": "notes",
+                "layout": "timeline",
+                "symbol": "telescope",
+                "fields": [{"name": "条目", "type": "text", "role": "title"}],
+            },
+        })
+        self.assertEqual(custom_ext["symbol"], "lucide:telescope")
+
+        # Bots created from custom extension paradigms carry extension.symbol and default symbol=''.
+        ext_bot = web.dispatch("project", {
+            "workspace": rec_a, "action": "create_feature_bot",
+            "args": {"label": "缺陷清单", "paradigm": defect_ext["id"], "requestId": "2" * 32},
+        })["feature"]
+        self.assertEqual(ext_bot["symbol"], "")
+        self.assertEqual(ext_bot["extension"]["symbol"], "lucide:bug")
+        listed_ext = next(f for f in web.project_view(a)["features"] if f["id"] == ext_bot["id"])
+        self.assertEqual(listed_ext["symbol"], "")
+        self.assertEqual(listed_ext["extension"]["symbol"], "lucide:bug")
+
+        # Legacy '✦' rows migrate cleanly once; later explicit updates to '✦' stay intact.
+        from contextlib import closing
+        with closing(workspace.database()) as db, db:
+            db.execute("DELETE FROM labweave_meta WHERE key = 'paradigm_avatar_default_v1'")
+            db.execute("UPDATE labweave_feature_profiles SET symbol = '✦' WHERE scope = ? AND feature_id = ?", (a, ui_bot["id"]))
+        migrated = next(f for f in web.project_view(a)["features"] if f["id"] == ui_bot["id"])
+        self.assertEqual(migrated["symbol"], "")
+        web.dispatch("project", {
+            "workspace": rec_a, "action": "feature_update",
+            "args": {"featureId": ui_bot["id"], "symbol": "✦"},
+        })
+        explicit_star = next(f for f in web.project_view(a)["features"] if f["id"] == ui_bot["id"])
+        self.assertEqual(explicit_star["symbol"], "✦")
 
 
 if __name__ == "__main__":

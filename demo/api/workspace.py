@@ -26,9 +26,10 @@ ENVIRONMENT_LOCK = Lock()
 
 
 class WorkspaceError(Exception):
-    def __init__(self, status, message):
+    def __init__(self, status, message, *, retryable=False):
         super().__init__(message)
         self.status = status
+        self.retryable = retryable
 
 
 def database():
@@ -54,7 +55,7 @@ def snapshot():
         return {"revision": row[0], **value}
 
 
-def save(payload):
+def save(payload, *, before_commit=None):
     revision = payload.get("revision")
     state = payload.get("state")
     settings = payload.get("settings")
@@ -66,20 +67,12 @@ def save(payload):
         db.execute("BEGIN IMMEDIATE")
         row = db.execute("SELECT revision FROM workspace").fetchone()
         if revision != (row[0] if row else 0):
-            raise WorkspaceError(409, "其他标签页已保存更新。请复制未保存内容后刷新页面。")
-        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='research_workflows'").fetchone():
-            remaining = {p.get('id') for p in state.get('projects', [])}
-            for project, body in db.execute('SELECT project, body FROM research_workflows'):
-                if project not in remaining and json.loads(body)['status'] == 'RUNNING':
-                    raise WorkspaceError(409, '该项目仍有运行中的实验，请先暂停或取消工作流。')
-        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sandbox_runs'").fetchone():
-            remaining = {p.get('id') for p in state.get('projects', [])}
-            if any(project not in remaining for (project,) in db.execute(
-                    "SELECT DISTINCT project FROM sandbox_runs WHERE status IN ('RUNNING','WAITING_APPROVAL','QUEUED')")):
-                raise WorkspaceError(409, '请先停止或取消该项目的沙盒试跑。')
+            raise WorkspaceError(409, "其他标签页已保存更新。请复制未保存内容后刷新页面。", retryable=True)
         project_store.write(db, state)
         db.execute("INSERT OR REPLACE INTO workspace VALUES (1, ?, ?)",
                    (revision + 1, encoded))
+        if before_commit is not None:
+            before_commit(db)
     return {"revision": revision + 1}
 
 

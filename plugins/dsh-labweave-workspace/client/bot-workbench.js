@@ -1,9 +1,10 @@
-export function createWorkbenchViews(React, project, { Btn, Icon, Tag, fmtDateTime }) {
+export function createWorkbenchViews(React, project, { Btn, Icon, Tag, Select, fmtDateTime, Canvas }) {
   const h = React.createElement
   const states = {
     WAITING_APPROVAL: '待批准', QUEUED: '排队中', RUNNING: '运行中', SUCCEEDED: '已完成',
     FAILED: '失败', CANCELLED: '已取消', INTERRUPTED: '已中断', BLOCKED: '环境未就绪',
-    DRAFT: '待审批', APPROVED: '已批准', PAUSED: '已暂停', REVIEW: '待核查',
+    DRAFT: '草稿', APPROVED: '待运行', PAUSED: '已暂停', REVIEW: '待核查', PENDING: '待执行', PLANNED: '未开始',
+    planned: '待运行', running: '运行中', completed: '已完成', failed: '失败',
   }
   const waiting = new Set(['WAITING_APPROVAL', 'DRAFT', 'REVIEW'])
   const nameOf = path => path.split('/').at(-1)
@@ -23,8 +24,8 @@ export function createWorkbenchViews(React, project, { Btn, Icon, Tag, fmtDateTi
       [8 + index * 304 / (values.length - 1), span ? 84 - (value / scale - min / scale) / span * 76 : 46])
     return h('figure', { className: 'lw-bot-chart' },
       h('figcaption', null, series.length === 1 ? label : h('label', null, '指标',
-        h('select', { className: 'lw-select', value: column, onChange: event => setColumn(Number(event.target.value)) },
-          series.map((item, index) => h('option', { key: index, value: index }, item.label || '第 ' + (index + 1) + ' 列'))))),
+        h(Select, { inline: true, value: column, ariaLabel: '指标', onChange: setColumn,
+          options: series.map((item, index) => ({ value: index, label: item.label || '第 ' + (index + 1) + ' 列' })) }))),
       h('p', { className: 'lw-hint' }, '范围 ' + min + ' 至 ' + max + ' · ' + values.length + ' 行'),
       h('svg', { viewBox: '0 0 320 96', role: 'img', 'aria-label': (label || '数值') + '按表格行序绘制' },
         h('path', { d: 'M8 8V84H312', fill: 'none', stroke: 'currentColor', opacity: '.25' }),
@@ -53,7 +54,7 @@ export function createWorkbenchViews(React, project, { Btn, Icon, Tag, fmtDateTi
       h('details', { className: 'lw-bot-disclosure' }, h('summary', null, '原始数据'), raw))
   }
 
-  function Experiments({ workspaceId, featureId, openSandbox, updatedEvent }) {
+  function Experiments({ workspaceId, featureId, updatedEvent, layout, records = [], openRecord, addNode, deleteNode, busy }) {
     const [items, setItems] = React.useState(null)
     const [selected, select] = React.useState(null)
     const [detail, setDetail] = React.useState(null)
@@ -90,24 +91,38 @@ export function createWorkbenchViews(React, project, { Btn, Icon, Tag, fmtDateTi
       setArtifact('')
       setError('')
     }
-    if (!selected) return h('section', { className: 'lw-bot-workstack', 'aria-label': '实验线程' },
-      h('h3', null, '实验线程'), error && alert(error),
-      !items ? hint('正在读取实验…') : !items.length ? hint('这个 Bot 发起的试跑和实验计划会显示在这里。')
-        : h('ul', { className: 'lw-bot-thread-list' }, items.map(item => h('li', { key: item.kind + item.id },
-          h('button', { className: 'lw-bot-thread', type: 'button', onClick: () => show(item) },
-            h(Icon, { name: item.kind === 'trial' ? 'activity' : 'list' }),
-            h('span', { className: 'lw-bot-thread-label' }, h('strong', null, item.title),
-              h('small', null, (item.kind === 'trial' ? '试跑 · ' : '实验计划 · ') + fmtDateTime(item.created))),
-            status(item))))),
-    )
-    return h('section', { className: 'lw-bot-workstack', 'aria-label': '实验详情' },
+    if (!selected) {
+      const entries = [...(items || []), ...records].sort((a, b) =>
+        (Date.parse(b.date || b.created) || 0) - (Date.parse(a.date || a.created) || 0))
+      return h('section', { className: 'lw-bot-workstack lw-paradigm-view', 'aria-label': '实验线程' },
+        error && alert(error),
+        !items && !error && hint('正在读取实验…'),
+        items && !entries.length && hint('这个 Bot 的实验运行、日志和产物会显示在这里。'),
+        h(Canvas, { layout, busy, addNode: item => addNode(item?.experiment.item),
+          deleteNode: item => deleteNode(item.experiment.item), items: entries.map(item => ({
+          ...item.item, id: item.id, title: item.title,
+          text: item.kind ? fmtDateTime(item.created) : item.summary,
+          canvasGroup: item.item?.canvasGroup || item.group || (item.kind ? '实验运行' : '记录'),
+          canvasStatus: states[item.status] || item.status, experiment: item,
+        })), openEntry: ({ experiment }) => experiment.kind ? show(experiment) : openRecord(experiment) }))
+    }
+    const runs = detail?.runs?.length ? detail.runs : detail?.plannedRuns || []
+    return h('section', { className: 'lw-bot-workstack lw-paradigm-view', 'aria-label': '实验详情' },
       h('div', { className: 'lw-bot-workline' }, Btn({ variant: 'ghost', size: 'xs', onClick: () => show(null) }, '返回实验'),
         status(detail || selected)),
       h('h3', null, selected.title),
       error && alert(error),
-      Btn({ size: 'sm', onClick: () => openSandbox(selected) }, '在项目代码沙盒打开'),
       detail ? h(React.Fragment, null,
+        detail.parameters && Object.keys(detail.parameters).length > 0 && h('details', { open: true },
+          h('summary', null, '环境与参数'), h('pre', { className: 'lw-bot-output' }, JSON.stringify(detail.parameters, null, 2))),
+        detail.metrics && Object.keys(detail.metrics).length > 0 && h('details', { open: true },
+          h('summary', null, '运行指标'), h('pre', { className: 'lw-bot-output' }, JSON.stringify(detail.metrics, null, 2))),
         detail.total > 0 && hint(`已完成 ${detail.completed} / ${detail.total} 次运行`),
+        layout === 'matrix' && runs.length > 0 && h(Canvas, { layout, label: '并行运行',
+          items: runs.map(run => ({ id: run.id, title: '种子 ' + run.seed, text: '样本数 ' + run.budget,
+            canvasGroup: run.method, canvasStatus: states[run.status] || run.status })) }),
+        layout !== 'matrix' && detail.steps?.length > 0 && h(Canvas, { layout: 'path', label: '实验阶段',
+          items: detail.steps.map(step => ({ ...step, canvasStatus: states[step.status] || step.status })) }),
         detail.error && alert(detail.error),
         (detail.stdout || detail.stderr) && h('details', { className: 'lw-bot-disclosure' },
           h('summary', null, '运行日志'),

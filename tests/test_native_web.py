@@ -1,5 +1,6 @@
 """Regression coverage for native application boundaries and offline recovery."""
 import base64
+from contextlib import closing
 import json
 from pathlib import Path
 import sys
@@ -35,6 +36,68 @@ class NativeWorkspaceTests(unittest.TestCase):
     def tearDown(self):
         workspace.DATA = self.old
         self.tmp.cleanup()
+
+    def test_create_project_saves_initial_read_only_sources_as_one_operation(self):
+        first, second = self.root / "文献", self.root / "笔记"
+        first.mkdir()
+        second.mkdir()
+        (first / "abstract.txt").write_text("可读的项目来源", encoding="utf-8")
+        payload = {"name": "带来源的项目", "requestId": "9" * 32}
+        with self.assertRaises(workspace.WorkspaceError):
+            web.dispatch("create", {**payload, "sourcePaths": [str(first), str(self.root / "不存在")]})
+        self.assertNotIn(payload["name"], [row["name"] for row in web.catalog()])
+
+        request = {**payload, "sourcePaths": [str(first), str(second), str(first)]}
+        created = web.dispatch("create", request)
+        self.assertEqual(web.dispatch("create", request), created)
+        scope = created["scope"]
+        row = next(row for row in web.catalog() if row["scope"] == scope)
+        record = {"id": "ws-" + scope, "path": row["path"]}
+        web.dispatch("bind", {"scope": scope, "workspace": record})
+        settings = web.dispatch("project", {"workspace": record, "action": "settings/view"})
+        self.assertEqual([source["name"] for source in settings["sources"]], ["文献", "笔记"])
+        read = web.dispatch("project", {"workspace": record, "action": "sources/read",
+                                        "args": {"sourceId": settings["sources"][0]["id"], "path": "abstract.txt"}})
+        self.assertEqual(read["text"], "可读的项目来源")
+        self.assertEqual((first / "abstract.txt").read_text(encoding="utf-8"), "可读的项目来源")
+
+    def test_confirmed_deletion_prunes_only_queued_dsh_sessions_offline(self):
+        from unittest.mock import patch
+        import session_cleanup
+
+        a, b = self.projects
+        home = self.root / "web"
+        old_home = self.root / "other-web"
+        deleted, kept, other_profile = "session-deleted", "session-kept", "session-other"
+        for profile, identity in ((home, deleted), (home, kept), (old_home, other_profile)):
+            folder = profile / "sessions" / "workspace" / identity
+            folder.mkdir(parents=True)
+            for name in ("session.v3.jsonl", "session.v4.jsonl.zstd"):
+                (folder / name).write_bytes(b"fixture")
+        cache = home / "storages" / "session_projcache" / "sessions"
+        cache.mkdir(parents=True)
+        for identity in (deleted, kept):
+            (cache / f"{identity}.json").write_text("{}", encoding="utf-8")
+        registry = home / "storages" / "workspace.json"
+        registry.write_text(json.dumps({"global": {"archivedSessionIds": [deleted, kept], "pinnedSessionIds": [deleted]},
+                                        "tables": {"workspaces": {"other": {"sessionIds": [deleted, kept]}}}}), encoding="utf-8")
+
+        with patch.dict("os.environ", {"LABWEAVE_DSH_WEB_HOME": str(home)}):
+            web.dispatch("delete", {"workspace": self.records[a], "sessionIds": [deleted]})
+        with patch.dict("os.environ", {"LABWEAVE_DSH_WEB_HOME": str(old_home)}):
+            web.dispatch("delete-session", {"workspace": self.records[b], "sessionIds": [other_profile]})
+        self.assertTrue((home / "sessions" / "workspace" / deleted / "session.v4.jsonl.zstd").is_file())
+        session_cleanup.purge_offline(home)
+        session_cleanup.purge_offline(home)
+        self.assertFalse((home / "sessions" / "workspace" / deleted).exists())
+        self.assertFalse((cache / f"{deleted}.json").exists())
+        self.assertTrue((cache / f"{kept}.json").exists())
+        left = json.loads(registry.read_text(encoding="utf-8"))
+        self.assertEqual(left["global"]["archivedSessionIds"], [kept])
+        self.assertEqual(left["tables"]["workspaces"]["other"]["sessionIds"], [kept])
+        self.assertTrue((home / "sessions" / "workspace" / kept / "session.v4.jsonl.zstd").is_file())
+        self.assertTrue((old_home / "sessions" / "workspace" / other_profile / "session.v4.jsonl.zstd").is_file())
+        self.assertTrue(any(row["scope"] == b for row in web.catalog()))
 
     def test_legacy_items_and_fixed_session_scope(self):
         a, b = self.projects
@@ -73,9 +136,14 @@ class NativeWorkspaceTests(unittest.TestCase):
         created_bot = web.dispatch("project", {
             "workspace": record,
             "action": "create_feature_bot",
-            "args": {"label": "实验监视器", "hint": "", "symbol": "✦", "keywords": ["监控"], "requestId": "b"*32},
+            "args": {"label": "实验监视器", "paradigm": "engineering", "layout": "matrix", "requestId": "b"*32},
         })
         bot_id = created_bot["feature"]["id"]
+        self.assertEqual((created_bot["feature"]["paradigm"], created_bot["feature"]["layout"]), ("engineering", "matrix"))
+        for invalid in ({}, {"paradigm": "extra"}, {"paradigm": "engineering", "layout": "timeline"}):
+            with self.assertRaises(workspace.WorkspaceError):
+                web.dispatch("project", {"workspace": record, "action": "create_feature_bot",
+                             "args": {"label": "无效范式", "requestId": "c"*32, **invalid}})
         updated_bot = web.dispatch("project", {
             "workspace": record,
             "action": "feature_update",
@@ -85,6 +153,7 @@ class NativeWorkspaceTests(unittest.TestCase):
         self.assertEqual(updated_bot["feature"]["hint"], "实时查看曲线")
         self.assertEqual(updated_bot["feature"]["symbol"], "λ")
         self.assertEqual(updated_bot["feature"]["keywords"], ["曲线", "loss"])
+        self.assertEqual(updated_bot["feature"]["layout"], "matrix")
         self.assertRaises(workspace.WorkspaceError, web.dispatch, "project", {
             "workspace": record, "action": "feature_update", "args": {"featureId": "chat", "label": "全局"}})
         self.assertEqual(web.project_view(a)["rails"]["ideas"][0]["text"], "only A")
@@ -121,6 +190,198 @@ class NativeWorkspaceTests(unittest.TestCase):
         self.assertRaises(workspace.WorkspaceError, web.dispatch, "project", {
             "workspace": rec_b, "action": "memory_write", "args": {"text": "x", "projectId": a}})
 
+    def test_project_context_and_search_share_updated_rules_and_results(self):
+        a, b = self.projects
+
+        def tool(scope, name, **args):
+            return json.loads(web.dispatch("tool", {
+                "workspace": self.records[scope], "tool": name, "args": args,
+            })["text"])
+
+        rule = tool(a, "memory_write", text="All baseline runs use seed 42", category="rule", pinned=True)
+        self.assertEqual(tool(a, "project_get_context")["coreMemories"][0]["id"], rule["id"])
+        result = tool(a, "memory_write", text="Verified replay run produced metric 0.76", category="task_result")
+        self.assertEqual(tool(a, "memory_search", query="0.76")[0]["id"], result["id"])
+        tool(a, "memory_update", id=rule["id"], text="All baseline runs use seed 99")
+        self.assertEqual(tool(a, "memory_search", category="rule")[0]["content"], "All baseline runs use seed 99")
+        self.assertEqual(tool(a, "project_get_context")["coreMemories"][0]["content"], "All baseline runs use seed 99")
+        self.assertEqual(tool(b, "project_get_context")["coreMemories"], [])
+        self.assertEqual(tool(b, "memory_search", query="0.76"), [])
+        with self.assertRaises(workspace.WorkspaceError):
+            tool(b, "memory_search", projectId=a)
+        with self.assertRaises(workspace.WorkspaceError):
+            tool("global", "memory_search", query="0.76")
+        self.assertEqual(tool("global", "memory_search", projectId=a, query="0.76")[0]["id"], result["id"])
+
+    def test_project_paradigm_is_reusable_scoped_and_validates_entries(self):
+        a, b = self.projects
+
+        def action(scope, name, **args):
+            return web.dispatch("project", {"workspace": self.records[scope], "action": name, "args": args})
+
+        specification = {"label": "数据集追踪", "description": "按时间追踪数据集版本与授权变化",
+                         "base": "notes", "layout": "timeline", "elements": ["版本", "授权"]}
+        extension = action(a, "create_project_paradigm", **specification)
+        self.assertEqual(action(a, "create_project_paradigm", **specification), extension)
+        self.assertEqual(action(a, "project_paradigms"), [extension])
+        self.assertEqual(action(b, "project_paradigms"), [])
+        with self.assertRaises(workspace.WorkspaceError):
+            action(b, "create_feature_bot", label="跨项目", paradigm=extension["id"], requestId="d"*32)
+        bot = action(a, "create_feature_bot", label="版本变更", paradigm=extension["id"], requestId="e"*32)["feature"]
+        self.assertEqual((bot["extension"], bot["layout"]), (extension, "timeline"))
+        entry = action(a, "feature_push", featureId=bot["id"], text="新增记录", elements={"版本": "v2"})
+        self.assertEqual(entry["elements"], {"版本": "v2"})
+        updated = action(a, "feature_push", featureId=bot["id"], id=entry["id"], elements={"授权": "待核对"})
+        self.assertEqual(updated["elements"], {"版本": "v2", "授权": "待核对"})
+        with self.assertRaises(workspace.WorkspaceError):
+            action(a, "feature_push", featureId=bot["id"], text="未定义", elements={"错误字段": "x"})
+
+    def test_typed_paradigm_fields_validate_values_and_record_scope(self):
+        a, _ = self.projects
+
+        def action(name, **args):
+            return web.dispatch("project", {"workspace": self.records[a], "action": name, "args": args})
+
+        fields = [
+            {"name": "版本", "type": "text", "role": "title"},
+            {"name": "发布日期", "type": "date", "role": "date"},
+            {"name": "样本数", "type": "number", "role": "detail"},
+            {"name": "已归档", "type": "boolean", "role": "status"},
+            {"name": "原件", "type": "url", "role": "source"},
+            {"name": "上一版本", "type": "reference", "role": "relation"},
+        ]
+        spec = {"label": "版本追踪", "description": "追踪版本变化", "base": "notes", "layout": "timeline"}
+        with self.assertRaises(workspace.WorkspaceError):
+            action("create_project_paradigm", **spec, fields=[{"name": "日期", "type": "text", "role": "date"}])
+        extension = action("create_project_paradigm", **spec, fields=fields)
+        self.assertEqual(extension["fields"], fields)
+        bot = action("create_feature_bot", label="追踪", paradigm=extension["id"], requestId="a2"*16)["feature"]
+        other = action("create_feature_bot", label="隔离", paradigm=extension["id"], requestId="a3"*16)["feature"]
+        initial = action("feature_push", featureId=bot["id"], elements={"版本": "v1"})
+        data = {"版本": "v2", "发布日期": "2026-11-19", "样本数": 0, "已归档": False,
+                "原件": "https://example.org/dataset", "上一版本": initial["id"]}
+        latest = action("feature_push", featureId=bot["id"], elements=data)
+        self.assertEqual(latest["elements"], data)
+        for patch in ({"发布日期": "2026-02-30"}, {"样本数": "12"}, {"已归档": 1}, {"原件": "javascript:alert(1)"}):
+            with self.assertRaises(workspace.WorkspaceError):
+                action("feature_push", featureId=bot["id"], id=latest["id"], elements=patch)
+        with self.assertRaises(workspace.WorkspaceError):
+            action("feature_push", featureId=other["id"], elements=data)
+        updated = action("feature_push", featureId=bot["id"], id=latest["id"], elements={"发布日期": None})
+        self.assertNotIn("发布日期", updated["elements"])
+        self.assertIs(updated["elements"]["已归档"], False)
+        action("feature_push", featureId=bot["id"], id=latest["id"], parentId=initial["id"])
+        with self.assertRaises(workspace.WorkspaceError):
+            action("feature_push", featureId=bot["id"], id=initial["id"], parentId=latest["id"])
+        action("entry_delete", rail=bot["id"], id=initial["id"])
+        [remaining] = action("view")["rails"][bot["id"]]
+        self.assertNotIn("上一版本", remaining["elements"])
+        self.assertNotIn("parentId", remaining)
+
+    def test_bot_dispatches_update_with_grouping_and_keep_archived_delivery(self):
+        import bot_dispatches
+
+        a, b = self.projects
+        member = features.create_feature(a, "文献核对", temporary=True)["feature"]["id"]
+        target = features.create_feature(a, "论文组")["feature"]["id"]
+        identity, stalled = "weave-bot-run-" + "a" * 32, "weave-bot-run-" + "b" * 32
+
+        def dispatch(route, **args):
+            return web.dispatch(route, {"workspace": self.records[a], **args})
+
+        def action(name, **args):
+            return dispatch("project", action=name, args=args)
+
+        dispatch("bot-dispatch-start", parentSessionId="main-chat", jobs=[
+            {"id": identity, "featureId": member, "task": "核对设置"}, {"id": stalled, "featureId": target, "task": "整理资料"},
+        ])
+        self.assertEqual(action("bot_dispatches", summary=True)["activeCount"], 2)
+        dispatch("bot-dispatch-update", id=identity, status="running")
+        dispatch("bot-dispatch-draft", id=identity, args={"key": "source", "title": "待核验", "text": "初稿"})
+        dispatch("bot-dispatch-draft", id=identity, args={"key": "source", "title": "正在整理", "text": "修订"})
+        canvas = action("bot_canvas", featureId=member)
+        self.assertEqual(canvas["active"], 1)
+        self.assertEqual([draft["text"] for draft in canvas["drafts"]], ["修订"])
+        with self.assertRaises(workspace.WorkspaceError):
+            web.dispatch("bot-dispatch-draft", {"workspace": self.records[b], "id": identity,
+                         "args": {"key": "source", "title": "跨项目", "text": "错误"}})
+        self.assertEqual(action("bot_dispatch_detail", id=identity)["status"], "running")
+        entry = action("feature_push", featureId=member, text="已核对第 4 页")
+        dispatch("bot-dispatch-update", id=identity, status="completed",
+                 result={"title": "来源核对", "answer": "已核对第 4 页", "recordId": entry["id"]})
+        self.assertFalse(action("bot_canvas", featureId=member)["drafts"])
+        with self.assertRaises(workspace.WorkspaceError):
+            dispatch("bot-dispatch-draft", id=identity, args={"key": "source", "title": "重试", "text": "已结束"})
+        dispatch("bot-dispatch-update", id=identity, status="running")
+        dispatch("bot-complete", featureId=member, recordId=entry["id"])
+        task = action("bot_dispatch_detail", id=identity)
+        self.assertEqual((task["status"], task["botState"], task["answer"]), ("completed", "archived", "已核对第 4 页"))
+        action("bot_restore", featureId=member)
+        action("bot_cluster", targetId=target, memberIds=[member])
+        updated = action("bot_dispatch_detail", id=identity)
+        self.assertEqual((updated["botLabel"], updated["clusterLabel"], updated["parentSessionId"]),
+                         ("文献核对", "论文组", "main-chat"))
+        with self.assertRaises(workspace.WorkspaceError):
+            web.dispatch("project", {"workspace": self.records[b], "action": "bot_dispatch_detail", "args": {"id": identity}})
+        bot_dispatches.recover()
+        self.assertEqual(action("bot_dispatches", summary=True)["activeCount"], 0)
+        self.assertEqual(action("bot_dispatch_detail", id=stalled)["status"], "interrupted")
+
+    def test_bot_canvas_keeps_partial_results_out_of_confirmed_records(self):
+        a, _ = self.projects
+        bot = features.create_feature(a, "阶段文献", paradigm="notes")["feature"]["id"]
+        identity = "weave-bot-run-" + "c" * 32
+
+        def dispatch(route, **args):
+            return web.dispatch(route, {"workspace": self.records[a], **args})
+
+        dispatch("bot-dispatch-start", parentSessionId="main-chat",
+                 jobs=[{"id": identity, "featureId": bot, "task": "核对两篇来源"}])
+        dispatch("bot-dispatch-draft", id=identity, args={"key": "first", "title": "第一篇", "text": "先整理第一篇"})
+        dispatch("bot-dispatch-update", id=identity, status="needs_follow_up",
+                 result={"title": "阶段回报", "answer": "缺第二篇原件"})
+        canvas = dispatch("project", action="bot_canvas", args={"featureId": bot})
+        self.assertEqual(canvas["active"], 0)
+        self.assertEqual([card["title"] for card in canvas["drafts"]], ["阶段回报", "第一篇"])
+        view = dispatch("project", action="view", args={})
+        self.assertEqual(view["rails"].get(bot), [])
+
+    def test_bot_cluster_and_retirement_keep_original_records(self):
+        a, b = self.projects
+        rec = self.records[a]
+
+        def action(name, **args):
+            return web.dispatch("project", {"workspace": rec, "action": name, "args": args})
+
+        def create(label, paradigm="notes"):
+            return action("create_feature_bot", label=label, paradigm=paradigm,
+                          requestId=label.encode().hex().ljust(32, "0"))["feature"]["id"]
+
+        target, member, other = create("root"), create("child"), create("other", "ideas")
+        foreign = features.create_feature(b, "外项目", paradigm="notes")["feature"]["id"]
+        for invalid in (other, foreign, target):
+            with self.assertRaises(workspace.WorkspaceError):
+                action("bot_cluster", targetId=target, memberIds=[member, invalid])
+        entry = action("feature_push", featureId=member, text="原始资料")
+        action("bot_cluster", targetId=target, memberIds=[member])
+        group = json.loads(web.dispatch("tool", {"workspace": rec, "tool": "feature_entries",
+                                                "args": {"featureId": target}})["text"])
+        self.assertEqual(group["members"][0]["entries"][0]["id"], entry["id"])
+        self.assertEqual(next(f for f in action("view")["features"] if f["id"] == member)["clusterParent"], target)
+
+        temporary = features.create_feature(a, "一次性核对", temporary=True)["feature"]["id"]
+        with self.assertRaises(workspace.WorkspaceError):
+            web.dispatch("bot-complete", {"workspace": rec, "featureId": temporary, "recordId": entry["id"]})
+        for fid, expected in ((target, False), (temporary, True)):
+            delivery = action("feature_push", featureId=fid, text="交付结果")
+            done = web.dispatch("bot-complete", {"workspace": rec, "featureId": fid, "recordId": delivery["id"]})
+            self.assertEqual(done["archived"], expected)
+            self.assertEqual(action("view")["rails"][fid][-1]["id"], delivery["id"])
+        active = json.loads(web.dispatch("tool", {"workspace": rec, "tool": "feature_list", "args": {}})["text"])
+        self.assertNotIn(temporary, [feature["id"] for feature in active])
+        action("bot_restore", featureId=temporary)
+        self.assertFalse(next(f for f in action("view")["features"] if f["id"] == temporary)["archived"])
+
     def test_all_project_and_private_plugins(self):
         a, b = self.projects
         shared = project_plugins.create("all", {"name": "All", "prompt": "Read the current project's sources"})
@@ -133,11 +394,94 @@ class NativeWorkspaceTests(unittest.TestCase):
 
     def test_project_delete_cleans_binding_and_blocks_global(self):
         a, b = self.projects
+        root = Path(self.records[a]["path"])
+        other = Path(self.records[b]["path"])
+        original = self.root / "source.csv"
+        original.write_bytes(b"source")
+        imported = web.projects.upload({"projectId": a, "name": "imported.csv", "data": "aW1wb3J0ZWQ="})
+        imported_path = web.projects.resource_path(a, imported["id"])
+        repository_file = root / "repositories" / "demo" / "README"
+        repository_file.parent.mkdir(parents=True)
+        repository_file.write_bytes(b"repository")
+        for relative in ("outputs/report.docx", "experiments/sandbox/run/output/plot.png",
+                         "experiments/workflows/run/metrics.json"):
+            generated = root / relative
+            generated.parent.mkdir(parents=True)
+            generated.write_bytes(b"generated")
+        (other / "outputs").mkdir()
+        (other / "outputs/report.docx").write_bytes(b"other project")
         project_plugins.create(a, {"name": "Private", "prompt": "Only A"})
         self.assertRaises(workspace.WorkspaceError, web.dispatch, "delete", {"workspace": self.records["global"]})
         self.assertEqual(web.dispatch("delete", {"workspace": self.records[a]}), {"ok": True})
+        self.assertFalse((root / "outputs").exists())
+        self.assertFalse((root / "experiments/sandbox").exists())
+        self.assertFalse((root / "experiments/workflows").exists())
+        self.assertEqual(imported_path.read_bytes(), b"imported")
+        self.assertEqual(repository_file.read_bytes(), b"repository")
+        self.assertEqual(original.read_bytes(), b"source")
+        self.assertEqual((other / "outputs/report.docx").read_bytes(), b"other project")
         self.assertEqual([r["scope"] for r in web.catalog()], ["global", b])
         self.assertRaises(web.BindingError, web.dispatch, "project", {"workspace": self.records[a], "action": "view"})
+
+    def test_engineering_bot_runs_are_scoped_without_trial_or_budget_routes(self):
+        a, b = self.projects
+        engineer = features.create_feature(a, "执行工程台", paradigm="engineering")["feature"]["id"]
+        another = features.create_feature(a, "第二工程台", paradigm="engineering")["feature"]["id"]
+        record = self.records[a]
+        with self.assertRaises(workspace.WorkspaceError) as old_trial:
+            web.dispatch("sandbox-tool", {"workspace": record, "operation": "run", "args": {}})
+        self.assertEqual(old_trial.exception.status, 404)
+        with self.assertRaises(workspace.WorkspaceError):
+            web.dispatch("project", {"workspace": record, "action": "sandbox/configure", "args": {"grantSeconds": 10}})
+
+        def tool(feature, **args):
+            value = web.dispatch("tool", {"workspace": record, "tool": "experiment_record",
+                                 "featureId": feature, "sessionId": "experiment-session", "args": args})
+            return json.loads(value["text"])
+
+        run = tool(engineer, name="训练", status="running", parameters={"environment": "cpu", "script": "run.py"})
+        tool(engineer, id=run["id"], status="completed", logs="退出码 0", metrics={"score": 0.9})
+        with self.assertRaises(workspace.WorkspaceError):
+            tool(another, id=run["id"], status="failed")
+        args = {"action": "bot/experiment", "args": {"featureId": engineer, "id": run["id"]}}
+        result = web.dispatch("project", {"workspace": record, **args})
+        self.assertEqual((result["status"], result["parameters"]["environment"], result["stdout"]),
+                         ("completed", "cpu", "退出码 0"))
+        with self.assertRaises(workspace.WorkspaceError):
+            web.dispatch("project", {"workspace": self.records[b], **args})
+
+    def test_project_file_storage_lists_generated_files_by_project(self):
+        a, b = self.projects
+        generated = {
+            "outputs/report.docx": b"\x00\xff",
+            "outputs/nested/report.docx": b"",
+            "experiments/sandbox/run/output/figure.svg": b"<svg/>",
+            "outputs/notes.txt": "实验原文".encode(),
+        }
+        for relative, contents in generated.items():
+            path = Path(self.records[a]["path"]) / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(contents)
+        other_path = Path(self.records[b]["path"]) / "outputs/report.docx"
+        other_path.parent.mkdir()
+        other_path.write_bytes(b"other")
+        records = web.dispatch("project", {"workspace": self.records[a], "action": "files/list"})
+        self.assertEqual(set(entry["path"] for entry in records), set(generated))
+        for entry in records:
+            request = {"action": "files/download", "args": {"id": entry["id"]}}
+            value = web.dispatch("project", {"workspace": self.records[a], **request})
+            self.assertEqual(value["name"], Path(entry["path"]).name)
+            self.assertEqual(base64.b64decode(value["data"]), generated[entry["path"]])
+            with self.assertRaises(workspace.WorkspaceError) as error:
+                web.dispatch("project", {"workspace": self.records[b], **request})
+            self.assertEqual(error.exception.status, 404)
+        notes = next(entry for entry in records if entry["name"] == "notes.txt")
+        request = {"action": "files/reference", "args": {"id": notes["id"]}}
+        excerpt = web.dispatch("project", {"workspace": self.records[a], **request})
+        self.assertEqual(excerpt["text"], "实验原文")
+        with self.assertRaises(workspace.WorkspaceError) as error:
+            web.dispatch("project", {"workspace": self.records[b], **request})
+        self.assertEqual(error.exception.status, 404)
 
     def test_offline_backup_restores_business_and_session_as_a_pair(self):
         home = self.root / "profile"

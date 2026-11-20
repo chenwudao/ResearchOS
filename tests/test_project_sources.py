@@ -24,7 +24,7 @@ class ProjectSourcesTests(unittest.TestCase):
             create_project(scope, scope)
         self.documents = self.root / "papers"
         self.documents.mkdir()
-        (self.documents / "notes.md").write_text("实验记录\n", encoding="utf-8")
+        (self.documents / "notes.md").write_text("实验记录\n", encoding="utf-8", newline="\n")
 
     def test_edit_and_unlink_preserve_files_and_project_scope(self):
         source = sources.save("proj_a", {"path": str(self.documents)})
@@ -67,7 +67,7 @@ class ProjectSourcesTests(unittest.TestCase):
 
     def test_read_pdf_and_utf8_across_pages_of_text(self):
         text = "a" * (24 * 1024 - 1) + "边界\n"
-        (self.documents / "long.md").write_text(text, encoding="utf-8")
+        (self.documents / "long.md").write_text(text, encoding="utf-8", newline="\n")
         pdf = PdfWriter()
         for _ in range(2):
             pdf.add_blank_page(width=400, height=600)

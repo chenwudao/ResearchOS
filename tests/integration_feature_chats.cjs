@@ -64,13 +64,15 @@ async function main() {
       return v.rails[f.id]?.some(e=>e.text.includes(note)) && f
     }, '模型创建功能或写入首条记录未完成：'+label, 170000)
   }
-  async function openChatSandbox() {
-    if(await sandbox.count())return
+  const fileStorage = page.getByRole('region', {name: / 空间存储$/}).filter({visible: true})
+  async function openFileStorage() {
+    if (await fileStorage.count()) return
     if(!await page.locator('[data-sidebar-right-open]').isVisible())await button('工具').click()
     const right=page.locator('[data-rightbar-col]')
-    if(await sandbox.count())return
-    await right.getByText('项目代码沙盒',{exact:true}).last().click()
-    await sandbox.waitFor()
+    if (await fileStorage.count()) return
+    await right.getByText('空间存储',{exact:true}).last().click()
+    await fileStorage.waitFor()
+    assert.equal(await sandbox.count(), 0)
   }
   async function featurePage(project,label,note) {
     await nav(project).getByRole('button',{name:label,exact:true}).click()
@@ -109,17 +111,17 @@ async function main() {
     await nav('文献梳理').getByRole('button',{name:local,exact:true}).waitFor({timeout:18000})
     await featurePage('文献梳理',local,localNote)
     await screenshot('功能创建-功能Bot对话')
-    console.log('从已打开沙盒的项目聊天切入功能分屏')
+    console.log('从已打开空间存储的项目聊天切入功能分屏')
     await nav('文献梳理').getByRole('button',{name:'聊天',exact:true}).click()
-    await chatScope(cfg.alpha);await openChatSandbox()
+    await chatScope(cfg.alpha);await openFileStorage()
     await nav('文献梳理').getByRole('button',{name:'分屏打开资源库',exact:true}).click()
     await page.getByRole('main',{name:'文献梳理的资源库',exact:true}).waitFor()
-    await until(async()=>await sandbox.count()===0,'分屏后仍显示沙盒')
+    await fileStorage.waitFor({state:'hidden'})
     assert.equal(await page.getByRole('main',{name:'文献梳理的资源库'}).getByRole('button',{name:/^(项目)?代码沙盒$/}).count(),0)
     await nav('文献梳理').getByRole('button',{name:'聊天',exact:true}).click()
-    await chatScope(cfg.alpha);await openChatSandbox()
+    await chatScope(cfg.alpha);await openFileStorage()
     fs.writeFileSync(cfg.proof,JSON.stringify({a,b,sharedId:shared.id,localId:nested.id}))
-    console.log('真实全局共享、功能 Bot 对话创建、记录项目隔离、分屏收起与聊天重新打开沙盒均通过。')
+    console.log('真实全局共享、功能 Bot 对话创建、记录项目隔离、分屏收起与聊天重新打开空间存储均通过。')
   }
   let step='打开全局助手'
   try {
@@ -245,11 +247,13 @@ async function main() {
       await editor.waitFor()
       await editor.getByText('统计',{exact:true}).first().waitFor()
       await screenshot('项目创建Bot-详情')
-      await editor.getByLabel('头像分类').selectOption('Emoji')
-      await editor.getByRole('button',{name:'头像 火箭',exact:true}).click()
+      assert.equal(await editor.getByLabel('头像分类').count(), 0)
+      await editor.getByLabel('备注').fill('复核统计口径和数据来源。')
       await editor.getByRole('button',{name:'保存',exact:true}).click()
       await editor.waitFor({state:'hidden'})
-      assert.equal((await view(a)).features.find(f=>f.id===bot.id).symbol,'🚀')
+      const edited = (await view(a)).features.find(f=>f.id===bot.id)
+      assert.equal(edited.symbol, bot.symbol)
+      assert.equal(edited.hint, '复核统计口径和数据来源。')
       console.log('项目折叠行加号、符号选择、备注关键词、自动打开、刷新持久化和项目隔离通过。')
       return
     }
@@ -271,7 +275,7 @@ async function main() {
     const bFeature=await created(b,bLabel,bNote)
     await nav('方法复现').getByRole('button',{name:bLabel,exact:true}).waitFor({timeout:18000})
     assert.ok(!(await view(a)).features.some(f=>f.id===bFeature.id))
-    await openChatSandbox()
+    await openFileStorage()
     await featurePage('方法复现',bLabel,bNote)
     await screenshot('功能创建-项目聊天')
     for(const builtin of ['动态','点子','目标','资源库'])await featurePage('方法复现',builtin)

@@ -65,11 +65,11 @@ def main():
                     time.sleep(0.8)
                     self.wfile.write((event({}, "stop") + "data: [DONE]\n\n").encode())
                     return
-            if (current == "REWIND_BOT_5_ASK" and "labweave_sandbox_run" in tools and
-                    not any(message.get("tool_call_id") == "permission_test_trial" for message in messages)):
+            if (current == "REWIND_BOT_5_ASK" and "labweave_experiment_record" in tools and
+                    not any(message.get("tool_call_id") == "permission_test_execution" for message in messages)):
                 delta = {"role": "assistant", "tool_calls": [{
-                    "index": 0, "id": "permission_test_trial", "type": "function", "function": {
-                        "name": "labweave_sandbox_run", "arguments": '{"title":"权限验证","code":"print(1)"}',
+                    "index": 0, "id": "permission_test_execution", "type": "function", "function": {
+                        "name": "labweave_experiment_record", "arguments": '{"name":"权限验证","status":"planned"}',
                     },
                 }]}
                 finish = "tool_calls"
@@ -152,7 +152,7 @@ def main():
             assert "Current DSH file policy: read-only." in after_restart
             assert "Current DSH file policy: workspace-write." in prompts["REWIND_BOT_1_ASK"]
             assert "Current DSH file policy: read-only." in prompts["REWIND_BOT_5_ASK"]
-            assert "当前对话是只读模式，不能发起代码试跑" in prompts["REWIND_BOT_5_ASK"]
+            assert "请在有执行权限的项目会话记录实验" in prompts["REWIND_BOT_5_ASK"]
     finally:
         launcher.workspace.DATA = previous_data
         server.shutdown()

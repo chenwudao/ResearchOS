@@ -9,6 +9,7 @@ import threading
 
 import assistant_profile
 import bot_activity
+import bot_dispatches
 import automation
 from dsh_workspace_map import BindingError, WorkspaceBindings
 import features
@@ -17,9 +18,9 @@ import project_service as projects
 import project_sources
 import project_tools
 import project_plugins
-import project_sandbox as sandbox
 import research_api
 import research_mcp
+import session_cleanup
 import tasks
 import workspace
 
@@ -57,7 +58,7 @@ def catalog():
             "scope": identity,
             "name": item["name"],
             "path": str(path),
-            "features": [{**{k:f.get(k) for k in ("id","label","builtin","shared","hint","symbol","keywords","botSessionId")},
+            "features": [{**{k:f.get(k) for k in ("id","label","builtin","shared","hint","symbol","keywords","botSessionId","paradigm","layout","extension","temporary","archived","clusterParent")},
                           "assignments":assigned.get(f["id"],[]),
                           "scheduleIds":schedules.get(f["id"],[])} for f in feat_list],
             "botSessionIds": [f["botSessionId"] for f in feat_list if f.get("botSessionId")],
@@ -129,6 +130,19 @@ def project_action(scope, data):
         return project_view(scope)
     if scope == "global":
         raise workspace.WorkspaceError(403, "请选择明确的科研项目。")
+    if action == "bot_dispatches":
+        return bot_dispatches.view(scope, summary=args.get("summary") is True)
+    if action == "bot_canvas":
+        return bot_dispatches.canvas(scope, args.get("featureId"))
+    if action == "bot_dispatch_detail":
+        identity = args.get("id")
+        if not isinstance(identity, str) or not bot_dispatches.IDENTITY.fullmatch(identity):
+            raise workspace.WorkspaceError(400, "无效的 Bot 任务标识。")
+        return bot_dispatches.view(scope, identity=identity)
+    if action == "project_paradigms":
+        return features.project_paradigms(scope)
+    if action == "create_project_paradigm":
+        return features.create_project_paradigm(scope, args)
     if action == "settings/view":
         return project_sources.settings(scope)
     if action == "settings/update":
@@ -149,42 +163,8 @@ def project_action(scope, data):
         return project_sources.list_directory(scope, args.get("sourceId"), args.get("path"))
     if action == "sources/read":
         return project_sources.read_file(scope, args)
-    if action == "sandbox/list":
-        return {**sandbox.dashboard(scope), "workflows": sandbox.workflows(scope)}
     if action in ("bot/experiments", "bot/experiment", "bot/artifact"):
         return bot_activity.view(scope, action, args)
-    if action == "sandbox/environments":
-        return sandbox.environments(scope)
-    if action == "sandbox/create-env":
-        return sandbox.environments(scope, sandbox.runtime.environment_id(args.get("name")))
-    if action == "sandbox/configure":
-        return sandbox.configure(scope,args)
-    if action == "sandbox/detail":
-        return sandbox.detail(scope,args.get("id"))
-    if action == "sandbox/artifact":
-        return sandbox.artifact(scope,args.get("id"),args.get("name"))
-    if action == "sandbox/cancel":
-        return sandbox.cancel(scope,args.get("id"))
-    if action == "sandbox/approve-trial":
-        return sandbox.approve_trial(scope,args.get("id"))
-    if action == "sandbox/retry":
-        return sandbox.retry(scope,args)
-    if action == "sandbox/approve-run":
-        return sandbox.prepare_workflow(scope,args,launch=True)
-    if action == "sandbox/flow":
-        return research_api.flows.get(scope,args.get("id"))
-    if action == "sandbox/revise":
-        old=research_api.flows.get(scope,args.get("id"))
-        plan=sandbox.bind_plan(scope,{**old['plan'],'environmentId':args.get('environment')})
-        return research_api.flows.draft(scope,{'plan':plan,'parentId':old['id']})
-    if action == "research/draft":
-        return research_api.flows.draft(scope,{**args,'plan':sandbox.bind_plan(scope,args.get('plan'))})
-    if action == "research/example":
-        return research_api.example({**args,'projectId':scope,'environmentId':sandbox.bind_plan(scope,{})['environmentId']})
-    if action == "research/approve":
-        return sandbox.prepare_workflow(scope,args)
-    if action == "research/run" and not research_api.flows.get(scope,args.get("id"))["plan"].get("environmentId"):
-        raise workspace.WorkspaceError(409,"旧计划须在项目代码沙盒中绑定环境并重新审批。")
     if action == "navigation":
         feat_list = features.list_features("global", scope)
         return {
@@ -200,8 +180,13 @@ def project_action(scope, data):
     if action == "remove_feature_bot":
         return features.delete_feature(scope,args.get("featureId"))
     if action == "create_feature_bot":
-        return features.create_feature(scope,args.get("label"),args.get("hint",""),symbol=args.get("symbol","✦"),
-                                       keywords=args.get("keywords"), request_id=project_plugins.request_id(args))
+        return features.create_feature(scope,args.get("label"),args.get("hint",""),symbol=args.get("symbol"),
+                                       keywords=args.get("keywords"), request_id=project_plugins.request_id(args),
+                                       paradigm=args.get("paradigm"), layout=args.get("layout"))
+    if action == "bot_cluster":
+        return features.cluster_bots(scope, args.get("targetId"), args.get("memberIds"))
+    if action == "bot_restore":
+        return features.set_bot_archived(scope, args.get("featureId"), archived=False)
     if action in ("feature_rename", "rename_feature"):
         return features.rename_feature(scope, args.get("featureId"), args.get("label"))
     if action in ("feature_update", "update_feature"):
@@ -214,10 +199,7 @@ def project_action(scope, data):
             keywords=args.get("keywords"),
         )
     if action == "feature_push":
-        fid = args.get("featureId")
-        if fid == "chat" or not features.is_valid_rail(scope, fid):
-            raise workspace.WorkspaceError(400, "未找到对应的项目功能。")
-        return projects.create_entry(scope, fid, args)
+        return projects.call("feature_push", args, scope)
     if action == "rename":
         return {"name": projects.call("project_update", {"name": naming.display_name(args.get("name"))}, scope)["name"]}
     if action == "description":
@@ -270,6 +252,15 @@ def project_action(scope, data):
         return uploaded
     if action == "clone":
         return projects.clone({**args, "projectId": scope})
+    if action == "files/list":
+        return projects.stored_files(scope)
+    if action == "files/reference":
+        page = args.get("page", 1)
+        if type(page) is not int or page < 1:
+            raise workspace.WorkspaceError(400, "文件页码无效。")
+        return projects.read_stored_reference(scope, args.get("id"), page)
+    if action == "files/download":
+        return projects.download_stored_file(scope, args.get("id"))
     if action == "read":
         return projects.read_resource(scope, args.get("id"), args.get("page", 1))
     if action == "tasks":
@@ -279,7 +270,7 @@ def project_action(scope, data):
         if tasks.get(args.get("id"))["projectId"] != scope:
             raise workspace.WorkspaceError(404, "任务不存在。")
         return task_actions[action](args)
-    if action in ("research/overview", "research/example", "research/draft", "research/approve", "research/run", "research/pause",
+    if action in ("research/overview", "research/draft", "research/approve", "research/run", "research/pause",
                   "research/cancel", "research/accept", "research/log", "research/state", "research/review-evidence",
                   "research/plan", "research/evidence", "research/link"):
         return research_api.POST[action]({**args, "projectId": scope})
@@ -305,13 +296,15 @@ def dispatch(route, data):
     if route == "assistant-model":
         return assistant_profile.assistant_model(data)
     if route == "create":
-        item = projects.create_project(naming.display_name(data.get("name")), "proj_" + project_plugins.request_id(data))
+        item = projects.create_project(naming.display_name(data.get("name")), "proj_" + project_plugins.request_id(data),
+                                       source_paths=data.get("sourcePaths"))
         return {"scope": item["id"]}
     if route == "plugin":
         return project_plugins.create(data.get("scope"), data, project_plugins.request_id(data))
     if route == "tools":
         return research_mcp.dispatch({"method": "tools/list", "id": 1}, "global")["result"]["tools"]
-    if route not in ("bind", "delete", "project", "tool", "sandbox-tool", "assignment-links", "dialog-delivery"):
+    if route not in ("bind", "delete", "delete-session", "project", "tool", "assignment-links",
+                     "bot-complete", "bot-dispatch-start", "bot-dispatch-update", "bot-dispatch-draft"):
         raise workspace.WorkspaceError(404, "未知接口。")
     record = data.get("workspace")
     if not isinstance(record, dict) or not all(isinstance(record.get(k), str) and record[k] for k in ("id", "path")):
@@ -327,49 +320,36 @@ def dispatch(route, data):
     if route == "delete":
         if resolved.get("kind") != "project":
             raise workspace.WorkspaceError(403, "全局助手工作区不能删除。")
-        projects.delete_project(resolved["projectId"])
+        projects.delete_project(resolved["projectId"], session_ids=data.get("sessionIds"))
         registry.unbind_project(PROFILE, resolved["projectId"])
         return {"ok": True}
+    if route == "delete-session":
+        session_cleanup.queue_session_deletions(data.get("sessionIds"))
+        return {"ok": True}
     scope = resolved.get("projectId", "global")
-    if route == "dialog-delivery":
-        return sandbox.dialog_delivery(scope, data["sessionId"], data.get("runId"), data.get("file"))
+    if route in ("bot-dispatch-start", "bot-dispatch-update", "bot-dispatch-draft"):
+        if scope == "global":
+            raise workspace.WorkspaceError(403, "Bot 分派必须属于项目。")
+        if route == "bot-dispatch-start":
+            return bot_dispatches.start(scope, data.get("parentSessionId"), data.get("jobs"))
+        if route == "bot-dispatch-draft":
+            return bot_dispatches.publish_draft(scope, data.get("id"), data.get("args", {}))
+        return bot_dispatches.update(scope, data.get("id"), data.get("status"), data.get("result", {}))
+    if route == "bot-complete":
+        fid, record = data.get("featureId"), data.get("recordId")
+        if scope == "global" or not isinstance(fid, str) or not record:
+            raise workspace.WorkspaceError(400, "需要具体项目的 Bot 交付记录。")
+        item = projects.project(workspace.snapshot(), scope)
+        if not any(entry["id"] == record for entry in item["rails"].get(fid, [])):
+            raise workspace.WorkspaceError(404, "找不到该 Bot 的交付。")
+        return features.set_bot_archived(scope, fid, archived=True)
     if route == "assignment-links" and scope != "global":
         return features.schedule_links(scope,data["featureId"],data.get("id"),data.get("remove",False))
-    if route == "sandbox-tool":
-        if scope == "global":
-            raise workspace.WorkspaceError(403,"请选择科研项目。")
-        args=data.get("args",{})
-        if data.get("operation")=="run":
-            origin=data.get("origin",{})
-            if not all(isinstance(origin.get(k),str) and origin[k] for k in ("sessionId","callId")):
-                raise workspace.WorkspaceError(403,"需要真实的对话工具调用。")
-            return sandbox.submit(scope,args,origin)
-        if data.get("operation")=="status":
-            return sandbox.detail(scope,args["runId"],args.get("waitSeconds",0)) if args.get("runId") else sandbox.dashboard(scope)
-        if data.get("operation")=="approved-workflow":
-            flows=research_api.flows
-            with flows.LOCK:
-                item=flows.get(scope,args.get("workflowId"))
-                if not item["plan"].get("environmentId") or item["status"] not in ("APPROVED","RUNNING","REVIEW","SUCCEEDED"):
-                    raise workspace.WorkspaceError(409,"请先在项目沙盒批准实验计划与预算，或由用户恢复已暂停的实验。")
-                if item["status"]=="APPROVED":
-                    item=flows.launch(scope,{"id":item["id"]})
-                return {"id":item["id"],"status":item["status"],"environment":item["plan"]["environmentId"]}
-        raise workspace.WorkspaceError(400,"无效的沙盒操作。")
     if route == "project":
         return project_action(scope, data)
-    if route == "tool" and scope != "global" and data.get("tool") == "workflow_draft":
-        args = data.get("args", {})
-        if not isinstance(args, dict) or args.get("projectId") not in (None, scope):
-            raise workspace.WorkspaceError(403, "此对话不能修改其他项目的实验。")
-        session = data.get("sessionId")
-        feature = next((f for f in features.list_features(scope, scope)
-                        if session and f.get("botSessionId") == session), None)
-        if feature:
-            source = {"featureId": feature["id"], "sessionId": session}
-            flow = research_api.flows.draft(
-                scope, {**args, "plan": sandbox.bind_plan(scope, args.get("plan"))}, source=source)
-            return {"text": json.dumps(flow, ensure_ascii=False)}
+    if route == "tool" and data.get("tool") == "experiment_record" and scope != "global" and data.get("featureId"):
+        result = bot_activity.record(scope, data["featureId"], data.get("sessionId"), data.get("args", {}))
+        return {"text": json.dumps(result, ensure_ascii=False)}
     result = research_mcp.dispatch({"method": "tools/call", "id": 1, "params": {
         "name": data.get("tool"), "arguments": data.get("args", {})}}, scope)["result"]
     if result.get("isError"):
@@ -419,6 +399,7 @@ class NativeHandler(BaseHTTPRequestHandler):
 
 
 def server(port=0):
+    bot_dispatches.recover()
     httpd = ThreadingHTTPServer(("127.0.0.1", port), NativeHandler)
     httpd.token = secrets.token_urlsafe(32)
     httpd.ready = threading.Event()

@@ -100,7 +100,8 @@ async function main() {
     assert.equal(await workbench.getByText('证据核对', { exact: true }).count(), 0)
     await btn(workbench, 'scores.csv').click()
     await workbench.getByRole('img', { name: /按表格行序绘制/ }).waitFor()
-    await workbench.getByLabel('指标').selectOption({ label: 'accuracy' })
+    await workbench.getByLabel('指标', { exact: true }).click()
+    await page.locator('[role="listbox"] [role="option"]').filter({ hasText: /^accuracy$/ }).click()
     await workbench.getByText(/0.72 至 0.89/).waitFor()
     if (process.env.LABWEAVE_PREVIEW_DIR) {
       await page.screenshot({ path: process.env.LABWEAVE_PREVIEW_DIR + '/bot-workbench-experiment.png' })

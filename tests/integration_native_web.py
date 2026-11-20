@@ -28,6 +28,7 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--model", action="store_true", help="Also send a synthetic project tool request to DeepSeek")
     mode.add_argument("--rightbar-only", action="store_true", help="Check the project chat tool panels without a model")
+    mode.add_argument("--workflow-draft-only", action="store_true", help="Check the authenticated draft flow without a model")
     args = parser.parse_args()
     previous = launcher.workspace.DATA
     try:
@@ -39,10 +40,10 @@ def main():
                 pdf.add_blank_page(width=400, height=600)
             pdf.write(root / "fixture.pdf")
             with launcher.native_services(0, home=root / "home", configured=args.model, background=False) as (url, _):
-                phase = "rightbar" if args.rightbar_only else "initial"
+                phase = "workflow-draft" if args.workflow_draft_only else "rightbar" if args.rightbar_only else "initial"
                 subprocess.run(["node", str(ROOT / "tests/integration_native_web.cjs"), phase, str(root),
                                 "model" if args.model else "offline", sys.executable], input=url, text=True, check=True, timeout=300)
-            if args.rightbar_only:
+            if args.rightbar_only or args.workflow_draft_only:
                 return
             # Apply MCP feature lifecycle (create, push, rename, delete) to Research Alpha before restart.
             proof = json.loads((root / "session-proof.json").read_text(encoding="utf-8"))

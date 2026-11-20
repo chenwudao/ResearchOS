@@ -62,7 +62,8 @@ async function main() {
         await setup.waitFor()
         assert.equal(await first.getByRole('dialog').count(), 1)
         assert.doesNotMatch(await first.locator('body').innerText(), /DeepSeek\s+(?:Account|账号)|LabWeave|\b(?:DSH|DS)\b|预览版|Preview Notice/i)
-        assert.equal(await setup.locator('select').count(), 1)
+        assert.equal(await setup.locator('select').count(), 0)
+        assert.equal(await setup.getByRole('combobox').count(), 1)
         assert.equal(await setup.locator('input').count(), 1)
         assert.equal(await setup.locator('input[type="password"]').count(), 1)
         assert.equal((await first.locator('html').getAttribute('lang')).split('-')[0], locale)
@@ -128,6 +129,21 @@ async function main() {
     await page.getByRole('navigation', { name: name + ' 项目功能' }).waitFor()
     return waitView(v => v?.name === name)
   }
+  async function checkFormalDraft(project) {
+    const { sessionId, scope } = project
+    const plan = JSON.parse(execFileSync(python,
+      [path.join(__dirname, 'workflow_fixture.py'), path.join(root, 'data'), scope], { encoding: 'utf8' }))
+    const draft = await owner('project', { sessionId, action: 'research/draft', args: { plan } })
+    assert.equal(draft.code, 200, JSON.stringify(draft.data))
+    assert.equal(draft.data.status, 'DRAFT')
+    assert.deepEqual(draft.data.runs, [])
+    assert.equal(draft.data.plan.question, plan.question)
+    const list = await owner('project', { sessionId, action: 'sandbox/list' })
+    assert.equal(list.code, 200)
+    assert.ok(list.data.workflows.some(flow => flow.id === draft.data.id && flow.status === 'DRAFT' && flow.total === 0))
+    assert.equal((await owner('project', { sessionId, action: 'research/run', args: { id: draft.data.id } })).code, 409)
+    assert.equal((await owner('project', { sessionId, action: 'research/example' })).code, 404)
+  }
   async function enableLegacyColumns(project) {
     assert.deepEqual(project.features.map(feature => feature.id), ['chat'])
     // Populate the disposable database for the existing-column UI checks.
@@ -142,22 +158,24 @@ async function main() {
     assert.equal((await owner('catalog')).code, 200)
     await page.evaluate(() => window.dispatchEvent(new Event('labweave:project-updated')))
   }
-  async function checkProjectTools(name) {
+  async function checkProjectTools(name, scope) {
     step = '项目聊天右侧栏'
     await button('工具').click()
     await page.locator('[data-sidebar-right-open]').waitFor()
     const right = page.locator('[data-rightbar-col]')
     const entry = label => right.getByText(label, { exact: true })
-    for (const label of ['工作区文件', 'Git', '项目代码沙盒', '新建终端', '浏览器']) {
+    for (const label of ['工作区文件', 'Git', '空间存储', '新建终端', '浏览器']) {
       await entry(label).first().waitFor()
       assert.equal(await entry(label).count(), 1, `工具引导中应只有一个 ${label} 入口`)
     }
-    for (const label of ['Git', '项目代码沙盒']) {
+    for (const label of ['Git', '空间存储']) {
       await entry(label).locator('xpath=ancestor::button[1]').locator('svg path').waitFor()
     }
+    await entry('空间存储').locator('xpath=ancestor::button[1]').locator('svg[data-icon="cube"]').waitFor()
     assert.equal(await right.getByRole('button', { name: '工具', exact: true }).count(), 0)
     assert.equal(await entry('任务详情').count(), 0)
-    assert.equal(await entry('存储空间').count(), 0)
+    assert.equal(await entry('文件存储').count(), 0)
+    assert.equal(await entry('项目代码沙盒').count(), 0)
     await preview('10-rightbar-guide')
     await entry('工作区文件').click()
     await entry('空目录').waitFor()
@@ -169,15 +187,49 @@ async function main() {
     }
     await openTab('Git')
     await button('刷新 Git 状态').locator('svg path').waitFor()
-    await openTab('项目代码沙盒')
-    const sandbox = page.getByRole('region', { name: name + ' 项目代码沙盒' })
-    await sandbox.getByLabel('下次试跑环境').waitFor()
-    await sandbox.getByRole('button', { name: '刷新项目代码沙盒' }).locator('svg path').waitFor()
-    await sandbox.getByText('还没有试跑记录', { exact: true }).waitFor()
-    await sandbox.getByText('管理环境与试跑预算').click()
-    await sandbox.getByLabel('增加试跑秒数').fill('30')
-    await sandbox.getByRole('button', { name: '授权项目试跑' }).click()
-    await sandbox.getByText(/可用试跑预算 30 秒/).waitFor()
+    await openTab('空间存储')
+    const store = right.getByRole('region', { name: name + ' 空间存储' })
+    await store.getByText('还没有存入文件', { exact: true }).waitFor()
+    if (phase === 'rightbar') {
+      const content = Buffer.from([0, 1, 255, 3])
+      await store.locator('input[type=file]').setInputFiles([
+        {name: '较早.txt', mimeType: 'text/plain', buffer: Buffer.from('较早')},
+        {name: '较新.bin', mimeType: 'application/octet-stream', buffer: content},
+      ])
+      await store.getByText('已存入 2 个文件。').waitFor()
+      await store.getByText('较新.bin', { exact: true }).waitFor()
+      assert.deepEqual(await store.locator('.lw-wsp-row-name').allTextContents(), ['较新.bin', '较早.txt'])
+      assert.equal(await store.locator('time[datetime]').count(), 2)
+      const download = page.waitForEvent('download')
+      await store.getByRole('button', { name: '下载 较新.bin' }).click()
+      const received = await download
+      assert.equal(received.suggestedFilename(), '较新.bin')
+      assert.deepEqual(fs.readFileSync(await received.path()), content)
+      const outputs = path.join(root, 'data', 'projects', scope, 'outputs', 'report')
+      const report = Buffer.from('project deliverable')
+      fs.mkdirSync(outputs, { recursive: true })
+      const reportPath = path.join(outputs, '结果.dat')
+      fs.writeFileSync(reportPath, report)
+      const earlier = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
+      fs.utimesSync(reportPath, earlier, earlier)
+      await store.getByText('结果.dat', { exact: true }).waitFor()
+      assert.equal(await store.locator('.lw-wsp-timeline-day').count(), 2)
+      assert.deepEqual(await store.locator('.lw-wsp-row-name').allTextContents(), ['较新.bin', '较早.txt', '结果.dat'])
+      const generatedDownload = page.waitForEvent('download')
+      await store.getByRole('button', { name: '下载 结果.dat' }).click()
+      const generated = await generatedDownload
+      assert.equal(generated.suggestedFilename(), '结果.dat')
+      assert.deepEqual(fs.readFileSync(await generated.path()), report)
+      await preview('11-project-file-storage')
+      await page.setViewportSize({ width: 900, height: 700 })
+      await page.evaluate(() => { document.documentElement.style.zoom = '125%' })
+      if (!await store.isVisible()) await button('工具').click()
+      await store.waitFor()
+      const bounds = await store.boundingBox()
+      assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 901)
+      await page.evaluate(() => { document.documentElement.style.zoom = '' })
+      await page.setViewportSize({ width: 1280, height: 820 })
+    }
     await button('工具').click()
     await page.locator('[data-sidebar-right-open]').waitFor({ state: 'detached' })
   }
@@ -212,10 +264,24 @@ async function main() {
       await setup.getByRole('button', { name: '稍后配置', exact: true }).click()
       await setup.waitFor({ state: 'hidden' })
     }
+    if (phase === 'workflow-draft') {
+      step = '使用项目自有输入创建正式实验草案'
+      await checkFormalDraft(await newProject('草案验收'))
+      console.log('使用项目输入创建草案、沙盒列表读取及未审批拒绝运行通过。')
+      return
+    }
     if (phase === 'rightbar') {
-      await newProject('右侧栏验收')
-      await checkProjectTools('右侧栏验收')
-      console.log('工具引导、原生工作区文件、Git 和存储图标、沙盒空态及预算授权通过。')
+      const first = await newProject('右侧栏验收')
+      await checkProjectTools('右侧栏验收', first.scope)
+      const stored = await owner('project', { sessionId: first.sessionId, action: 'files/list' })
+      assert.equal(stored.code, 200)
+      assert.equal(stored.data.length, 3)
+      const second = await newProject('文件隔离验收')
+      assert.deepEqual((await owner('project', { sessionId: second.sessionId, action: 'files/list' })).data, [])
+      assert.equal((await owner('project', {
+        sessionId: second.sessionId, action: 'files/download', args: { id: stored.data[0].id },
+      })).code, 404)
+      console.log('工具引导、时间线导入下载、窄窗口缩放、跨项目隔离通过。')
       return
     }
     const unauthed = await fetch(new URL('/api/labweave/catalog', url))
@@ -305,22 +371,23 @@ async function main() {
       const customRegion = page.getByRole('region', { name: '组会速递', exact: true })
       await customRegion.waitFor()
       assert.equal(await page.locator('aside[aria-label*="分配任务"], button[aria-label*="分配任务"], .lw-fbot-drawer').count(), 0)
-      const richCard = customRegion.locator('.lw-fbot-card[data-illustrated="true"]')
+      const richCard = customRegion.locator('.lw-canvas-card').filter({ hasText: '消融实验对比图：Reweight 带来稳定增益' })
       await richCard.waitFor()
       await richCard.getByText('消融实验对比图：Reweight 带来稳定增益', { exact: true }).waitFor()
       await richCard.locator('img[src^="data:image/svg+xml;base64,"]').waitFor()
       const thumbReady = await richCard.locator('img').evaluate(img => img.complete && img.naturalWidth > 0)
       assert.ok(thumbReady, '图文卡片缩略图应成功加载')
-      await customRegion.locator('.lw-fbot-card[data-illustrated="false"]').getByText('本周实验进展汇总', { exact: true }).waitFor()
+      await customRegion.getByRole('button', { name: '本周实验进展汇总', exact: true }).waitFor()
       await preview('11-custom-feature-bot')
       await richCard.click()
-      const richDetail = customRegion.locator('.lw-fbot-detail')
+      const richDetail = page.getByRole('dialog', { name: '记录详情' })
       await richDetail.locator('.lw-fbot-detail-title').getByText('消融实验对比图：Reweight 带来稳定增益', { exact: true }).waitFor()
       await richDetail.locator('.lw-fbot-detail-figure img[src^="data:image/svg+xml;base64,"]').waitFor()
       await richDetail.locator('.lw-fbot-detail-caption').getByText('Baseline、+Align 与 +Reweight 验证准确率对比图', { exact: true }).waitFor()
       const detailReady = await richDetail.locator('.lw-fbot-detail-figure img').evaluate(img => img.complete && img.naturalWidth > 0)
       assert.ok(detailReady, '图文详情大图应成功加载')
       await preview('16-illustrated-push-detail')
+      await richDetail.getByRole('button', { name: '关闭 记录详情' }).click()
       await customRegion.getByLabel('向 组会速递 发送消息').waitFor()
       assert.equal(await customRegion.locator('.lw-fbot-tools, .lw-fbot-model-badge, .lw-fbot-model-select').count(), 0)
       assert.equal(await customRegion.getByRole('button', { name: '快速录入', exact: true }).count(), 0)
@@ -524,7 +591,9 @@ async function main() {
     assert.equal(await ideas.locator('.lw-fbot-stats').count(), 0)
     await ideas.getByText('仅项目甲可见的想法').first().waitFor()
     await ideas.getByText('仅项目甲可见的想法',{exact:true}).first().click()
-    await ideas.locator('.lw-fbot-detail').getByRole('button', { name: '转为目标', exact: true }).waitFor()
+    const ideaDetail = page.getByRole('dialog', { name: '记录详情' })
+    await ideaDetail.getByRole('button', { name: '转为目标', exact: true }).waitFor()
+    await ideaDetail.getByRole('button', { name: '关闭 记录详情' }).click()
     assert.equal(await page.getByRole('main', { name: '研究甲的点子' }).count(), 1)
     assert.equal(await page.getByRole('tablist', { name: '项目栏目切换' }).count(), 0)
     assert.equal(await page.locator('[data-conversation-content]:visible').count(), 0)
@@ -590,48 +659,38 @@ async function main() {
     assert.equal(await page.locator('aside[aria-label*="分配任务"], button[aria-label*="分配任务"], .lw-fbot-drawer').count(), 0)
     const originalNote = 'DSH 论文：示例命令 echo "$DSH_HOME"'
     await library.getByLabel('导入文件').setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from(originalNote) })
-    await library.getByText(originalNote, { exact: true }).waitFor()
-    await library.locator('.lw-doc-card').waitFor()
+    const resourceDetail = page.getByRole('dialog', { name: '记录详情' })
+    await resourceDetail.getByRole('button', { name: '预览文件' }).click()
+    await resourceDetail.getByText(originalNote, { exact: true }).waitFor()
+    await resourceDetail.getByRole('button', { name: '关闭 记录详情' }).click()
+    await library.locator('.lw-canvas-card').waitFor()
     await preview('06-project-library')
     step = 'PDF 阅读与点击打开'
     const pdf = fs.readFileSync(path.join(root, 'fixture.pdf'))
     for (const name of ['论文一.pdf', '论文二.pdf']) {
       await library.getByLabel('导入文件').setInputFiles({ name, mimeType: 'application/pdf', buffer: pdf })
-      await library.getByText(name,{exact:false}).first().waitFor()
+      await resourceDetail.getByRole('button', { name: '关闭 记录详情' }).click()
+      await library.getByRole('button', { name, exact: true }).waitFor()
     }
-    await library.getByText(/论文一\.pdf/).first().click()
-    await library.getByRole('button', { name: '下一页' }).click()
-    await library.getByText('2 / 2', { exact: true }).waitFor()
-    await library.getByRole('button', { name: '填入提问' }).click()
-    const readingDraft = await library.getByLabel('向 资源库 发送消息').inputValue()
-    assert.doesNotMatch(readingDraft, /labweave|\bdsh\b/i)
-    assert.match(readingDraft, /第\s*2\s*页/)
+    await library.getByRole('button', { name: '论文一.pdf', exact: true }).click()
+    await resourceDetail.getByRole('button', { name: '预览文件' }).click()
+    await resourceDetail.getByRole('button', { name: '下一页' }).click()
+    await resourceDetail.getByText('2 / 2', { exact: true }).waitFor()
+    assert.equal(await resourceDetail.getByRole('button', { name: '填入提问' }).count(), 0)
+    await resourceDetail.getByRole('button', { name: '关闭 记录详情' }).click()
     step = '目标栏检查与正式实验草案创建'
     await projectBar.getByRole('button', { name: '目标', exact: true }).click()
     assert.equal(await page.locator('aside[aria-label*="分配任务"], button[aria-label*="分配任务"], .lw-fbot-drawer').count(), 0)
-    assert.equal((await owner('project', { sessionId: a.sessionId, action: 'research/example' })).code, 200)
+    await checkFormalDraft(a)
     step = '记录项目作用域用于持久化与动态功能测试'
     assert.ok(a.scope, '研究甲作用域应存在')
-    step = '接口级项目插件隔离验证与右侧栏项目工作台'
+    step = '接口级项目插件隔离和试跑授权'
     assert.equal((await owner('plugin', { requestId: require('node:crypto').randomUUID().replaceAll('-', ''),
       name: '周报', prompt: '总结本项目本周工作。', scope: 'all' })).code, 200)
-    await projectBar.getByRole('button', { name: '在研究甲中新建对话', exact: true }).click()
-    await waitView(v => v?.name === '研究甲')
-    await page.getByRole('button', { name: '工具', exact: true }).click()
-    await page.locator('[data-sidebar-right-open]').waitFor()
-    const rightCol = page.locator('[data-rightbar-col]')
-    const rightPane = page.getByRole('region', { name: '研究甲 项目代码沙盒' })
-    if (!(await rightPane.isVisible().catch(() => false))) {
-      await rightCol.getByRole('button', { name: '新标签页', exact: true }).click()
-      await button('项目代码沙盒').filter({ visible: true }).last().click()
-    }
-    await rightPane.getByText(/可用试跑预算 30 秒/).waitFor()
-    await rightPane.getByRole('tab', { name: /正式实验/ }).click()
-    await rightPane.getByRole('button', { name: /待审批/ }).first().click()
-    await rightPane.getByRole('button', { name: '批准计划并运行', exact: true }).waitFor()
-    await preview('08-project-rightbar')
-    await page.getByRole('button', { name: '工具', exact: true }).click()
-    await page.locator('[data-sidebar-right-open]').waitFor({ state: 'detached' })
+    const grant = await owner('project', { sessionId: a.sessionId, action: 'sandbox/configure',
+      args: { grantSeconds: 30, requestId: require('node:crypto').randomUUID() } })
+    assert.equal(grant.code, 200)
+    assert.equal(grant.data.seconds, 30)
     step = '项目切换与全局新会话'
     const b = await newProject('研究乙')
     await enableLegacyColumns(b)
@@ -682,12 +741,17 @@ async function main() {
     })
     assert.ok(sheetPos.left > sheetPos.vw * 0.5 && sheetPos.right >= sheetPos.vw - 24, 'Bot 信息弹窗应靠右展示')
     await preview('15-right-bot-sheet')
-    await editBotDialog.getByRole('button', { name: '符号 ◎', exact: true }).click()
-    await editBotDialog.getByLabel('名字').fill('研究目标')
+    assert.equal(await editBotDialog.getByText('外观与名称', { exact: true }).count(), 0)
+    assert.equal(await editBotDialog.getByLabel('名字', { exact: true }).count(), 0)
     await editBotDialog.getByLabel('备注').fill('跟踪关键实验里程碑')
     await editBotDialog.getByLabel('关键词').fill('里程碑、实验')
     await editBotDialog.getByRole('button', { name: '保存', exact: true }).click()
     await editBotDialog.waitFor({ state: 'hidden' })
+    await projectBar.getByRole('button', { name: '重命名功能 里程碑', exact: true }).click()
+    const renameBot = page.getByRole('dialog', { name: '重命名项目功能' })
+    await renameBot.getByLabel('功能显示名称').fill('研究目标')
+    await renameBot.getByRole('button', { name: '保存', exact: true }).click()
+    await renameBot.waitFor({ state: 'hidden' })
     const goalsRegion = page.getByRole('region', { name: '研究目标', exact: true })
     await goalsRegion.waitFor()
     await projectBar.getByRole('button', { name: '研究目标', exact: true }).waitFor()
