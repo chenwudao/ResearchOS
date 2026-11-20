@@ -36,7 +36,7 @@ export function createGoalPlanner(React) {
   return function GoalPlanner({ items, busy, openEntry, onSave, onMove, onToggle, onDecision, onSuggest }) {
     const today = dateKey(new Date())
     const [selected, setSelected] = React.useState(today)
-    const [scale, setScale] = React.useState('周')
+    const [scale, setScale] = React.useState('月')
     const [view, setView] = React.useState('日历')
     const [title, setTitle] = React.useState('')
     const [stage, setStage] = React.useState('')
