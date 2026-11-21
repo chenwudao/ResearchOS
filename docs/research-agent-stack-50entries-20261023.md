@@ -1,5 +1,7 @@
 # Research-Agent / AI-for-Science Stack for Student ResearchOS
 
+> Historical survey for a research use case. The current Weave workspace and architecture are documented in the [README](../README.md).
+
 **Curated:** 2026-10-23 (UTC+8)  
 **Vision alignment:** (1) Guide BIG research direction + SMALL questions — human decides; (2) For each question, surface foundational + frontier papers; (3) Flexible practical research companion — **not** autonomous paper mills.
 

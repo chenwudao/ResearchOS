@@ -64,7 +64,7 @@ def _repo_name(path):
             return name
     name = path.name
     if re.fullmatch(r"[a-f0-9]{16,32}", name):
-        return "仓库"
+        return "代码仓库"
     return name
 
 

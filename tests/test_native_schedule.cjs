@@ -2,6 +2,10 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const http = require('node:http')
 
+const referenceServices = () => ({ effect: setup => setup(), sessionReferenceResolver: {
+  config: { candidateLimit: 20 }, listCandidates: async () => [], prepare: async () => [],
+} })
+
 test('project schedule tools restrict list, edit and creation to the true session workspace', async () => {
   const { registerNative } = await import('../plugins/dsh-labweave-workspace/host/native.js')
   const rows = ['global', 'proj_a', 'proj_b'].map(scope => ({ scope, path: '/' + scope, name: scope }))
@@ -18,9 +22,9 @@ test('project schedule tools restrict list, edit and creation to the true sessio
     res.end(JSON.stringify(req.url === '/catalog' ? rows : req.url === '/tools' ? [] : {}))
   })
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
-  const ctx = { workspaceRegistry: {
+  const ctx = { ...referenceServices(), workspaceRegistry: {
     list: () => native, get: id => native.find(w => w.id === id), resolveByPath: async path => native.find(w => w.path === path),
-  }, sessions, tools: { register: definition => tools.set(definition.name, definition) }, systemPrompt: { context() {} },
+  }, sessions, tools: { register: definition => tools.set(definition.name, definition), guard() {} }, systemPrompt: { context() {} },
   schedule: { catalog: async () => records, view: async ({ id }) => records.find(r => r.id === id) || {},
     create: async req => { scheduled = req; return { id: 'new' } } },
   connection: { fetch: { register() {} } }, on: (name, fn) => hooks.set(name, fn) }
@@ -62,9 +66,10 @@ test('workspace-page feature_rename forwards scoped project action and refreshes
   })
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
   const ctx = {
+    ...referenceServices(),
     workspaceRegistry: { list: () => native, get: id => native.find(w => w.id === id), resolveByPath: async p => native.find(w => w.path === p) },
     sessions: new Map(),
-    tools: { register() {} },
+    tools: { register() {}, guard() {} },
     systemPrompt: { context() {} },
     schedule: { catalog: async () => [], view: async () => ({}), create: async () => ({}) },
     connection: { fetch: { register(route) { routes.set(route.path, route) } } },

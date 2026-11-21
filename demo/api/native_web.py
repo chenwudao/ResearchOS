@@ -9,6 +9,8 @@ import threading
 
 import assistant_profile
 import bot_activity
+import composer_references
+import project_flow
 import bot_dispatches
 import automation
 from dsh_workspace_map import BindingError, WorkspaceBindings
@@ -130,10 +132,22 @@ def project_action(scope, data):
         return project_view(scope)
     if scope == "global":
         raise workspace.WorkspaceError(403, "请选择明确的项目。")
+    if action == "composer/references":
+        return composer_references.candidates(scope, args)
+    if action == "composer/reference":
+        return composer_references.read(scope, args)
+    if action == "composer/tasks":
+        feature = args.get("featureId")
+        if feature is not None and not isinstance(feature, str):
+            raise workspace.WorkspaceError(400, "无效的 Bot 标识。")
+        return bot_dispatches.reference_candidates(scope, workspace.text(args.get("query"), 600), feature,
+                                                  limit=12 if args.get("expanded") is True else 4)
     if action == "bot_dispatches":
         return bot_dispatches.view(scope, summary=args.get("summary") is True)
     if action == "bot_canvas":
         return bot_dispatches.canvas(scope, args.get("featureId"))
+    if action == "bot_source_record":
+        return projects.source_record(scope, args.get("id"))
     if action == "bot_dispatch_detail":
         identity = args.get("id")
         if not isinstance(identity, str) or not bot_dispatches.IDENTITY.fullmatch(identity):
@@ -163,7 +177,7 @@ def project_action(scope, data):
         return project_sources.list_directory(scope, args.get("sourceId"), args.get("path"))
     if action == "sources/read":
         return project_sources.read_file(scope, args)
-    if action in ("bot/experiments", "bot/experiment", "bot/artifact"):
+    if action in ("bot/experiments", "bot/experiment", "bot/artifact", "bot/experiment_dismiss"):
         return bot_activity.view(scope, action, args)
     if action == "navigation":
         feat_list = features.list_features("global", scope)
@@ -286,6 +300,13 @@ def dispatch(route, data):
         return records()
     if route == "catalog":
         return catalog()
+    if route == "bot-conversation-activity":
+        scopes = data.get("projects")
+        if not isinstance(scopes, list) or any(
+            not isinstance(scope, str) or not re.fullmatch(r"proj_[A-Za-z0-9_-]{1,120}", scope) for scope in scopes
+        ):
+            raise ValueError
+        return bot_dispatches.conversation_activity(scopes)
     if route == "name":
         store = naming.NamingStore()
         return {"name": store.rename_assistant(data["name"]) if "name" in data else store.assistant_name()}
@@ -304,7 +325,8 @@ def dispatch(route, data):
     if route == "tools":
         return research_mcp.dispatch({"method": "tools/list", "id": 1}, "global")["result"]["tools"]
     if route not in ("bind", "delete", "delete-session", "project", "tool", "assignment-links",
-                     "bot-complete", "bot-dispatch-start", "bot-dispatch-update", "bot-dispatch-draft"):
+                     "bot-complete", "bot-dispatch-start", "bot-dispatch-update", "bot-dispatch-draft",
+                     "bot-dispatch-promote", "project-flow"):
         raise workspace.WorkspaceError(404, "未知接口。")
     record = data.get("workspace")
     if not isinstance(record, dict) or not all(isinstance(record.get(k), str) and record[k] for k in ("id", "path")):
@@ -327,13 +349,30 @@ def dispatch(route, data):
         session_cleanup.queue_session_deletions(data.get("sessionIds"))
         return {"ok": True}
     scope = resolved.get("projectId", "global")
-    if route in ("bot-dispatch-start", "bot-dispatch-update", "bot-dispatch-draft"):
+    if route == "project-flow":
+        if scope == "global":
+            raise workspace.WorkspaceError(403, "项目事件需要明确的项目。")
+        if data.get("action") == "read":
+            return project_flow.read(scope, data.get("after"), data.get("audience"))
+        if data.get("action") == "file-change":
+            return project_flow.record_file_changes(scope, data)
+        if data.get("action") == "file-changes":
+            return project_flow.file_changes(scope, data.get("sessionId"))
+        if data.get("action") in ("input", "decision"):
+            return project_flow.write(scope, data)
+        if data.get("action") == "retract":
+            return project_flow.retract(scope, data)
+        raise workspace.WorkspaceError(400, "项目事件操作无效。")
+    if route in ("bot-dispatch-start", "bot-dispatch-update", "bot-dispatch-draft", "bot-dispatch-promote"):
         if scope == "global":
             raise workspace.WorkspaceError(403, "Bot 分派必须属于项目。")
         if route == "bot-dispatch-start":
             return bot_dispatches.start(scope, data.get("parentSessionId"), data.get("jobs"))
         if route == "bot-dispatch-draft":
             return bot_dispatches.publish_draft(scope, data.get("id"), data.get("args", {}))
+        if route == "bot-dispatch-promote":
+            return bot_dispatches.promote_drafts(scope, data.get("id"), data.get("parentSessionId"),
+                                                 data.get("publishDraftIds"), final=data.get("final"))
         return bot_dispatches.update(scope, data.get("id"), data.get("status"), data.get("result", {}))
     if route == "bot-complete":
         fid, record = data.get("featureId"), data.get("recordId")

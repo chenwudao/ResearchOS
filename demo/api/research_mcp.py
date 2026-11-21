@@ -7,6 +7,7 @@ import project_service
 import naming
 import project_plugins
 import features
+from visualizations import CHART_SCHEMA
 
 TOOLS = {
     "plugin_create": ("Create a reusable instruction plugin. A global conversation must explicitly set projectId to one project or 'all'. Project conversations can only create a plugin for themselves.", {"name": {"type": "string"}, "prompt": {"type": "string"}}),
@@ -16,9 +17,9 @@ TOOLS = {
     "assistant_rename": ("Change the global assistant's display name when requested in the conversation.", {"name": {"type": "string"}}),
     "feature_labels": ("Read active feature IDs and their current display names for this conversation scope. A global conversation may optionally specify projectId.", {}),
     "feature_list": ("List active Feature Bots in the project. clusterParent identifies grouped members. Use includeArchived to find completed temporary Bots and their preserved results.", {"includeArchived":{"type":"boolean"}}),
-    "feature_create": ("Create a Bot with one paradigm and one compatible layout. Use goals: checklist/path, notes: library/timeline, mindmap: graph/lineage, ideas: branches/reasoning or engineering: sequence/matrix. For a project extension, use its ext_ ID and fixed layout from project_get_context. Global chat must specify the project explicitly.", {
+    "feature_create": ("Create a Bot with one paradigm and one compatible layout. Use goals: checklist/path/bus, notes: library/timeline, mindmap: graph/lineage/star/bus, ideas: branches/reasoning/star or engineering: sequence/matrix. Star emphasizes a central record; bus emphasizes sources feeding connected groups. For a project extension, use its ext_ ID and fixed layout from project_get_context. Global chat must specify the project explicitly.", {
         "label":{"type":"string"}, "paradigm":{"type":"string"},
-        "layout":{"type":"string","enum":[layout for layouts in features.BOT_LAYOUTS.values() for layout in layouts]},
+        "layout":{"type":"string","enum":list(dict.fromkeys(layout for layouts in features.BOT_LAYOUTS.values() for layout in layouts))},
         "hint":{"type":"string"}, "temporary":{"type":"boolean","description":"Use only for a one-time assignment without a suitable existing Bot. Successful archived deliveries retire it automatically."}}),
     "feature_delete": ("Remove a non-chat Feature Bot (builtin feed/ideas/goals/library or custom feature) from the specified projectId/'all' (global chat) or current project. Cannot delete 'chat'.", {"featureId": {"type": "string"}}),
     "project_paradigm_create": ("Create a project-local paradigm with one layout, a matching avatar icon, and typed display fields. Assign unique title, summary, group, date, status, source or relation roles as needed. Other fields use detail. Use date for date roles, url for source, and reference for relation to another record within the same Bot. Optionally pass symbol (e.g. lucide:book-open, lucide:bug, lucide:database, lucide:flask-conical) or omit it to let Weave auto-match a fitting icon.", {
@@ -31,9 +32,12 @@ TOOLS = {
                            "role": {"type": "string", "enum": list(features.FIELD_ROLES)}}}},
         "elements": {"type": "array", "items": {"type": "string"}, "description": "Legacy text-only detail names."}}),
     "feature_entries": ("Read current entries pushed to a project Feature Bot.", {"featureId": {"type": "string"}}),
+    "feature_layout": ("Change a project Bot's one saved layout after an explicit organization decision. Use a layout supported by the Bot's existing paradigm. Read feature_list first.", {
+        "featureId": {"type": "string"}, "layout": {"type": "string"}}),
     "feature_push": (
-        "Save a record in a project Bot's assigned layout. Use category for resource folders or goal priorities, parentId for a related record in the same Bot, and dependsOn for goal prerequisites. "
-        "or pass id to update an existing entry. Decide based on the Bot's purpose and message intent "
+        "Save a record in a project Bot's assigned layout, or pass id to update one. Use parentId for a branch, dependsOn for true prerequisites, and relatedIds for non-directional associations. Targets must be existing cards in this Bot or its cluster. Set relationships only when supported by project records or user instructions. "
+        "Give the canvas card a specific title and a short plain-text summary. Write text as a self-contained Markdown brief with the finding first, then short sections for relevant evidence, methods or next steps. Put links and figures with the finding they support. "
+        "Decide based on the Bot's purpose and message intent "
         "whether to include a figure/diagram (imagePath in project folder, inline imageSvg diagram/chart, imageData, "
         "or imageUrl) plus title and caption, or concise text only. For sourced pushes, include the original "
         "publication or repository link as url and its publisher, journal, or repository name as source.",
@@ -49,8 +53,14 @@ TOOLS = {
             "imageUrl": {"type": "string"},
             "url": {"type": "string"},
             "source": {"type": "string"},
+            "sources": {"type": "array", "maxItems": 12,
+                        "description": "Named sources for the card. Use a project recordId or a verified original url.",
+                        "items": {"type": "object", "additionalProperties": False, "properties": {
+                            "title": {"type": "string"}, "recordId": {"type": "string"}, "url": {"type": "string"}}}},
             "kind": {"type": "string"},
             "category": {"type": "string"}, "parentId": {"type": ["string", "null"]},
+            "relatedIds": {"type": "array", "items": {"type": "string"}, "maxItems": 100},
+            "visualizations": {**CHART_SCHEMA, "description": "Charts of observed or sourced data. Use actual x and y values, and name axes with units. An empty array clears existing charts."},
             "due": {"type": "string"}, "done": {"type": "boolean"},
             "dependsOn": {"type": "array", "items": {"type": "string"}},
             "eventDate": {"type": "string", "description": "Known publication or event date in YYYY-MM-DD."},
@@ -68,7 +78,7 @@ TOOLS = {
     "evidence_link": ("Link two existing project knowledge objects; relation is supports, contradicts, tests, uses, derived_from or motivates.", {key: {"type": "string"} for key in ("source", "target", "relation", "note")}),
     "task_get": ("Read a project task result and execution events.", {"id": {"type": "string"}}),
     "experiment_list": ("List experiment parameters, metrics and logs.", {}),
-    "experiment_record": ("Create or update an experiment run. Put the actual environment, script, command parameters and project-relative output paths (artifacts array) in parameters. Update the same id with observed logs and metrics.", {"id": {"type": "string"}, "name": {"type": "string"}, "parameters": {"type": "object"}, "metrics": {"type": "object"}, "status": {"type": "string"}, "logs": {"type": "string"}, "taskId": {"type": "string"}}),
+    "experiment_record": ("Create or update an experiment run. Put the actual environment, script, command parameters and project-relative output paths (artifacts array) in parameters. Update the same id with observed logs, metrics and optional visualizations of measured values as they become available. Use the actual step, epoch or timestamp on the x axis.", {"id": {"type": "string"}, "name": {"type": "string"}, "parameters": {"type": "object"}, "metrics": {"type": "object"}, "visualizations": CHART_SCHEMA, "status": {"type": "string"}, "logs": {"type": "string"}, "taskId": {"type": "string"}}),
     "benchmark_list": ("List task quality evaluations.", {}),
     "benchmark_record": ("Record evidence-backed quality scores. Each dimension is 0 to 5; rationale is required. Set evaluator to Weave.", {"taskId": {"type": "string"}, "scores": {"type": "object", "properties": {key: {"type": "number"} for key in ("completeness", "correctness", "evidence", "reproducibility")}}, "rationale": {"type": "string"}, "evaluator": {"type": "string"}}),
 
@@ -79,13 +89,31 @@ TOOLS = {
     "project_get_context": ("Read current project progress, notes, resources and a compact selection of shared project memories. Use memory_search for full records and other relevant memories.", {}),
     "resource_search": ("Find project resources.", {"query": {"type": "string"}}),
     "resource_read": ("Read a registered text resource, repository listing or PDF page.", {"id": {"type": "string"}, "page": {"type": "integer"}}),
-    "paper_read": ("Read one page of a registered PDF with page attribution.", {"id": {"type": "string"}, "page": {"type": "integer"}}),
-    "paper_search": ("Search real Crossref paper metadata.", {"query": {"type": "string"}}),
+    "paper_read": ("Read one page of a registered project PDF by id, or an open arXiv PDF by arxivId (prefer an explicit version), with a source locator.", {
+        "id": {"type": "string"}, "arxivId": {"type": "string"}, "page": {"type": "integer"},
+    }),
+    "paper_search": ("Discover paper metadata across Crossref and OpenAlex. Optionally select arXiv for preprints or Europe PMC for biomedical literature. Matching DOIs are merged and retain their sources. "
+                     "Use includeStatus for a reproducible query and per-source coverage. Search metadata alone cannot substantiate full-text claims.", {
+        "query": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 25},
+        "providers": {"type": "array", "minItems": 1, "maxItems": 4, "uniqueItems": True,
+                      "items": {"type": "string", "enum": ["crossref", "openalex", "arxiv", "europepmc"]}},
+        "includeStatus": {"type": "boolean"},
+    }),
+    "paper_lookup": ("Resolve a DOI, OpenAlex ID or arXiv ID to authoritative metadata and available open-access links.", {
+        "id": {"type": "string"},
+    }),
+    "paper_neighbors": ("Follow a seed paper's outgoing references and incoming citations using the OpenAlex index. "
+                        "Use a DOI, OpenAlex ID or arXiv ID. Indexed counts can exceed the returned sample and citation links do not establish scientific support.", {
+        "id": {"type": "string"}, "direction": {"type": "string", "enum": ["references", "cited_by", "both"]},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 25},
+    }),
     "idea_create": ("Save a project idea with an optional source URL.", {"text": {"type": "string"}, "url": {"type": "string"}}),
     "idea_update": ("Edit an existing idea.", {"id": {"type": "string"}, "text": {"type": "string"}}),
     "goal_create": ("Create goal or subtask with existing parent/dependency IDs.", {"text": {"type": "string"}, "due": {"type": "string"}, "parentId": {"type": "string"}, "dependsOn": {"type": "array", "items": {"type": "string"}}}),
     "goal_update": ("Update a goal's text, due date or completion.", {"id": {"type": "string"}, "text": {"type": "string"}, "due": {"type": "string"}, "done": {"type": "boolean"}}),
-    "task_create": ("Queue a new task for user confirmation.", {"text": {"type": "string"}, "goalId": {"type": "string"}}),
+    "task_create": ("Queue an SDK task for user confirmation. For a research Bot's core Skill, pass the Bot's featureId within this project.", {
+        "text": {"type": "string"}, "goalId": {"type": "string"}, "featureId": {"type": "string"},
+    }),
     "memory_search": ("Search the shared project memories, including rules, decisions and results from the project chat and its Bots. Use a short task-specific query or a category filter. The global assistant must identify the target project explicitly.", {
         "query": {"type": "string"}, "category": {"type": "string"}, "limit": {"type": "integer"}}),
     "memory_write": ("Save a durable decision or verified observation for the project chat and every Bot in the same project. For a user-established project rule use category 'rule' and pinned:true.", {
@@ -103,7 +131,7 @@ TOOLS = {
 }
 
 
-def dispatch(request, scope, *, protocol_version="2024-11-05"):
+def dispatch(request, scope, *, protocol_version="2024-11-05", bot_binding=None):
     """Handle one MCP request with the server's fixed project scope."""
     if "id" not in request:
         return None
@@ -131,7 +159,20 @@ def dispatch(request, scope, *, protocol_version="2024-11-05"):
                     raise workspace.WorkspaceError(403, "不能访问其他项目。")
                 if not isinstance(arguments, dict):
                     raise workspace.WorkspaceError(400, "工具参数必须是对象。")
-                if name == "plugin_create":
+                if bot_binding and name in ("feature_push", "experiment_record"):
+                    from tasks import task_bot
+                    feature_id, session_id = bot_binding
+                    bot = task_bot(scope, feature_id)
+                    if name == "feature_push":
+                        if arguments.get("featureId") not in (None, feature_id):
+                            raise workspace.WorkspaceError(403, "后台任务只能把记录写到承接 Bot。")
+                        value = project_service.call(name, {**arguments, "featureId": feature_id}, scope)
+                    else:
+                        if (bot.get("extension") or {}).get("base", bot["paradigm"]) != "engineering":
+                            raise workspace.WorkspaceError(403, "实验运行记录由工程台 Bot 提交。")
+                        import bot_activity
+                        value = bot_activity.record(scope, feature_id, session_id, arguments)
+                elif name == "plugin_create":
                     value = project_plugins.create(arguments.get("projectId") if scope == "global" else scope, arguments)
                 elif name == "plugin_rename":
                     value = project_plugins.rename(scope, arguments.get("id"), arguments.get("name"))
@@ -189,10 +230,11 @@ def dispatch(request, scope, *, protocol_version="2024-11-05"):
 def main():
     workspace.DATA = Path(sys.argv[1])
     scope = sys.argv[2]
+    bot_binding = tuple(sys.argv[3:]) or None
     for line in sys.stdin:
         try:
             request = json.loads(line)
-            response = dispatch(request, scope)
+            response = dispatch(request, scope, bot_binding=bot_binding)
         except Exception as exc:
             response = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": str(exc)}}
         if response is not None:

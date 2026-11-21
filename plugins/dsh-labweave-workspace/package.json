@@ -1,6 +1,7 @@
 {
   "name": "labweave-research-workspace",
   "version": "1.0.0",
+  "description": "Weave project workflows and Bot workspaces for the native DeepSeek Harness web client.",
   "private": true,
   "type": "module",
   "main": "./host/index.js",

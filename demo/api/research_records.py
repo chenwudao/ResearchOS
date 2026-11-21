@@ -5,6 +5,8 @@ import math
 from uuid import uuid4
 import workspace
 import project_service
+import project_flow
+import visualizations
 
 DIMENSIONS = ("completeness", "correctness", "evidence", "reproducibility")
 
@@ -33,6 +35,8 @@ def save(project_id, kind, args):
     item = {**existing, **args, "id": identity, "updated": project_service.timestamp()}
     item.setdefault("created", item["updated"])
     if kind == "experiment":
+        if "visualizations" in args:
+            item["visualizations"] = visualizations.validate(args["visualizations"])
         item["name"] = workspace.text(item.get("name"), 300)
         if not item["name"]:
             raise workspace.WorkspaceError(400, "请输入实验名称。")
@@ -57,17 +61,34 @@ def save(project_id, kind, args):
         item["score"] = round(sum(scores.values()) / 20 * 100, 1)
         item["evaluator"] = workspace.text(item.get("evaluator"), 100) or "用户"
     if item.get("taskId"):
-        import tasks
-        if tasks.get(item["taskId"])["projectId"] != project_id:
-            raise workspace.WorkspaceError(400, "任务属于其他项目。")
+        import bot_dispatches
+        task_id = item["taskId"]
+        if kind == "experiment" and isinstance(task_id, str) and bot_dispatches.IDENTITY.fullmatch(task_id):
+            task = bot_dispatches.view(project_id, identity=task_id)
+            if item.get("featureId") != task["featureId"] or item.get("sourceSession") != task_id:
+                raise workspace.WorkspaceError(400, "实验记录必须属于本 Bot 的执行对话。")
+        else:
+            import tasks
+            if tasks.get(task_id)["projectId"] != project_id:
+                raise workspace.WorkspaceError(400, "任务属于其他项目。")
     with closing(database()) as db, db:
         db.execute("INSERT OR REPLACE INTO research_records VALUES (?, ?, ?, ?)",
                    (identity, project_id, kind, json.dumps(item, ensure_ascii=False, allow_nan=False)))
+        if kind == "experiment":
+            metrics = {}
+            for name, value in list(item["metrics"].items())[:16]:
+                latest = value[-1] if isinstance(value, list) and value else value
+                if visualizations.numeric(latest):
+                    metrics[name[:80]] = latest
+            project_flow.record_change(db, project_id, "experiment", {**item, "metrics": metrics},
+                                       "updated" if existing else "saved")
     return item
 
 
 def delete(project_id, kind, args):
     with closing(database()) as db, db:
-        db.execute("DELETE FROM research_records WHERE project=? AND kind=? AND id=?",
-                   (project_id, kind, args.get("id")))
+        deleted = db.execute("DELETE FROM research_records WHERE project=? AND kind=? AND id=?",
+                             (project_id, kind, args.get("id")))
+        if kind == "experiment" and deleted.rowcount:
+            project_flow.record_change(db, project_id, "experiment", {"id": args["id"]}, "removed")
     return {"ok": True}

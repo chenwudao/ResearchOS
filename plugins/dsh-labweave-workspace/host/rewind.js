@@ -19,7 +19,7 @@ function isConversationEvent(event) {
     || (event.type === 'user/message' && event.data.source.kind === rewindKind)
 }
 
-export async function rewindConversation(ctx, workspace, { sessionId, seq, role, tail }) {
+export async function rewindConversation(ctx, workspace, { sessionId, seq, role, tail }, retract) {
   if (!Number.isSafeInteger(seq) || seq < 0 || !Number.isSafeInteger(tail)
       || (role !== 'user' && role !== 'assistant')) {
     throw Object.assign(new Error('请选择要撤回的消息。'), { status: 400 })
@@ -67,10 +67,11 @@ export async function rewindConversation(ctx, workspace, { sessionId, seq, role,
         }
       }
       const removed = nodes.slice(start)
+      const messageId = randomUUID()
       // The append-only DSH replacement is both the context change and the transcript checkpoint.
       // Use a nonempty marker so later prompts also work with providers that reject empty messages.
       session.append('user/message', {
-        id: randomUUID(),
+        id: messageId,
         role: 'user',
         source: { kind: rewindKind, fromSeq },
         content: [{ type: 'text', text: '(A conversation rewind occurred. Use the retained messages as context.)' }],
@@ -82,6 +83,10 @@ export async function rewindConversation(ctx, workspace, { sessionId, seq, role,
         ? target.data.content.filter(block => block.type === 'text').map(block => block.text).join('')
         : ''
       const saved = await ctx.sessions.flush(session).catch(() => false)
+      if (retract) {
+        const messageIds = removed.map(seq => events[seq]).filter(isUserInput).map(event => event.data.id)
+        if (messageIds.length) await retract({ sessionId, messageId, messageIds })
+      }
       return { draft, saved }
     })
   } catch {

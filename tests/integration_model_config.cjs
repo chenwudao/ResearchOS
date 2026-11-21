@@ -50,9 +50,9 @@ async function run() {
     await modal.getByRole('button', { name: '关闭', exact: true }).click()
     await modal.waitFor({ state: 'hidden' })
 
-    step = '新建工作区项目并验证主聊天自动兼容已配置模型'
-    await button('新建工作区项目').click()
-    const projForm = page.getByRole('dialog', { name: '新建工作区项目' })
+    step = '新建项目并验证主聊天自动兼容已配置模型'
+    await button('新建项目').click()
+    const projForm = page.getByRole('dialog', { name: '新建项目' })
     await projForm.getByLabel('项目名称').fill('新项目兼容')
     await projForm.getByRole('button', { name: '创建', exact: true }).click()
     const projectBar = page.getByRole('navigation', { name: '新项目兼容 项目功能' })

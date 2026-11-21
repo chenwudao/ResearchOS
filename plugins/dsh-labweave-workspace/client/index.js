@@ -58,7 +58,7 @@ window.__ModuleLoader__.load({
           rel: 'noopener noreferrer', onClick: event => event.stopPropagation() }, LW('查看原文'), ' ↗'))
     }
     const features = { chat: LW('聊天'), feed: LW('动态'), ideas: LW('点子'), goals: LW('目标'), library: LW('资源库') }
-    const createWorkspaceProject = LW('新建工作区项目')
+    const createWorkspaceProject = LW('新建项目')
     const permissionLabels = {
       'read-only': LW('仅可查看'), 'workspace-write': LW('工作区内修改'), 'danger-full-access': LW('完全权限'),
     }
@@ -75,14 +75,29 @@ window.__ModuleLoader__.load({
     const rewindKind = 'labweave-rewind'
     const requestId = () => crypto.randomUUID().replaceAll('-', '')
 
-    const MD_INLINE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(__[^_\n]+__)|(~~[^~\n]+~~)|(\*[^*\n]+\*)|(_[^_\n]+_)|(\[([^\]\n]+)\]\((https?:\/\/[A-Za-z0-9\-._~:\/?#\[\]@!$&'*+,;=%()]+|mailto:[^\s)]+)\))|(https?:\/\/[A-Za-z0-9\-._~:\/?#\[\]@!$&'*+,;=%()]+)/g
+    const MD_INLINE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(?<![a-z0-9_])(__[^_\n]+__)(?![a-z0-9_])|(~~[^~\n]+~~)|(\*[^*\n]+\*)|(?<![a-z0-9_])(_[^_\n]+_)(?![a-z0-9_])|(\[([^\]\n]+)\]\((https?:\/\/[^\s<>()]+(?:\([^\s<>()]*\)[^\s<>()]*)*|mailto:[^\s)]+|weave-record:n_[0-9a-f]{32}|weave-file:(?:generated_[0-9a-f]{64}|n_[0-9a-f]{32}))\))|(https?:\/\/[^\s<>()。，、；：！？）】》」]+(?:\([^\s<>()]*\)[^\s<>()。，、；：！？）】》」]*)*)|(\b10\.\d{4,9}\/[a-z0-9._;:/-]+[a-z0-9/_-])/gi
     const mdSafeUrl = value => /^(https?:\/\/|mailto:)/i.test(String(value || '').trim()) ? String(value).trim() : ''
     const mdTrimUrl = value => String(value || '').replace(/[。，、；：！？.,;:!?]+$/g, '')
+    const BotReferences = React.createContext(null)
+
+    function BotRecordLink({ id, label }) {
+      const references = React.useContext(BotReferences)
+      const scopedTitle = references?.titleFor(id)
+      const title = label || scopedTitle || LW('项目资料')
+      return scopedTitle ? h('button', { type: 'button', role: 'link', className: 'lw-bot-reference',
+        onClick: () => references.openRecord(id) }, title) : title
+    }
+    function BotFileLink({ file }) {
+      const refs = React.useContext(BotReferences)
+      return refs ? h('button', { type: 'button', role: 'link', className: 'lw-bot-reference',
+        onClick: () => refs.openFile(file) }, file.name) : file.name
+    }
+
     function inlineMarkdown(value, prefix = 'md', depth = 0) {
       const source = String(value ?? '')
       if (!source) return []
       if (depth > 3) return [source]
-      const pattern = new RegExp(MD_INLINE.source, 'g')
+      const pattern = new RegExp(MD_INLINE.source, MD_INLINE.flags)
       const nodes = []
       let last = 0, match, index = 0
       const push = node => {
@@ -99,13 +114,21 @@ window.__ModuleLoader__.load({
         else if (match[5] || match[6]) push(h('em', null, inlineMarkdown(token.slice(1, -1), prefix + '-i', depth + 1)))
         else if (match[7]) {
           const href = mdSafeUrl(match[9])
-          push(href ? h('a', { href, target: '_blank', rel: 'noreferrer' }, inlineMarkdown(match[8], prefix + '-a', depth + 1)) : token)
+          if (match[9].startsWith('weave-record:')) {
+            push(h(BotRecordLink, { id: match[9].slice('weave-record:'.length), label: match[8] === '@' ? '' : match[8] }))
+          } else if (match[9].startsWith('weave-file:')) {
+            push(h(BotFileLink, { file: { id: match[9].slice('weave-file:'.length), name: match[8] } }))
+          } else {
+            push(href ? h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, match[8]) : token)
+          }
         } else if (match[10]) {
           const url = mdTrimUrl(match[10])
           const tail = match[10].slice(url.length)
           const href = mdSafeUrl(url)
           push(href ? h('a', { href, target: '_blank', rel: 'noreferrer' }, url) : url)
           if (tail) push(tail)
+        } else if (match[11]) {
+          push(h('a', { href: 'https://doi.org/' + match[11], target: '_blank', rel: 'noopener noreferrer' }, match[11]))
         } else push(token)
         last = match.index + token.length
       }
@@ -115,11 +138,26 @@ window.__ModuleLoader__.load({
     function markdownBlocks(value) {
       const lines = String(value ?? '').replace(/\r\n?/g, '\n').split('\n')
       const blocks = []
-      const blockStart = line => /^\s*(```|#{1,6}\s|>\s?|[-*+]\s+|\d+[.)]\s+|---+\s*$|\*\*\*+\s*$|___+\s*$)/.test(line)
+      const cells = line => line.trim().replace(/^\||(?<!\\)\|$/g, '').split(/(?<!\\)\|/).map(cell => cell.trim().replaceAll('\\|', '|'))
+      const tableStart = index => lines[index].includes('|') && Boolean(lines[index + 1]?.includes('|')) &&
+        cells(lines[index]).length === cells(lines[index + 1]).length && cells(lines[index + 1]).every(cell => /^:?-{3,}:?$/.test(cell))
+      const blockStart = index => tableStart(index) || /^\s*(```|#{1,6}\s|>\s?|[-*+]\s+|\d+[.)]\s+|---+\s*$|\*\*\*+\s*$|___+\s*$)/.test(lines[index])
       let i = 0
       while (i < lines.length) {
         const line = lines[i]
         if (!line.trim()) { i++; continue }
+        if (tableStart(i)) {
+          const headings = cells(line)
+          const rows = []
+          i += 2
+          while (i < lines.length && lines[i].includes('|') && cells(lines[i]).length === headings.length) rows.push(cells(lines[i++]))
+          blocks.push(h('div', { className: 'lw-md-table', key: 'md-t' + blocks.length },
+            h('table', null, h('thead', null, h('tr', null, headings.map((cell, column) =>
+              h('th', { key: column, scope: 'col' }, inlineMarkdown(cell))))),
+            h('tbody', null, rows.map((row, index) => h('tr', { key: index }, row.map((cell, column) =>
+              h('td', { key: column }, inlineMarkdown(cell)))))))))
+          continue
+        }
         const fence = /^\s*```([\w-]*)\s*$/.exec(line)
         if (fence) {
           const body = []
@@ -167,7 +205,7 @@ window.__ModuleLoader__.load({
         }
         const paragraph = [line]
         i++
-        while (i < lines.length && lines[i].trim() && !blockStart(lines[i])) paragraph.push(lines[i++])
+        while (i < lines.length && lines[i].trim() && !blockStart(i)) paragraph.push(lines[i++])
         const children = []
         paragraph.forEach((text, index) => {
           if (index) children.push(h('br', { key: 'md-p' + blocks.length + '-br' + index }))
@@ -179,6 +217,91 @@ window.__ModuleLoader__.load({
     }
     function Markdown({ source, className = '' }) {
       return h('div', { className: ('lw-md ' + className).trim() }, markdownBlocks(source))
+    }
+
+    function conversationText(text) {
+      return text.replace(/\x1b\[[0-?]*[ -\/]*[@-~]|[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/gu, '')
+        .replace(/@\[((?:\\.|[^\\\]])*)\]\((?:weave-ref|dsh-session):[A-Za-z0-9_-]+\)/gu, '@$1')
+    }
+
+    // Names are shared with the execution timeline and supplied by the host.
+    const toolLabels = JSON.parse(document.getElementById('weave-tool-labels')?.textContent || '{}')
+    const recordWriteTools = new Set(JSON.parse(document.getElementById('weave-record-write-tools')?.textContent || '[]'))
+    const publicToolName = name => {
+      const action = name.replace(/^labweave_/i, '').toLowerCase()
+      if (Object.hasOwn(toolLabels, action)) return toolLabels[action]
+      return /^labweave_/i.test(name) ? LW('项目操作') : LW('外部工具操作')
+    }
+
+    function publicToolText(value) {
+      return String(value ?? '').replace(
+        /https?:\/\/[^\s<>)）]+|(?<![\w])(?:`([a-z][\w:/-]*)`|([a-z]\w*_[\w-]+|mcp[:/][\w:/-]+))(?![\w])(?:\(\s*['"]?feat_[\w]+['"]?\s*\))?/gi,
+        (token, quoted, bare) => {
+          const name = (quoted || bare)?.toLowerCase()
+          if (name && (Object.hasOwn(toolLabels, name) || /^(?:labweave_|mcp(?:__|[:/]))/.test(name))) {
+            return publicToolName(name)
+          }
+          return token
+        },
+      )
+    }
+
+    function botPublicText(value) {
+      const text = publicToolText(conversationText(String(value ?? '')))
+      return text.split(/(^ {0,3}```[^\n]*\n[\s\S]*?(?:^ {0,3}```[^\n]*$|$))/gmu).map((part, index) => {
+        if (index % 2) return part
+        // Older workers quoted a record ID and its card keys together. Preserve the
+        // real source and any citations in that block without repeating storage keys.
+        const legacy = /[（(]\s*记录\s*`?(n_[0-9a-f]{32})`?\s*[，,]\s*含卡键\s*[：:]/gu
+        let result = '', end = 0
+        for (const match of part.matchAll(legacy)) {
+          if (match.index < end) continue
+          let offset = match.index + match[0].length, depth = 1
+          for (; offset < part.length && offset - match.index < 1200 && part[offset] !== '\n'; offset++) {
+            if (/[（(]/u.test(part[offset])) depth++
+            if (/[）)]/u.test(part[offset]) && --depth === 0) break
+          }
+          if (depth === 0 || offset === part.length) {
+            const data = part.slice(match.index + match[0].length, offset)
+              .replace(/[（(]\s*DOI\s+(10\.\d{4,9}\/[a-z0-9._;:/-]+)[，,]\s*([^）)\]\n]+)[）)]/giu,
+                '[$2](https://doi.org/$1)')
+            const citations = [...data.matchAll(MD_INLINE)].filter(item => item[7] || item[10] || item[11]).map(item => item[0])
+            result += part.slice(end, match.index) + '（' + ['[@](weave-record:' + match[1] + ')', ...new Set(citations)].join('、') + '）'
+            end = Math.min(offset + 1, part.length)
+          }
+        }
+        let prose = result + part.slice(end)
+        if (/沿用调研记录\s+n_[0-9a-f]{32}\s+的卡键/u.test(prose)) {
+          prose = prose.replace(/[（(]\s*沿用调研记录\s+(n_[0-9a-f]{32})\s+的卡键\s*[）)]/gu, '（[@](weave-record:$1)）')
+            .replace(/[（(]\s*(?:(?:lit|ds|routes|survey)-[a-z0-9_-]+[、,，\s]*)+[）)]/giu, '')
+        }
+        return prose
+          .replace(/(^|[\s（(：「【，,、])(?:记录[ \t]+)?`?(n_[0-9a-f]{32})`?(?![\w-])/gu, '$1[@](weave-record:$2)')
+          .replace(/(?:[，,]\s*)?(?:\bcard\s*key|\bcardKey|含卡键|卡片键|卡键)\s*[:：]\s*`?[A-Za-z0-9_-]{1,48}`?(?:[、,，][ \t]*`?(?:lit|ds|routes|survey)-[a-z0-9_-]+`?)*/giu, '')
+      }).join('')
+    }
+
+    function BotMarkdown({ source }) {
+      return h(Markdown, { source: botPublicText(source) })
+    }
+
+    function publicAcceptance(source) {
+      return String(source ?? '')
+        .replace(/(?:再次)?(?:调用|通过|使用|用)\s*`?(?:labweave_)?feature_entries`?(?:\(\s*feat_[\w]+\s*\))?\s*(?:能|可以?)\s*(?:读到|读取|查到)/giu,
+          LW('画布中可查看'))
+        .replace(/\b`?entries`?\s*返回的/giu, LW('画布中的'))
+        .replace(/[（(]\s*(?:用|通过|经|使用)\s*`?(?:labweave_)?paper_lookup`?\s*核验过\s*[）)]/giu, '')
+    }
+
+    function BotSources({ item }) {
+      const sources = item.sources || []
+      const files = item.outputFiles || []
+      if (!sources.length && !files.length) return null
+      return h('ul', { className: 'lw-bot-sources', 'aria-label': LW('资料来源') },
+        sources.map(source => h('li', { key: source.recordId || source.url }, source.recordId
+          ? h(BotRecordLink, { id: source.recordId, label: source.title })
+          : h('a', { className: 'lw-bot-reference', href: mdSafeUrl(source.url), target: '_blank', rel: 'noopener noreferrer' }, source.title))),
+        files.map(file => h('li', { key: file.id }, h(BotFileLink, { file }))))
     }
 
     const recordSectionKinds = {
@@ -332,7 +455,7 @@ window.__ModuleLoader__.load({
         es: 'Selecciona un proveedor', fr: 'Choisir un fournisseur', pt: 'Escolha um fornecedor', ru: 'Выберите поставщика',
       },
       'error.sessionInUse': {
-        zh: '这段会话已在其他窗口或实例中打开。请先关闭占用它的实例，再重试。',
+        zh: '这段对话已在其他窗口或实例中打开。请先关闭占用它的实例，再重试。',
         en: 'This session is in use. Close the other instance using it, then try again.',
         ja: 'このセッションは使用中です。使用している別のインスタンスを閉じて、もう一度お試しください。',
         de: 'Diese Sitzung wird bereits verwendet. Schließe die andere Instanz und versuche es erneut.',
@@ -500,7 +623,10 @@ window.__ModuleLoader__.load({
       .lw-md pre code{padding:0;background:transparent;font-size:inherit}
       .lw-md blockquote{margin:0 0 7px;padding:2px 0 2px 10px;border-left:2px solid var(--dsw-alias-border-l3,rgba(128,128,128,.3));color:var(--dsw-alias-label-secondary)}
       .lw-md .lw-md-quote>:last-child{margin-bottom:0}
-      .lw-md a{color:var(--dsw-alias-state-business-primary,#3b82f6);text-decoration:underline;text-underline-offset:2px}
+      .lw-md a,.lw-bot-reference{color:var(--dsw-alias-state-business-primary,#3b82f6);text-decoration:underline;text-underline-offset:2px}
+      button.lw-bot-reference{display:inline;padding:0;background:none;border:0;font:inherit;text-align:start;overflow-wrap:anywhere;cursor:pointer}
+      .lw-bot-reference:focus-visible{outline:2px solid var(--dsw-focus-ring-color,#3b82f6);outline-offset:2px}
+      .lw-bot-sources{display:flex;flex-wrap:wrap;gap:4px 14px;list-style:none;padding:0;margin:8px 0;font-size:var(--lw-ui-sm);overflow-wrap:anywhere}
       .lw-md hr{margin:10px 0;border:0;border-top:.5px solid var(--dsw-alias-border-l2,rgba(128,128,128,.2))}
       .lw-assigned-editor{display:grid;gap:10px;margin-top:10px}
       .lw-assigned-preview{border:.5px solid var(--dsw-alias-border-l2,rgba(128,128,128,.2));border-radius:var(--dsw-radius-md,8px);padding:9px 11px;background:var(--dsw-alias-bg-base,Canvas);max-height:220px;overflow:auto}
@@ -637,10 +763,12 @@ window.__ModuleLoader__.load({
       .lw-btn-secondary:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.12))}
       .lw-btn-ghost{background:transparent;color:var(--dsw-alias-label-secondary)}
       .lw-btn-ghost:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.12));color:var(--dsw-alias-label-primary)}
-      .lw-btn-danger{background:transparent;color:var(--dsw-alias-label-tertiary,GrayText)}
-      .lw-btn-danger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger,rgba(220,38,38,.1));color:var(--dsw-alias-state-error-primary,#b34835)}
-      .lw-dialog-actions .lw-btn-danger{color:var(--dsw-alias-state-error-primary,#b34835);background:var(--dsw-alias-interactive-bg-hover-danger,rgba(220,38,38,.1))}
-      .lw-dialog-actions .lw-btn-danger:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#b34835) 18%,transparent)}
+      .lw-btn-danger{background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#b34835) 14%,transparent);color:var(--dsw-alias-state-error-primary,#b34835)}
+      .lw-btn-danger:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#b34835) 22%,transparent);color:var(--dsw-alias-state-error-primary,#b34835)}
+      .lw-dialog-actions .lw-btn-danger{color:var(--dsw-alias-state-error-primary,#b34835);background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#b34835) 14%,transparent)}
+      .lw-dialog-actions .lw-btn-danger:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#b34835) 22%,transparent)}
+      .lw-tool-danger{color:var(--dsw-alias-state-error-primary,#dc2626);background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#dc2626) 12%,transparent)}
+      .lw-tool-danger:hover{color:var(--dsw-alias-state-error-primary,#dc2626);background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#dc2626) 20%,transparent)}
       .lw-dialog-actions .lw-project-delete-btn{margin-inline-end:auto}
 
       .lw-tag{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:1px 8px;font-size:var(--lw-ui-xs);line-height:1.45;font-weight:500;white-space:nowrap}
@@ -665,6 +793,25 @@ window.__ModuleLoader__.load({
       .lw-row:hover .lw-row-tools,.lw-row:focus-within .lw-row-tools,.lw-row:has([aria-current="page"]) .lw-row-tools{opacity:1}
       .lw-row-main{display:flex;align-items:center;gap:8px;min-width:0;flex:1;min-height:calc(32px + max(0px,var(--lw-font-delta) * 1.1));height:auto;border-radius:var(--dsw-radius-md,8px);text-align:start;padding:4px 7px;font-size:inherit;line-height:1.4}
       .lw-row-main span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .lw-activity-dot,[data-lw-assistant-activity]::after{display:inline-block;flex:none;inline-size:7px;block-size:7px;border-radius:50%;background:var(--lw-activity-color)}
+      :is(.lw-activity-dot[data-status="running"],[data-lw-assistant-activity="running"]){--lw-activity-color:var(--dsw-alias-state-info-primary,#3b82f6)}
+      :is(.lw-activity-dot[data-status="completed"],[data-lw-assistant-activity="completed"]){--lw-activity-color:var(--dsw-alias-state-success-primary,#16a34a)}
+      :is(.lw-activity-dot[data-status="failed"],[data-lw-assistant-activity="failed"]){--lw-activity-color:var(--dsw-alias-state-error-primary,#dc2626)}
+      .lw-row-main .lw-activity-dot,.lw-corner-btn .lw-activity-dot{margin-inline-start:auto}
+      .lw-rail-btn,[data-lw-assistant-activity]{position:relative}
+      .lw-rail-btn .lw-activity-dot,[data-lw-assistant-activity]::after{position:absolute;inset-inline-end:4px;inset-block-start:4px;pointer-events:none}
+      [data-lw-assistant-activity]::after{content:"";inset-inline-end:8px;inset-block-start:8px}
+      .lw-sessions summary .lw-activity-dot{margin-inline-start:7px;vertical-align:middle}
+      .lw-completion-stack{position:fixed;z-index:99;right:var(--lw-completion-right,16px);inset-block-end:max(16px,env(safe-area-inset-bottom),var(--lw-completion-clearance,0px));display:grid;gap:8px;inline-size:min(328px,calc(var(--lw-completion-max,100%) - 32px));pointer-events:none}
+      .lw-completion-toast{pointer-events:auto;display:flex;align-items:flex-start;gap:4px;padding:6px;border:var(--dsh-hairline-width,.5px) solid var(--dsw-alias-border-l3,#8885);border-radius:var(--dsw-radius-lg,14px);background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-2,Canvas));box-shadow:var(--dsw-elevation-panel,0 8px 26px #0002);backdrop-filter:var(--dsw-menu-backdrop-filter,none);color:var(--dsw-alias-label-primary,CanvasText);font:inherit}
+      .lw-completion-toast button{font:inherit;color:inherit;border:0;background:transparent;border-radius:var(--dsw-radius-md,8px);cursor:pointer}
+      .lw-completion-toast button:hover{background:var(--dsw-alias-interactive-bg-hover,#8882)}
+      .lw-completion-toast-main{flex:1;min-width:0;display:flex;align-items:center;gap:10px;text-align:start;padding:7px 8px}
+      .lw-completion-toast-main>.lw-icon{box-sizing:content-box;padding:5px;border-radius:50%;color:var(--dsw-alias-state-success-primary,#16a34a);background:color-mix(in srgb,currentColor 12%,transparent)}
+      .lw-completion-toast-text{display:grid;gap:2px;min-width:0;line-height:1.35}
+      .lw-completion-toast-text strong{font-size:var(--lw-ui-base,14px);font-weight:600}
+      .lw-completion-toast-text small{font-size:var(--lw-ui-sm,12px);color:var(--dsw-alias-label-secondary,GrayText);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .lw-completion-toast .lw-tool{display:grid;place-items:center;width:28px;height:28px;padding:0;color:var(--dsw-alias-label-secondary,GrayText)}
       .lw-tier{margin:1px 0 5px 14px;padding-inline-start:7px;border-inline-start:.5px solid var(--dsw-alias-border-l3,#8884)}
       .lw-tree .lw-tier .lw-icon{width:15px;height:15px}
       .lw-sessions{margin-inline-start:19px}
@@ -717,7 +864,7 @@ window.__ModuleLoader__.load({
       [data-subagent-action]{display:none!important}
       [data-shortcut-modal="settings"] [data-slot="settings.action"],[data-shortcut-modal="settings"] [data-slot="settings.general.item"]>*:has([aria-label*="Session Log"]){display:none!important}
       [data-sidebar-drawer]:not([data-sidebar-collapsed="true"]) [class*="panelList"] button{font-size:var(--lw-ui-base);min-height:calc(32px + max(0px,var(--lw-font-delta) * 1.1));height:auto}
-      [role="group"][aria-label="模型与推理等级"],[role="menu"][aria-label="模型与推理等级"]:not(:has(.lw-mo-root)):has([role="menuitemradio"]){padding-top:30px}
+      [role="group"][aria-label="模型与推理强度"],[role="menu"][aria-label="模型与推理强度"]:not(:has(.lw-mo-root)):has([role="menuitemradio"]){padding-top:30px}
       .lw-mo-native-back{position:absolute;z-index:1;inset:2px 4px auto;background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-2,var(--dsw-alias-bg-base,Canvas)))}
       [role="menu"]:has(.lw-mo-context)>button[role="menuitem"]{display:none}
       .lw-footer-bar{display:flex;flex-direction:column;align-items:stretch;gap:2px;width:100%;min-width:0;padding-top:6px;border-top:.5px solid var(--dsw-alias-border-l2,rgba(128,128,128,.18))}
@@ -766,6 +913,24 @@ window.__ModuleLoader__.load({
       .lw-project-task-item .lw-tag{flex:none}
       .lw-project-task-detail{display:grid;gap:8px;border-top:.5px solid var(--dsw-alias-border-l2,#8885);padding:10px;overflow-wrap:anywhere}
       .lw-project-task-detail p{margin:0;white-space:pre-wrap}
+      .lw-worker-activity{font-size:var(--lw-ui-sm);margin-block:4px;min-width:0}
+      .lw-worker-activity summary{display:flex;align-items:center;flex-wrap:wrap;gap:4px 7px;cursor:pointer;color:var(--dsw-alias-label-secondary,GrayText);padding:5px 6px;border-radius:var(--dsw-radius-sm,6px);list-style:none}
+      .lw-worker-activity summary::-webkit-details-marker{display:none}
+      .lw-worker-activity summary:hover,.lw-bot-source-context summary:hover{background:var(--dsw-alias-interactive-bg-hover,#8881)}
+      .lw-worker-activity summary:focus-visible,.lw-bot-source-context summary:focus-visible{outline:2px solid var(--dsw-focus-ring-color,#3b82f6)}
+      .lw-worker-activity :is(.lw-icon,img){width:14px;height:14px;flex:none}
+      .lw-worker-activity .lw-worker-activity-caption{font-size:var(--lw-ui-xs);color:var(--dsw-alias-label-secondary,GrayText)}
+      .lw-worker-activity[open] summary>.lw-icon,.lw-bot-source-context[open] summary>.lw-icon{transform:rotate(90deg)}
+      .lw-worker-steps{list-style:none;padding:2px 0 2px 11px;margin:2px 0 0 12px;display:grid;gap:2px;border-inline-start:1px solid var(--dsw-alias-border-l2,#8885)}
+      .lw-worker-steps li{display:flex;align-items:center;gap:7px;min-width:0;padding:3px 0;overflow-wrap:anywhere}
+      .lw-worker-steps li>.lw-icon{color:var(--dsw-alias-label-secondary,GrayText)}
+      .lw-worker-steps small{flex:none;margin-inline-start:auto;color:var(--dsw-alias-label-secondary,GrayText)}
+      .lw-worker-steps [data-status=failed] small{color:var(--dsw-alias-state-error-primary,#b34835)}
+      .lw-bot-msg .lw-md,.lw-speaker-reply .lw-md{white-space:normal}
+      .lw-md-table{overflow:auto;margin-block:8px}
+      .lw-md-table table{border-collapse:collapse}
+      .lw-md-table :is(th,td){border:1px solid var(--dsw-alias-border-l2,#8885);padding:5px 9px;text-align:start}
+      .lw-md-table th{background:var(--dsw-alias-bg-layer-1,Canvas)}
       .lw-project-task-detail .lw-actions{flex-wrap:wrap}
       [data-conversation-header-leading],[data-conversation-header-corner],[data-slot="conversation.header.leading"],[data-slot="conversation.session.header.corner"]{display:inline-flex;align-items:center;min-height:36px}
       [data-conversation-content] :is([class*="headerBar"],[class*="sessionHeader"],[class*="chatHeader"],[class*="topBar"],header):has([data-conversation-header-leading],[data-conversation-header-corner],[data-slot="conversation.header.leading"]){min-height:56px;box-sizing:border-box}
@@ -814,7 +979,8 @@ window.__ModuleLoader__.load({
       html[data-lw-room="global"] [data-composer-card] [class*="_trailing"]{grid-column:3;grid-row:2;margin:0;gap:4px}
       html[data-lw-room="global"] [data-composer-card] button[class*="_primary"]{width:32px;height:32px;border-radius:50%;padding:0;transform:none;background:var(--dsw-alias-button-primary-fill,var(--dsw-alias-label-primary,#0f1115));color:var(--dsw-alias-label-primary-foreground,#fff)}
       html[data-lw-room="global"] [data-composer-card] button[class*="_primary"]:disabled{opacity:.26}
-      .lw-add-action.lw-btn,.lw-add-action.lw-corner-btn,.lw-add-action.lw-sidebar-empty-btn{box-sizing:border-box;border:1px solid var(--dsw-alias-border-l4,rgba(128,128,128,.32))}
+      .lw-btn-add,.lw-add-action.lw-btn,.lw-add-action.lw-corner-btn,.lw-add-action.lw-sidebar-empty-btn{box-sizing:border-box;color:var(--dsw-alias-state-info-primary,#3b82f6);background:color-mix(in srgb,var(--dsw-alias-state-info-primary,#3b82f6) 14%,transparent);box-shadow:inset 0 0 0 var(--dsh-hairline-width,.5px) color-mix(in srgb,var(--dsw-alias-state-info-primary,#3b82f6) 42%,transparent);border:0}
+      .lw-btn-add:hover:not(:disabled),.lw-add-action.lw-btn:hover:not(:disabled),.lw-add-action.lw-corner-btn:hover:not(:disabled),.lw-add-action.lw-sidebar-empty-btn:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-state-info-primary,#3b82f6) 22%,transparent);color:var(--dsw-alias-state-info-primary,#3b82f6)}
       .lw-add-action .lw-icon{width:14px;height:14px;flex:none}
       .lw-turn-progress{box-sizing:border-box;width:100%;max-width:740px;min-width:0;display:flex;align-items:center;gap:8px;margin:0 auto 4px;padding:4px 8px;color:var(--dsw-alias-label-secondary);font-size:var(--lw-ui-sm);line-height:1.4}
       .lw-turn-progress img{width:18px;height:18px;flex:none}
@@ -861,6 +1027,10 @@ window.__ModuleLoader__.load({
       /* Right Sidebar Links & Clean Hero Chrome */
       .lw-hero-ctx-btn{border:0;background:transparent;padding:2px 6px;border-radius:6px;font:inherit;font-size:var(--lw-ui-sm);line-height:1.45;color:var(--dsw-alias-label-secondary);cursor:pointer;text-align:start;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       .lw-hero-ctx-btn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+      .lw-project-file-changes{box-sizing:border-box;width:100%;max-width:740px;margin:0 auto;padding:4px 10px;color:var(--dsw-alias-label-secondary);font-size:var(--lw-ui-sm)}
+      .lw-project-file-changes summary{cursor:pointer;padding:4px 0}
+      .lw-project-file-changes ul{list-style:none;margin:4px 0 0;padding:0;max-height:180px;overflow:auto}
+      .lw-project-file-changes li{display:flex;align-items:baseline;gap:8px;padding:4px 0;overflow-wrap:anywhere}
       [data-conversation-content]{container-type:inline-size;container-name:lwchat}
       [data-content-phase="hero"] [class*="heroWorkspaceRow"]>:first-child{display:none}
       [data-content-phase="hero"] [data-composer-card]:has([data-composer-input][aria-haspopup="menu"]){display:none}
@@ -1175,9 +1345,14 @@ window.__ModuleLoader__.load({
       .lw-fbot-shell{flex:1;min-height:0;min-width:0;display:grid;grid-template-columns:minmax(0,1fr);position:relative;overflow:hidden}
       .lw-fbot-main{display:flex;flex-direction:column;min-width:0;min-height:0;height:100%;font-family:var(--dsw-font-family,inherit);--lw-bot-gutter:clamp(14px,3vw,28px)}
       .lw-fbot-main .lw-fbot-scroll{flex:0 0 clamp(110px,var(--lw-board-size,58%),calc(100% - 110px));min-height:0;display:flex;flex-direction:column;overflow:hidden;padding:0}
+      .lw-fbot-main[data-canvas-minimized=true] .lw-fbot-scroll{flex:0 0 auto}
+      .lw-fbot-main[data-canvas-expanded=true] .lw-fbot-scroll{flex:1 1 auto}
+      .lw-fbot-main[data-canvas-expanded=true] :is(.lw-bot-divider,.lw-bot-conversation){display:none}
       .lw-fbot-scroll>.lw-fbot-center{display:flex;flex:1;flex-direction:column;min-height:0;max-width:none;gap:0}
-      .lw-fbot-scroll .lw-fbot-head{padding:6px var(--lw-bot-gutter);flex:none}
+      .lw-fbot-scroll .lw-fbot-head{padding:6px var(--lw-bot-gutter);flex:none;gap:8px}
       .lw-bot-board{flex:1;min-height:0;overflow:auto;scrollbar-gutter:stable;padding:10px var(--lw-bot-gutter);container-type:size}
+      .lw-bot-board[data-canvas=true]{padding-block-start:6px}
+      .lw-bot-board > [data-bot-canvas]{margin-block-start:0}
       .lw-bot-conversation{display:flex;flex:1 1 0;min-height:0;flex-direction:column;background:var(--dsw-alias-bg-base,Canvas)}
       .lw-bot-divider{position:relative;flex:0 0 8px;cursor:ns-resize;touch-action:none;outline-offset:-2px}
       .lw-bot-divider::after{content:'';position:absolute;inset:3px 0 auto;border-block-start:.5px solid var(--dsw-alias-border-l2,#8884)}
@@ -1191,36 +1366,58 @@ window.__ModuleLoader__.load({
       .lw-bot-conversation .lw-fbot-composer{max-width:var(--dsh-composer-card-max-width,740px);border-radius:var(--dsw-radius-lg,14px);box-shadow:none}
       .lw-bot-canvas{box-sizing:border-box;display:flex;flex-direction:column;min-width:0;overflow:hidden;border:.5px solid var(--dsw-alias-border-l2,#8883);border-radius:var(--dsw-radius-md,10px);background:var(--dsw-alias-bg-layer-1,Canvas)}
       .lw-bot-board .lw-bot-canvas{height:max(155px,100cqh)}
-      .lw-canvas-toolbar{display:flex;align-items:center;gap:8px;min-width:0;flex:none;padding:5px 10px;border-block-end:.5px solid var(--dsw-alias-border-l2,#8883)}
+      .lw-canvas-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;min-width:0;flex:none;padding:5px 10px;border-block-end:.5px solid var(--dsw-alias-border-l2,#8883)}
+      .lw-canvas-progress{color:var(--dsw-alias-label-secondary);font-size:var(--lw-ui-xs);overflow-wrap:anywhere}
+      .lw-canvas-layout{flex:none;color:var(--dsw-alias-label-secondary);font-size:var(--lw-ui-xs)}
       .lw-canvas-categories{display:flex;gap:6px;overflow:auto;flex:1;min-width:0;padding:2px}
       .lw-canvas-controls{display:flex;align-items:center;gap:2px;flex:none;margin-inline-start:auto;font-size:var(--lw-ui-xs);font-variant-numeric:tabular-nums}
       .lw-canvas-controls button{min-width:26px;min-height:26px;padding:3px 6px}
       .lw-canvas-categories button{flex:none;border:0;border-radius:var(--dsw-radius-sm,6px);padding:4px 9px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:var(--lw-ui-sm);line-height:1.45;cursor:pointer}
       .lw-canvas-categories button:hover{background:var(--dsw-alias-interactive-bg-hover,#8881)}
       .lw-canvas-categories button[aria-pressed=true]{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,#8882);font-weight:500}
-      .lw-canvas-viewport{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;cursor:grab;touch-action:none}
+      .lw-canvas-viewport{flex:1;min-height:0;overflow:auto;overflow-anchor:none;overscroll-behavior:contain;cursor:grab;touch-action:none}
       .lw-canvas-viewport[data-panning=true]{cursor:grabbing;user-select:none}
       .lw-canvas-frame{position:relative;overflow:clip}
       .lw-canvas-stage{box-sizing:border-box;position:absolute;inset:0 auto auto 0;display:grid;grid-auto-flow:column;grid-auto-columns:240px;gap:36px;width:max-content;min-height:188px;padding:20px 24px;align-items:center;transform-origin:top left}
+      .lw-bot-canvas:is([data-layout=timeline],[data-layout=lineage],[data-layout=reasoning]) .lw-canvas-stage{grid-auto-flow:row;grid-template-columns:minmax(240px,400px);gap:18px;padding-inline-start:44px}
+      .lw-bot-canvas:is([data-layout=timeline],[data-layout=lineage],[data-layout=reasoning]) .lw-canvas-lane::before{content:"";position:absolute;inset:0 auto -18px -22px;border-inline-start:1px solid var(--dsw-alias-border-l3,#8886)}
+      .lw-bot-canvas:is([data-layout=timeline],[data-layout=lineage],[data-layout=reasoning]) .lw-canvas-lane:last-child::before{bottom:50%}
+      .lw-bot-canvas:is([data-layout=timeline],[data-layout=lineage],[data-layout=reasoning]) .lw-canvas-lane::after{content:"";position:absolute;inset:50% auto auto -25px;width:7px;height:7px;border-radius:50%;background:var(--lw-paradigm-accent,#7891ba)}
+      .lw-bot-canvas[data-layered=true] .lw-canvas-stage{gap:72px}
+      .lw-bot-canvas[data-layered=true] .lw-canvas-lane h3{position:absolute;inset:-18px 0 auto;font-size:var(--lw-ui-xs)}
+      .lw-bot-canvas[data-layered=true] .lw-canvas-lane{gap:20px;padding-block:12px}
+      .lw-bot-canvas[data-layout=star] .lw-canvas-stage{grid-auto-flow:row;grid-auto-rows:minmax(132px,auto);grid-auto-columns:224px;gap:32px}
+      .lw-bot-canvas[data-layout=bus] .lw-canvas-stage{grid-auto-flow:column;grid-template-rows:auto auto;grid-auto-columns:224px;gap:76px 36px}
+      .lw-bot-canvas[data-layout=bus] .lw-canvas-card[data-bus-row="1"]{align-self:end}
+      .lw-bot-canvas[data-layout=bus] .lw-canvas-card[data-bus-row="2"]{align-self:start}
+      .lw-canvas-card[data-hub=true]{border:2px solid var(--lw-paradigm-accent,#7891ba)}
+      .lw-canvas-stage > .lw-canvas-card{z-index:1;align-self:center}
       .lw-dialog.lw-canvas-full{inset:0;margin:0;width:100%;height:100%;max-width:none;max-height:none;padding:12px;border:0;border-radius:0;display:flex;flex-direction:column}
       .lw-canvas-full .lw-bot-canvas{flex:1;min-height:0}
       .lw-canvas-card[data-draft=true]{border-style:dashed}
       .lw-canvas-node-actions{display:flex;gap:4px;justify-content:flex-end;padding:0 7px 6px}
       .lw-canvas-node-actions button{min-width:26px;font-size:var(--lw-ui-base)}
       .lw-canvas-live{margin:0;padding:5px 9px;color:var(--dsw-alias-label-secondary);font-size:var(--lw-ui-xs)}
-      .lw-canvas-lane{display:grid;align-content:center;gap:13px;min-width:0;z-index:1}
+      .lw-canvas-lane{display:grid;position:relative;align-content:center;gap:13px;min-width:0;z-index:1}
       .lw-canvas-lane h3{margin:0;font-size:var(--lw-ui-sm);font-weight:500;color:var(--dsw-alias-label-secondary)}
       .lw-canvas-card{box-sizing:border-box;position:relative;min-width:0;width:100%;max-width:360px;align-self:start;border:.5px solid var(--dsw-alias-border-l3,#8884);border-radius:var(--dsw-radius-md,10px);background:var(--dsw-alias-bg-base,Canvas)}
       .lw-canvas-card:has(button):hover,.lw-canvas-card[data-current=true]{border-color:var(--dsw-alias-border-l4,#8887);background:var(--dsw-alias-bg-layer-2,Canvas)}
       .lw-canvas-card-body{box-sizing:border-box;display:grid;gap:5px;width:100%;min-width:0;border:0;padding:10px 11px;background:none;color:inherit;text-align:start;font:inherit;border-radius:7px;overflow-wrap:anywhere}
       button.lw-canvas-card-body{cursor:pointer}
       .lw-canvas-card strong{font-size:var(--lw-ui-base);font-weight:550;line-height:1.45}
+      .lw-canvas-card-body > strong{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+      .lw-record-lead{margin:0;color:var(--dsw-alias-label-secondary,GrayText);line-height:1.6}
       .lw-canvas-thumb{width:100%;height:74px;object-fit:contain;border-radius:var(--dsw-radius-sm,6px);background:var(--dsw-alias-bg-layer-1,Canvas)}
       .lw-canvas-card :is(button,input):focus-visible,.lw-canvas-categories button:focus-visible{outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,#3b82f6);outline-offset:2px}
       .lw-canvas-card-meta{display:flex;flex-wrap:wrap;gap:4px 8px;font-size:var(--lw-ui-xs);color:var(--dsw-alias-label-secondary)}
       .lw-canvas-edges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;color:color-mix(in srgb,var(--lw-paradigm-accent,#7891ba) 74%,var(--dsw-alias-label-secondary))}
-      .lw-canvas-edges path{fill:none;stroke:currentColor;stroke-width:1.35}
+      .lw-canvas-edges path{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+      .lw-canvas-edges [data-kind=related] path{stroke-dasharray:4 4}
       .lw-canvas-edges circle{fill:currentColor}
+      .lw-canvas-arrow{fill:currentColor}
+      .lw-canvas-link-list{display:grid;gap:5px;max-height:200px;overflow:auto;padding:8px;border:1px solid var(--dsw-alias-border-l2,#8884);border-radius:6px}
+      .lw-canvas-link-list label{display:flex;align-items:center;gap:8px;overflow-wrap:anywhere}
+      @media(max-width:720px){.lw-canvas-layout{display:none}}
       .lw-canvas-attachment{margin:0;border:1px solid var(--dsw-alias-border-l2,#8883);border-radius:8px;padding:8px 10px;justify-content:space-between;overflow-wrap:anywhere}
       .lw-canvas-detail-body{display:grid;gap:12px;min-width:0}
       .lw-record-dialog .lw-dialog-head{align-items:flex-start;margin-bottom:0}
@@ -1273,13 +1470,27 @@ window.__ModuleLoader__.load({
       .lw-bot-delivery-list li{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px;font-size:var(--lw-ui-sm)}
       .lw-bot-artifact-img{display:block;max-width:100%;max-height:48vh;object-fit:contain;margin:auto;border-radius:var(--dsw-radius-md,8px)}
       .lw-bot-output{margin:0;max-height:280px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;padding:8px;border-radius:var(--dsw-radius-md,8px);background:var(--dsw-alias-bg-layer-1,#8881);font-size:var(--lw-ui-sm)}
-      .lw-bot-chart{min-width:0;display:grid;gap:4px;padding:8px 12px;border:1px solid var(--dsw-alias-border-l2,#8884);border-radius:var(--dsw-radius-md,8px)}
+      .lw-bot-chart{margin:0;min-width:0;display:grid;gap:8px;padding:12px;border:1px solid var(--dsw-alias-border-l2,#8884);border-radius:var(--dsw-radius-md,8px)}
+      .lw-record-media{display:grid;gap:8px;min-width:0}
+      .lw-record-media [aria-pressed=true]{background:var(--dsw-alias-interactive-bg-active,#8883);color:var(--dsw-alias-label-primary,CanvasText)}
+      .lw-canvas-chart-thumb{display:block;width:100%;height:74px;border-radius:var(--dsw-radius-sm,6px);background:var(--dsw-alias-bg-layer-1,Canvas)}
+      .lw-bot-chart figcaption,.lw-bot-chart figcaption label,.lw-bot-chart-inspect{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+      .lw-bot-chart figcaption{justify-content:space-between}
+      .lw-bot-chart-plot{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px}
+      .lw-bot-chart-ticks{display:flex;flex-direction:column;justify-content:space-between;padding-block:5px;font-size:var(--lw-ui-xs);font-variant-numeric:tabular-nums}
+      .lw-bot-chart-ticks:has(span:only-child){justify-content:center}
       .lw-bot-chart svg{display:block;width:100%;height:auto}
       .lw-bot-chart-axis{display:flex;justify-content:space-between;color:var(--dsw-alias-label-tertiary,GrayText);font-size:var(--lw-ui-xs)}
+      .lw-chart-grid{stroke:var(--dsw-alias-label-secondary,#888);opacity:.38;vector-effect:non-scaling-stroke}
+      .lw-chart-mark,.lw-chart-active{fill:var(--dsw-alias-state-business-primary,#3b82f6)}
+      .lw-chart-active{stroke:var(--dsw-alias-label-primary,CanvasText);stroke-width:1;vector-effect:non-scaling-stroke}
+      .lw-chart-line{fill:none;stroke:var(--dsw-alias-state-business-primary,#3b82f6);stroke-width:2;vector-effect:non-scaling-stroke}
+      .lw-bot-chart-inspect{font-size:var(--lw-ui-xs);overflow-wrap:anywhere}
+      .lw-bot-chart-inspect input{flex:1;min-width:75px}
       .lw-fbot-scroll{flex:1;min-height:0;overflow:auto;scrollbar-gutter:stable;padding:22px clamp(16px,3.5vw,40px) 20px}
       .lw-fbot-center{width:100%;max-width:820px;margin:0 auto;display:grid;gap:14px;min-width:0}
       .lw-fbot-empty-wrap{min-height:min(46vh,360px);display:grid;place-items:center;padding:24px 12px}
-      .lw-fbot-head{display:flex;align-items:center;justify-content:center;padding-bottom:12px;border-bottom:.5px solid var(--dsw-alias-border-l1,rgba(128,128,128,.12))}
+      .lw-fbot-head{display:flex;align-items:center;justify-content:center;padding-bottom:12px}
       .lw-bot-pill{display:inline-flex;align-items:center;justify-content:center;gap:9px;max-width:100%;min-height:40px;padding:5px 14px 5px 7px;border:.5px solid var(--dsw-alias-border-l3,rgba(128,128,128,.24));border-radius:999px;background:var(--dsw-alias-bg-layer-2,var(--dsw-alias-bg-layer-1,rgba(128,128,128,.08)));color:var(--dsw-alias-label-primary);font:inherit;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.06);transition:transform .14s ease,border-color .14s ease,background-color .14s ease,box-shadow .14s ease}
       .lw-bot-pill:hover{transform:translateY(-1px);border-color:var(--dsw-alias-border-l4,rgba(128,128,128,.36));background:var(--dsw-alias-bg-layer-1,rgba(128,128,128,.12));box-shadow:0 4px 16px rgba(0,0,0,.1)}
       .lw-bot-pill:focus-visible{outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,#3b82f6);outline-offset:2px}
@@ -1362,6 +1573,19 @@ window.__ModuleLoader__.load({
       .lw-rewind-action:disabled{opacity:.45;cursor:default}
       .lw-rewind-action .lw-icon{inline-size:16px;block-size:16px}
       .lw-bot-msg-actions{display:flex;align-items:center;gap:4px}
+      .lw-bot-task-thread{display:grid;gap:10px;min-width:0}
+      .lw-bot-task-origin{display:grid;gap:6px;padding:9px 12px;border:1px solid var(--dsw-alias-border-l2,#8884);background:var(--dsw-alias-bg-layer-1,Canvas);border-radius:var(--dsw-radius-md,8px)}
+      .lw-bot-task-origin .lw-actions,.lw-bot-task-reply{flex-wrap:wrap}
+      .lw-bot-task-origin blockquote{margin:4px 0 0 6px;padding-inline-start:10px;border-inline-start:1px solid var(--dsw-alias-border-l3,#8886);color:var(--dsw-alias-label-secondary,GrayText);max-height:8em;overflow:auto}
+      .lw-bot-source-context summary{display:flex;align-items:center;gap:5px;width:fit-content;padding:3px 4px;border-radius:var(--dsw-radius-sm,6px);color:var(--dsw-alias-label-secondary,GrayText);font-size:var(--lw-ui-sm);cursor:pointer;list-style:none}
+      .lw-bot-source-context summary::-webkit-details-marker{display:none}
+      .lw-bot-source-context .lw-icon,.lw-bot-message-action .lw-icon,.lw-bot-task-origin .lw-actions>.lw-icon{width:14px;height:14px;flex:none}
+      .lw-bot-message-action{border-radius:var(--dsw-radius-sm,6px);color:var(--dsw-alias-label-secondary,GrayText)}
+      .lw-bot-message-action[data-record]{border:1px solid var(--dsw-alias-border-l2,#8884);margin-block-start:6px;padding-inline:7px}
+      .lw-bot-task-reply{box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:4px 8px;width:100%;max-width:740px;margin:0 auto 5px;padding:2px 8px;color:var(--dsw-alias-label-secondary,GrayText);font-size:var(--lw-ui-xs);overflow-wrap:anywhere}
+      .lw-followup-source{scroll-margin-block:48px;display:block;height:0}
+      .lw-followup-label{display:block;text-align:end;color:var(--dsw-alias-label-secondary,GrayText);font-size:var(--lw-ui-xs)}
+      .lw-bot-msg[data-role=assistant][data-task-part=progress]{color:var(--dsw-alias-label-secondary,GrayText)}
 
       .lw-fbot-composer-wrap{flex:none;padding:6px clamp(16px,3.5vw,40px) 16px;border-top:0;background:transparent}
       .lw-fbot-composer{display:flex;align-items:flex-end;gap:6px}
@@ -1377,9 +1601,18 @@ window.__ModuleLoader__.load({
       .lw-composer-menu button[aria-selected=true]{background:var(--dsw-alias-interactive-bg-hover,#8882)}
       .lw-composer-menu button small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-secondary,GrayText)}
       .lw-speaker-reply{margin:8px auto;padding:10px 14px;max-width:740px;border-inline-start:2px solid var(--dsw-alias-border-l2,#8885);white-space:pre-wrap;overflow-wrap:anywhere}
-      .lw-speaker-reply strong{display:block;margin-bottom:4px;font-size:var(--lw-ui-xs)}
-      .lw-project-handoffs{position:fixed;z-index:12;inset:auto 14px 18px auto;width:min(420px,calc(100vw - 28px));max-height:min(42vh,360px);overflow:auto;border:1px solid var(--dsw-alias-border-l2,#8884);border-radius:12px;background:var(--dsw-alias-bg-base,Canvas);box-shadow:0 8px 24px #0002}
-      .lw-project-handoffs p{max-height:8em;overflow:auto}
+      .lw-speaker-reply > strong{display:block;margin-bottom:4px;font-size:var(--lw-ui-xs)}
+      [data-composer-card]:has(>.lw-project-handoffs){overflow:visible;z-index:8}
+      .lw-project-handoffs{position:absolute;z-index:1;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);box-sizing:border-box;width:min(100%,420px);max-height:min(38dvh,300px);overflow:auto;overscroll-behavior:contain;border:1px solid var(--dsw-alias-border-l3,#8885);border-radius:18px;background:var(--dsw-alias-bg-layer-2,Canvas);box-shadow:var(--dsw-elevation-panel,0 8px 24px #0002);color:var(--dsw-alias-label-primary,CanvasText)}
+      .lw-project-handoff{padding:12px 14px;display:grid;gap:8px}
+      .lw-project-handoff+.lw-project-handoff{border-block-start:1px solid var(--dsw-alias-border-l2,#8883)}
+      .lw-project-handoff-heading{display:flex;align-items:center;gap:8px;min-width:0}
+      .lw-project-handoff-heading strong{min-width:0;overflow-wrap:anywhere;font-size:var(--lw-ui-sm);font-weight:650}
+      .lw-project-handoff-icon{display:grid;place-items:center;flex:none;width:26px;height:26px;border-radius:8px;background:var(--dsw-alias-interactive-bg-hover,#8882)}
+      .lw-project-handoff-icon .lw-icon{width:15px;height:15px}
+      .lw-project-handoff-task{margin:0;max-height:4.6em;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--dsw-alias-label-secondary,GrayText);font-size:var(--lw-ui-sm);line-height:1.5}
+      .lw-project-handoff-actions{display:flex;justify-content:flex-end;align-items:center;gap:6px;flex-wrap:wrap}
+      .lw-project-handoff-error{margin:0;padding:10px 14px 0;font-size:var(--lw-ui-sm)}
       .lw-fbot-plus-btn,.lw-fbot-send-btn{width:32px;height:32px;flex:none;border:0;border-radius:50%;corner-shape:round;display:inline-grid;place-items:center;cursor:pointer;transition:background-color .14s ease,color .14s ease,opacity .14s ease,transform .12s ease}
       .lw-composer-attach{position:relative;display:inline-flex;flex:none}
       .lw-fbot-plus-btn{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.14));color:var(--dsw-alias-label-primary)}
@@ -1431,6 +1664,19 @@ window.__ModuleLoader__.load({
         .lw-map-lanes{grid-template-columns:minmax(0,1fr)}
       }
     `
+
+    async function pickLocalDirectory(nav) {
+      if (typeof nav?.pickDirectory === 'function') {
+        try {
+          const path = await nav.pickDirectory()
+          if (typeof path === 'string') return path
+        } catch (err) {
+          if (err?.name === 'AbortError') return ''
+        }
+      }
+      const result = await api('pick-directory', {}, AbortSignal.timeout(600000))
+      return typeof result?.path === 'string' ? result.path : ''
+    }
 
     async function api(route, body, signal) {
       const resp = await fetch('/api/labweave/' + route, {
@@ -1897,12 +2143,12 @@ window.__ModuleLoader__.load({
       const group=(id,title,children)=>h('details',{key:id,open:true,className:'lw-hist-group'},
         h('summary',null,title,h(Icon,{name:'down'})),children)
       return h('section',{className:'lw-assistant-ledger',role:'tabpanel','aria-label':audit?LW('审核'):LW('活动')},
-        !audit&&group('scheduled',data.schedules.length+LW('项预定任务'),h(React.Fragment,null,
+        !audit&&group('scheduled',data.schedules.length+LW('项定时任务'),h(React.Fragment,null,
           data.schedules.map(s=>{
             const at=new Date(s.scheduledAt), when=Number.isFinite(+at)?new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(at):''
             const interval=s.interval&&s.interval%60===0?LW('每')+(s.interval/60)+LW('分钟'):''
             return line(s.id,'calendar',s.title,interval||when,null)
-          }),h('button',{type:'button',className:'lw-hist-all',onClick:openSchedules},LW('查看所有预定任务')))),
+          }),h('button',{type:'button',className:'lw-hist-all',onClick:openSchedules},LW('查看所有定时任务')))),
         !entries.length&&h('div',{className:'lw-hist-empty'},h(Icon,{name:audit?'shield':'list'}),
           audit&&h('div',null,LW('审核')),h('p',null,audit?LW('暂无批准记录'):LW('暂无活动记录'))),
         [...groups].map(([day,rows])=>group(day,day,rows.map(r=>line(r.id,audit?'shield':'activity',r.title,
@@ -2131,7 +2377,7 @@ window.__ModuleLoader__.load({
                 h('div', { className: 'lw-actions' },
                   Btn({ variant: 'ghost', size: 'xs', disabled: busy, 'aria-label': LW('编辑来源 ') + source.name,
                     onClick: () => editFolder(source) }, LW('编辑')),
-                  Btn({ variant: 'ghost', size: 'xs', disabled: busy, 'aria-label': LW('移除来源 ') + source.name,
+                  Btn({ variant: 'danger', size: 'xs', disabled: busy, 'aria-label': LW('移除来源 ') + source.name,
                     onClick: () => void run(async () => {
                       await project(workspaceId, 'sources/remove', { id: source.id })
                       setSettings(await readSettings())
@@ -2364,7 +2610,7 @@ window.__ModuleLoader__.load({
               h('button', { type: 'button', className: 'lw-ap-grad-card lw-ap-grad-memory', onClick: openMemory },
                 h('div', null,
                   h('span', { className: 'lw-ap-grad-title' }, LW('记忆')),
-                  h('span', { className: 'lw-ap-grad-sub' }, `跨会话记忆，${profile.memories?.length || 0} 条`)),
+                  h('span', { className: 'lw-ap-grad-sub' }, `跨对话记忆，${profile.memories?.length || 0} 条`)),
                 h('div', { className: 'lw-ap-grad-foot' },
                   h('span', null, fmtDotDate(profile.memoryUpdatedAt)),
                   CardHeartIcon())))),
@@ -2506,12 +2752,13 @@ window.__ModuleLoader__.load({
       return key ? botParadigms[key].accent : undefined
     }
     const botLayoutLabels = {
+      star: '星形', bus: '总线',
       checklist: '目标清单', path: '目标路径', library: '资料库', timeline: '文件动态',
       graph: '关系图', lineage: '文献脉络', branches: '发散探索', reasoning: '线性推演',
       sequence: '实验流程', matrix: '并行实验',
     }
     const extensionLayouts = {
-      goals: ['checklist', 'path'], notes: ['library', 'timeline'], mindmap: ['graph', 'lineage'],
+      goals: ['checklist', 'path'], notes: ['library', 'timeline'], mindmap: ['graph', 'lineage', 'star', 'bus'],
       ideas: ['branches', 'reasoning'], engineering: ['sequence', 'matrix'],
     }
     const fieldTypeLabels = { text: '文本', number: '数字', date: '日期', boolean: '是／否', url: '链接', reference: '记录引用' }
@@ -2616,7 +2863,7 @@ window.__ModuleLoader__.load({
                 h('span', null, item.label))
             })),
             selectedExtension && h('p', { className: 'lw-hint' }, selectedExtension.description),
-            !editing && Btn({ variant: 'ghost', size: 'xs', type: 'button', onClick: () => setEditing(true) }, LW('新增扩展范式')),
+            !editing && Btn({ variant: 'add', size: 'xs', type: 'button', onClick: () => setEditing(true) }, LW('新增扩展范式')),
             editing && h('div', { className: 'lw-form' },
               h('label', null, LW('范式名称'), h('input', { value: extensionName, maxLength: 80, onChange: e => setExtensionName(e.target.value) })),
               h('label', null, LW('语义描述'), h('textarea', { rows: 2, value: description, maxLength: 2000,
@@ -2659,9 +2906,9 @@ window.__ModuleLoader__.load({
                   h('label', null, LW('字段类型'), h(Select, { value: field.type, ariaLabel: LW('字段类型'),
                     onChange: type => updateField(field.id, { type }),
                     options: fieldRoles[field.role][1].map(type => ({ value: type, label: fieldTypeLabels[type] })) })),
-                  Btn({ variant: 'ghost', size: 'xs', type: 'button', disabled: fields.length === 1,
+                  Btn({ variant: 'danger', size: 'xs', type: 'button', disabled: fields.length === 1,
                     'aria-label': LW('移除字段 ') + field.name, onClick: () => setFields(items => items.filter(item => item.id !== field.id)) }, h(Icon, { name: 'close' }))))),
-              Btn({ variant: 'ghost', size: 'xs', type: 'button', disabled: fields.length >= 12,
+              Btn({ variant: 'add', size: 'xs', type: 'button', disabled: fields.length >= 12,
                 onClick: () => setFields(items => [...items, blankExtensionField()]) }, LW('添加字段')),
               h('div', { className: 'lw-actions' },
                 Btn({ variant: 'ghost', type: 'button', onClick: () => setEditing(false) }, LW('收起')),
@@ -2800,12 +3047,12 @@ window.__ModuleLoader__.load({
               placeholder: LW('选择文件夹或粘贴绝对路径'), onChange: e => changeSource(source.id, e.target.value) }),
             pickDirectory && Btn({ variant: 'secondary', 'aria-label': LW('选择来源文件夹 ') + (index + 1),
               onClick: () => chooseSource(source.id) }, LW('选择文件夹')),
-            (source.path || sources.length > 1) && Btn({ variant: 'ghost',
+            (source.path || sources.length > 1) && Btn({ variant: 'danger',
               'aria-label': LW('移除来源文件夹 ') + (index + 1),
               onClick: () => setSources(previous => previous.length === 1
                 ? [{ ...source, path: '' }] : previous.filter(item => item.id !== source.id)) },
             h(Icon, { name: 'close' })))),
-          h('div', { className: 'lw-actions' }, Btn({ variant: 'ghost', size: 'xs',
+          h('div', { className: 'lw-actions' }, Btn({ variant: 'add', size: 'xs',
             onClick: () => setSources(previous => [...previous, { id: requestId(), path: '' }]) },
           h(Icon, { name: 'plus' }), LW('添加来源文件夹')))),
         error && h('span', { role: 'alert' }, error),
@@ -2883,12 +3130,13 @@ window.__ModuleLoader__.load({
 
     function SpeakerReply({ label, text }) {
       return h('article', { className: 'lw-speaker-reply', 'aria-label': label + LW(' 的插话') },
-        h('strong', null, label), h('div', null, text))
+        h('strong', null, label), h(Markdown, { source: conversationText(text) }))
     }
 
     function composerCandidates(sessionId, trigger, query, signal) {
       return api('composer-candidates', { sessionId, trigger, query }, signal)
     }
+    const composerSessionSections = new Set(['对话', '邀请发言', '转交到项目'])
 
     function useBotInputMenu(bot, textarea, onDraft) {
       const [hit, setHit] = React.useState(null)
@@ -2899,8 +3147,9 @@ window.__ModuleLoader__.load({
       ensure.current = bot.ensureSession
       const id = React.useId()
       function update(value, caret) {
-        const match = /(?:^|\s)([@/])([^\s@]*)$/u.exec(value.slice(0, caret))
-        if (match && (match[1] === '@' || !match[2].includes('/'))) {
+        const beforeCaret = value.slice(0, caret)
+        const match = /(?:^|\s)([@/])([^\s@]*)$/u.exec(beforeCaret)
+        if (match && (match[1] === '@' || /^\s*\/[^/\s]*$/u.test(beforeCaret))) {
           setHit({ start: caret - match[2].length - 1, end: caret, trigger: match[1], query: match[2] })
         } else setHit(null)
       }
@@ -2987,6 +3236,40 @@ window.__ModuleLoader__.load({
     const getWorkbenchViews = () => workbenchViews ||= import(new URL('./labweave-bot-workbench.js', document.baseURI).href)
       .then(module => module.createWorkbenchViews(React, project, { Btn, Icon, Tag, Select, fmtDateTime, Canvas: BotParadigmView }))
     const BotExperiments = React.lazy(() => getWorkbenchViews().then(views => ({ default: views.Experiments })))
+    const BotCharts = React.lazy(() => getWorkbenchViews().then(views => ({ default: views.Charts })))
+
+    function RecordMedia({ item }) {
+      const [imageSelected, selectImage] = React.useState(false)
+      const image = entryImageSrc(item)
+      const charts = item.visualizations
+      const hasChart = Boolean(charts?.length)
+      if (!image && !hasChart) return null
+      const showImage = Boolean(image && (!hasChart || imageSelected))
+      return h('section', { className: 'lw-record-media', 'aria-label': LW('配图与图表') },
+        image && hasChart && h('div', { className: 'lw-actions', role: 'group', 'aria-label': LW('展示内容') },
+          h('button', { type: 'button', className: 'lw-btn lw-btn-secondary lw-btn-xs',
+            'aria-pressed': !showImage, onClick: () => selectImage(false) }, LW('交互图表')),
+          h('button', { type: 'button', className: 'lw-btn lw-btn-secondary lw-btn-xs',
+            'aria-pressed': showImage, onClick: () => selectImage(true) }, LW('配图'))),
+        showImage ? h(EntryImage, { src: image, alt: item.caption || item.title || LW('推送配图'),
+          className: 'lw-fbot-detail-media', illustrated: true, caption: item.caption })
+          : h(React.Suspense, { fallback: LW('正在绘制图表…') }, h(BotCharts, { charts, switchType: true })))
+    }
+
+    function RecordTableChart({ workspaceId, id }) {
+      const [table, setTable] = React.useState(null)
+      React.useEffect(() => {
+        const controller = new AbortController()
+        project(workspaceId, 'read', { id }, controller.signal)
+          .then(value => { if (!controller.signal.aborted) setTable(value) })
+          .catch(error => { if (!controller.signal.aborted) setTable({ error: error.message }) })
+        return () => controller.abort()
+      }, [workspaceId, id])
+      if (table?.error) return h('p', { className: 'lw-hint' }, table.error)
+      if (!table?.visualizations?.length) return null
+      return h(React.Suspense, { fallback: LW('正在绘制图表…') },
+        h(BotCharts, { charts: table.visualizations, table: true, truncated: table.truncated }))
+    }
 
     function openComposerFile(input, imagesOnly) {
       if (!input || input.disabled) return
@@ -3054,6 +3337,17 @@ window.__ModuleLoader__.load({
       }))
     }
 
+    function cardOverviewText(value, limit) {
+      const text = botPublicText(value)
+        .replace(/```[^\n]*\n[\s\S]*?(?:```|$)/gu, ' ')
+        .replace(/\[@\]\(weave-record:n_[0-9a-f]{32}\)/gu, LW('项目资料'))
+        .replace(/!?\[([^\]]+)\]\([^\n)]*\)/gu, '$1')
+        .replace(/^\s*(?:#{1,6}|>|[-*+]|\d+[.)])\s+/gmu, '')
+        .replace(/[*`~]/gu, '').replace(/\s+/gu, ' ').trim()
+      const characters = Array.from(text)
+      return characters.length <= limit ? text : characters.slice(0, limit - 1).join('').trimEnd() + '…'
+    }
+
     function botDisplayRecord(item, fields, layout) {
       const roles = new Map(fields.map(field => [field.role, field]))
       const value = role => item.elements?.[roles.get(role)?.name]
@@ -3061,7 +3355,7 @@ window.__ModuleLoader__.load({
       const status = value('status')
       return {
         title: value('title') || title,
-        summary: value('summary') || body,
+        summary: value('summary') || item.summary || body,
         group: value('group') || item.category || item.priority,
         date: roles.has('date') ? value('date') : item.eventDate || (layout === 'lineage' ? null : item.updatedAt || item.ts),
         status: typeof status === 'boolean' ? roles.get('status').name + '：' + LW(status ? '是' : '否') : status,
@@ -3070,10 +3364,13 @@ window.__ModuleLoader__.load({
       }
     }
 
-    function BotParadigmView({ layout, items, fields = [], activeId, openEntry, toggleGoal, addNode, deleteNode, busy, emptyTitle, label = LW('内容画布') }) {
+    function BotParadigmView({ layout, items, fields = [], activeId, openEntry, toggleGoal, addNode, deleteNode, editLinks, busy, emptyTitle,
+      activeTasks, onMinimize, onFillChat, chatFilled, canvasReady = true, canvasHidden = false, label = LW('内容画布') }) {
+      const arrowId = React.useId()
       const [category, setCategory] = React.useState(null)
       const [paths, setPaths] = React.useState([])
       const [camera, setCamera] = React.useState({ zoom: 100, x: 0, y: 0 })
+      const [scrollSpace, setScrollSpace] = React.useState({ width: 0, height: 0 })
       const [panning, setPanning] = React.useState(false)
       const [fullscreen, setFullscreen] = React.useState(false)
       const [size, setSize] = React.useState({ width: 0, height: 188 })
@@ -3081,12 +3378,27 @@ window.__ModuleLoader__.load({
       const viewportRef = React.useRef(null)
       const dragRef = React.useRef(null)
       const stageRef = React.useRef(null)
+      const seenCards = React.useRef(null)
+      const pendingCenters = React.useRef([])
+      const centerAnimation = React.useRef(null)
+      const [centerPass, advanceCenter] = React.useReducer(pass => pass + 1, 0)
+      const centeredNewCard = React.useRef(false)
+      function stopCentering() {
+        if (!centerAnimation.current) return
+        cancelAnimationFrame(centerAnimation.current.frame)
+        centerAnimation.current = null
+      }
+      React.useLayoutEffect(() => stopCentering, [])
       function zoomBy(delta) {
+        stopCentering()
         setCamera(current => ({ ...current, zoom: Math.max(50, Math.min(200, current.zoom + delta)) }))
+        advanceCenter()
       }
       function startPan(event) {
         if (event.button !== 0 || event.target.closest('button,input,a,label')) return
         const stage = stageRef.current
+        if (!stage?.offsetWidth) return
+        stopCentering()
         const scale = stage.getBoundingClientRect().width / stage.offsetWidth / zoom || 1
         dragRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY, camera, scale }
         event.currentTarget.setPointerCapture(event.pointerId)
@@ -3102,9 +3414,27 @@ window.__ModuleLoader__.load({
         dragRef.current = null
         setPanning(false)
       }
+      function centerViewport() {
+        const viewport = viewportRef.current
+        if (!viewport) return
+        const center = stageRef.current?.querySelector('[data-star-center="true"]')
+        if (!center) {
+          viewport.scrollTo(0, 0)
+          return
+        }
+        const frame = viewport.getBoundingClientRect()
+        const node = center.getBoundingClientRect()
+        const scale = frame.width / viewport.offsetWidth || 1
+        viewport.scrollTo(viewport.scrollLeft + (node.left + node.width / 2 - frame.left - frame.width / 2) / scale,
+          viewport.scrollTop + (node.top + node.height / 2 - frame.top - frame.height / 2) / scale)
+      }
       function resetCamera() {
+        stopCentering()
+        pendingCenters.current.length = 0
+        centeredNewCard.current = false
         setCamera({ zoom: 100, x: 0, y: 0 })
-        viewportRef.current?.scrollTo(0, 0)
+        setScrollSpace({ width: 0, height: 0 })
+        requestAnimationFrame(centerViewport)
       }
       React.useEffect(() => {
         const viewport = viewportRef.current
@@ -3122,24 +3452,124 @@ window.__ModuleLoader__.load({
       const selected = categories.includes(category) ? category : null
       const visible = rows.filter(row => !selected || (row.item.canvasGroup || row.group || LW('未分类')) === selected)
       const ids = new Set(visible.map(row => row.item.id))
-      const edges = visible.flatMap(row => [...new Set([
-        row.relation, ...(Array.isArray(row.item.dependsOn) ? row.item.dependsOn : []),
-      ])].filter(id => ids.has(id) && id !== row.item.id).map(id => ({ from: id, to: row.item.id })))
+      React.useLayoutEffect(() => {
+        if (!canvasReady) return
+        const identity = item => item.publishedDraftId || item.id
+        if (!seenCards.current) {
+          seenCards.current = new Set(items.map(identity))
+          return
+        }
+        const newCards = []
+        for (const item of [...items].reverse()) {
+          const key = identity(item)
+          if (seenCards.current.has(key)) continue
+          seenCards.current.add(key)
+          newCards.push({ key, created: Date.parse(item.created || item.ts) || 0 })
+        }
+        pendingCenters.current.push(...newCards.sort((a, b) => a.created - b.created).map(item => item.key))
+        const viewport = viewportRef.current
+        if (centerAnimation.current && (canvasHidden || newCards.length || centerAnimation.current.viewport !== viewport)) {
+          stopCentering()
+        }
+        if (!pendingCenters.current.length || centerAnimation.current || panning || canvasHidden) return
+        const target = items.find(item => identity(item) === pendingCenters.current[0])
+        if (!target) {
+          pendingCenters.current.shift()
+          advanceCenter()
+          return
+        }
+        if (!ids.has(target.id)) {
+          setCategory(null)
+          return
+        }
+        const node = stageRef.current?.querySelector('[data-canvas-node="' + CSS.escape(target.id) + '"]')
+        if (!viewport?.offsetWidth || !viewport.offsetHeight || !node) return
+        const frame = viewport.getBoundingClientRect()
+        const card = node.getBoundingClientRect()
+        const scale = frame.width / viewport.offsetWidth || 1
+        const x = (frame.left + frame.width / 2 - card.left - card.width / 2) / scale
+        const y = (frame.top + frame.height / 2 - card.top - card.height / 2) / scale
+        const left = viewport.scrollLeft
+        const top = viewport.scrollTop
+        const goalLeft = Math.max(0, left - x)
+        const goalTop = Math.max(0, top - y)
+        const scrollX = goalLeft - left
+        const scrollY = goalTop - top
+        if (goalLeft + viewport.clientWidth > viewport.scrollWidth || goalTop + viewport.clientHeight > viewport.scrollHeight) {
+          setScrollSpace(current => ({
+            width: Math.max(current.width, Math.ceil(goalLeft + viewport.clientWidth)),
+            height: Math.max(current.height, Math.ceil(goalTop + viewport.clientHeight)),
+          }))
+        }
+        const startX = camera.x
+        const startY = camera.y
+        const duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 320
+        const started = performance.now()
+        const animation = { viewport, frame: null }
+        function tick(now) {
+          const elapsed = duration ? Math.max(0, Math.min(1, (now - started) / duration)) : 1
+          const progress = 1 - (1 - elapsed) ** 3
+          viewport.scrollTo({ left: left + scrollX * progress, top: top + scrollY * progress, behavior: 'instant' })
+          // Translate the stage for the distance the scroll bounds cannot cover.
+          const nextX = startX + x * progress + viewport.scrollLeft - left
+          const nextY = startY + y * progress + viewport.scrollTop - top
+          setCamera(current => current.x === nextX && current.y === nextY ? current
+            : { ...current, x: nextX, y: nextY })
+          if (elapsed < 1) {
+            animation.frame = requestAnimationFrame(tick)
+          } else {
+            centerAnimation.current = null
+            pendingCenters.current.shift()
+            advanceCenter()
+          }
+        }
+        centeredNewCard.current = true
+        centerAnimation.current = animation
+        animation.frame = requestAnimationFrame(tick)
+      }, [items, canvasReady, canvasHidden, selected, panning, fullscreen, centerPass])
+      const edges = []
+      const connected = new Set()
+      function connect(from, to, kind) {
+        if (!ids.has(from) || from === to) return
+        const key = JSON.stringify([from, to].sort())
+        if (connected.has(key)) return
+        connected.add(key)
+        edges.push({ from, to, kind })
+      }
+      for (const { item, relation } of visible) {
+        for (const id of item.dependsOn || []) connect(id, item.id, 'dependency')
+        connect(item.parentId, item.id, 'branch')
+        connect(relation, item.id, 'branch')
+      }
+      for (const { item } of visible) {
+        for (const id of item.relatedIds || []) connect(id, item.id, 'related')
+      }
       const dated = layout === 'timeline' || layout === 'lineage'
       const sequential = dated || layout === 'reasoning'
-      const graph = layout === 'graph' || layout === 'path'
+      const star = layout === 'star'
+      const bus = layout === 'bus'
+      const hasStarNodes = star && visible.length > 0 && size.width > 0
+      React.useEffect(() => {
+        if (!hasStarNodes) return
+        const frame = requestAnimationFrame(() => {
+          if (!pendingCenters.current.length && !centeredNewCard.current) centerViewport()
+        })
+        return () => cancelAnimationFrame(frame)
+      }, [hasStarNodes, fullscreen])
+      const graph = ['graph', 'path', 'branches', 'sequence'].includes(layout)
+      const layered = graph && (edges.length > 0 || layout === 'graph' || layout === 'path')
       const lanes = new Map()
       const append = (key, row) => {
         if (!lanes.has(key)) lanes.set(key, [])
         lanes.get(key).push(row)
       }
-      if (graph) {
+      if (layered) {
         const depth = new Map()
         const byRecord = new Map(visible.map(row => [row.item.id, row]))
         const incoming = new Map(visible.map(row => [row.item.id, []]))
-        for (const edge of edges) incoming.get(edge.to).push(edge.from)
+        for (const edge of edges) if (edge.kind !== 'related') incoming.get(edge.to).push(edge.from)
         const successors = new Map()
-        for (const { from } of edges) successors.set(from, (successors.get(from) || 0) + 1)
+        for (const { from, kind } of edges) if (kind !== 'related') successors.set(from, (successors.get(from) || 0) + 1)
         const nodes = visible.map(row => ({ id: row.item.id, dependsOn: incoming.get(row.item.id) }))
           .sort((a, b) => (successors.get(b.id) || 0) - (successors.get(a.id) || 0))
         for (const item of orderGoalPath(nodes)) {
@@ -3165,8 +3595,42 @@ window.__ModuleLoader__.load({
         }
       }
 
+      const degree = new Map()
+      const children = new Map()
+      for (const { from, to, kind } of edges) {
+        degree.set(from, (degree.get(from) || 0) + 1)
+        degree.set(to, (degree.get(to) || 0) + 1)
+        if (kind !== 'related') children.set(from, (children.get(from) || 0) + 1)
+      }
+      const positioned = [...visible]
+      if (star && degree.size) positioned.sort((a, b) =>
+        (degree.get(b.item.id) || 0) - (degree.get(a.item.id) || 0) ||
+        (children.get(b.item.id) || 0) - (children.get(a.item.id) || 0))
+      const busSlots = new Map()
+      if (bus && edges.length) {
+        const neighbors = new Map(visible.map(({ item }) => [item.id, []]))
+        for (const { from, to } of edges) {
+          neighbors.get(from).push(to)
+          neighbors.get(to).push(from)
+        }
+        let slot = 0
+        for (const { item } of visible) {
+          if (busSlots.has(item.id)) continue
+          const pending = [item.id]
+          busSlots.set(item.id, slot++)
+          for (const id of pending) {
+            for (const neighbor of neighbors.get(id)) {
+              if (busSlots.has(neighbor)) continue
+              busSlots.set(neighbor, slot++)
+              pending.push(neighbor)
+            }
+          }
+          slot += slot % 2
+        }
+      }
       const edgeKey = JSON.stringify(edges)
-      const visibleKey = JSON.stringify([...lanes].map(([key, entries]) => [key, entries.map(row => row.item.id)]))
+      const visibleKey = JSON.stringify(star || bus ? positioned.map(row => row.item.id)
+        : [...lanes].map(([key, entries]) => [key, entries.map(row => row.item.id)]))
       React.useLayoutEffect(() => {
         const stage = stageRef.current
         if (!stage) { setPaths([]); return }
@@ -3177,11 +3641,23 @@ window.__ModuleLoader__.load({
           setSize(current => current.width === width && current.height === height ? current : { width, height })
           const origin = stage.getBoundingClientRect()
           const scale = origin.width / stage.offsetWidth || 1
-          const next = links.flatMap(({ from, to }) => {
+          const busAxis = bus && nodes.size > 1 ? (
+            Math.max(...[...nodes.values()].filter(node => node.dataset.busRow === '1').map(node => node.getBoundingClientRect().bottom)) +
+            Math.min(...[...nodes.values()].filter(node => node.dataset.busRow === '2').map(node => node.getBoundingClientRect().top))
+          ) / 2 : null
+          const next = links.flatMap(({ from, to, kind }) => {
             if (!nodes.has(from) || !nodes.has(to)) return []
             const source = nodes.get(from).getBoundingClientRect()
             const target = nodes.get(to).getBoundingClientRect()
-            const across = Math.abs(source.left - target.left) / scale > 12
+            const dx = target.left + target.width / 2 - source.left - source.width / 2
+            if (busAxis !== null) {
+              const axis = (busAxis - origin.top) / scale
+              const onBus = node => [(node.left + node.width / 2 - origin.left) / scale,
+                ((node.bottom < busAxis ? node.bottom : node.top) - origin.top) / scale]
+              const [x, y] = onBus(source), end = onBus(target)
+              return [{ from, to, kind, end, d: `M${x} ${y} V${axis} H${end[0]} V${end[1]}` }]
+            }
+            const across = Math.abs(dx) / scale > 12
             const forward = across ? source.left < target.left : source.top < target.top
             const x = (across ? (forward ? source.right : source.left) : source.left + source.width / 2) - origin.left
             const y = (across ? source.top + source.height / 2 : (forward ? source.bottom : source.top)) - origin.top
@@ -3190,7 +3666,8 @@ window.__ModuleLoader__.load({
             const start = [x / scale, y / scale], end = [endX / scale, endY / scale]
             const middle = across ? (start[0] + end[0]) / 2 : (start[1] + end[1]) / 2
             const via = across ? [middle, start[1], middle, end[1]] : [start[0], middle, end[0], middle]
-            return [{ from, to, end, d: 'M' + start.join(' ') + ' C' + via.join(' ') + ' ' + end.join(' ') }]
+            const d = 'M' + start.join(' ') + ' C' + via.join(' ') + ' ' + end.join(' ')
+            return [{ from, to, kind, end, d }]
           })
           setPaths(next)
         }
@@ -3201,44 +3678,64 @@ window.__ModuleLoader__.load({
         return () => observer.disconnect()
       }, [edgeKey, visibleKey, layout, fullscreen])
 
-      function card(row) {
+      function card(row, style, index) {
         const item = row.item
         const file = isReadableEntry(item) || isImageResource(item)
         const thumbnail = entryImageSrc(item)
         const date = typeof row.date === 'string' && row.date.length === 10 ? row.date : fmtDate(row.date)
         const blocked = toggleGoal && !item.done && item.dependsOn?.some?.(id => byId.has(id) && !byId.get(id).done)
         const status = item.canvasStatus || row.status || item.relationStatus || (blocked && LW('等待前置目标'))
-        const editable = !item.canvasDraft && !item.experiment?.kind
+        const editable = !item.canvasDraft
+        const linkable = editable && !item.automatic && !item.externalRun
         return h('article', { key: item.id, className: 'lw-canvas-card', 'data-canvas-node': item.id, 'data-current': activeId === item.id,
-          'data-draft': Boolean(item.canvasDraft) },
+          style, 'data-draft': Boolean(item.canvasDraft), 'data-star-center': star && index === 0,
+          'data-hub': star && index === 0 && degree.size > 0,
+          'data-bus-row': bus ? index % 2 + 1 : undefined },
           h(openEntry ? 'button' : 'div', { className: 'lw-canvas-card-body',
             ...(openEntry && { type: 'button', 'aria-label': row.title, onClick: () => openEntry(item) }) },
             h('span', { className: 'lw-canvas-card-meta' },
               h(Icon, { name: file ? 'file' : row.source ? 'link' : graph ? 'mindmap' : 'list' }),
-              dated && h('span', null, date || LW('日期待确认')),
+              (dated || date) && h('span', null, date || LW('日期待确认')),
+              row.source && item.source && h('span', null, cardOverviewText(item.source, 32)),
               item.due && h('span', null, LW('截止 ') + item.due),
               item.canvasDraft && h('span', null, LW('草稿 · 待核验')),
               item.canvasDraft && h('span', null, ({ queued: LW('排队中'), running: LW('整理中'),
                 needs_follow_up: LW('待继续'), completed: LW('已返回') })[item.dispatchStatus] || LW('已结束')),
               status && h('span', null, status),
               item.relationLabel && h('span', null, item.relationLabel)),
-            h('strong', null, row.title),
-            row.summary && row.summary !== row.title && h('span', { className: 'lw-paradigm-preview' }, row.summary),
-            thumbnail && h('img', { className: 'lw-canvas-thumb', src: thumbnail, alt: '', loading: 'lazy',
-              onError: event => { event.currentTarget.hidden = true } })),
-          toggleGoal && editable && h('label', { className: 'lw-canvas-card-meta', style: {padding:'0 10px 8px', alignItems:'center'} },
+            h('strong', null, cardOverviewText(row.title, 80) || row.title),
+            row.summary && row.summary !== row.title && h('span', { className: 'lw-paradigm-preview' }, cardOverviewText(row.summary, 160)),
+            thumbnail ? h('img', { className: 'lw-canvas-thumb', src: thumbnail, alt: '', loading: 'lazy',
+              onError: event => { event.currentTarget.hidden = true } })
+              : item.visualizations?.length > 0 && h(React.Suspense, { fallback: null }, h(BotCharts, { charts: item.visualizations, preview: true }))),
+          toggleGoal && linkable && h('label', { className: 'lw-canvas-card-meta', style: {padding:'0 10px 8px', alignItems:'center'} },
             h('input', { type: 'checkbox', checked: Boolean(item.done), disabled: busy || blocked,
               'aria-label': LW('完成 ') + row.title, onChange: () => toggleGoal(item) }), LW('完成')),
-          editable && (addNode || deleteNode) && h('div', { className: 'lw-canvas-node-actions' },
-            addNode && Btn({ variant: 'ghost', size: 'xs', disabled: busy, title: LW('添加分支'),
+          editable && (addNode || deleteNode || editLinks) && h('div', { className: 'lw-canvas-node-actions' },
+            addNode && Btn({ variant: 'add', size: 'xs', disabled: busy, title: LW('添加分支'),
               'aria-label': LW('添加分支 ') + row.title, onClick: () => addNode(item) }, '+'),
-            deleteNode && Btn({ variant: 'ghost', size: 'xs', disabled: busy, title: LW('删除节点'),
+            editLinks && linkable && Btn({ variant: 'ghost', size: 'xs', disabled: busy, title: LW('编辑连线'),
+              'aria-label': LW('编辑连线 ') + row.title, onClick: () => editLinks(item) }, h(Icon, { name: 'link' })),
+            deleteNode && Btn({ variant: 'danger', size: 'xs', disabled: busy, title: LW('删除节点'),
               'aria-label': LW('删除节点 ') + row.title, onClick: () => deleteNode(item) }, '−')))
       }
 
-      const canvas = h('section', { className: 'lw-bot-canvas', 'data-layout': layout, 'aria-label': label },
+      const radius = Math.ceil((Math.sqrt(positioned.length) - 1) / 2)
+      function starPosition(index) {
+        if (!index) return { gridRow: radius + 1, gridColumn: radius + 1 }
+        const ring = Math.ceil((Math.sqrt(index + 1) - 1) / 2)
+        const distance = index - (2 * ring - 1) ** 2
+        const side = distance % 4
+        const offset = (Math.floor(distance / 4) + ring - 1) % (2 * ring) - ring + 1
+        const [x, y] = [[ring, offset], [-offset, ring], [-ring, -offset], [offset, -ring]][side]
+        return { gridRow: radius + 1 + y, gridColumn: radius + 1 + x }
+      }
+      const canvas = h('section', { className: 'lw-bot-canvas', 'data-layout': layout, 'data-layered': layered, 'aria-label': label },
         h('div', { className: 'lw-canvas-toolbar' },
-          addNode && Btn({ variant: 'ghost', size: 'xs', disabled: busy, onClick: () => addNode(null) }, LW('添加节点')),
+          addNode && Btn({ variant: 'add', size: 'xs', disabled: busy, onClick: () => addNode(null) }, LW('添加节点')),
+          botLayoutLabels[layout] && h('span', { className: 'lw-canvas-layout' }, LW(botLayoutLabels[layout])),
+          Boolean(activeTasks) && h('span', { className: 'lw-canvas-progress', role: 'status' },
+            activeTasks + LW(' 项任务正在整理，草稿随进度更新')),
           categories.length > 1 && h('div', { className: 'lw-canvas-categories', role: 'group', 'aria-label': LW('内容类别') },
             [null, ...categories].map(name => h('button', { key: name === null ? 'all' : 'category:' + name,
               type: 'button', 'aria-pressed': selected === name, onClick: () => setCategory(name) }, name ?? LW('全部')))),
@@ -3247,23 +3744,44 @@ window.__ModuleLoader__.load({
             h('span', { 'aria-label': LW('当前缩放') }, camera.zoom + '%'),
             Btn({ variant: 'ghost', size: 'xs', disabled: camera.zoom >= 200, 'aria-label': LW('放大画布'), onClick: () => zoomBy(10) }, '+'),
             Btn({ variant: 'ghost', size: 'xs', 'aria-label': LW('重置画布视图'), onClick: resetCamera }, LW('重置')),
-            !fullscreen && Btn({ variant: 'ghost', size: 'xs', 'aria-label': LW('全屏画布'), onClick: () => setFullscreen(true) }, LW('全屏')))),
+            !fullscreen && Btn({ variant: 'ghost', size: 'xs', 'aria-label': LW('全屏画布'), onClick: () => setFullscreen(true) }, LW('全屏')),
+            !fullscreen && onFillChat && Btn({
+              variant: 'ghost', size: 'xs',
+              'aria-label': chatFilled ? LW('展开对话流') : LW('占满对话流并收起对话'),
+              'aria-pressed': Boolean(chatFilled), 'data-canvas-fill-chat': true, onClick: onFillChat,
+            }, LW(chatFilled ? '显示对话' : '占满对话')),
+            !fullscreen && onMinimize && Btn({ variant: 'ghost', size: 'xs', 'aria-label': LW('最小化画布'),
+              'data-canvas-minimize': true, onClick: onMinimize }, LW('最小化')))),
         h('div', { ref: viewportRef, className: 'lw-canvas-viewport', tabIndex: 0, role: 'region', 'aria-label': LW('节点与连线'),
           'data-panning': panning, onPointerDown: startPan, onPointerMove: movePan,
           onPointerUp: endPan, onPointerCancel: endPan, onLostPointerCapture: endPan },
           !items.length && emptyTitle && h('p', { className: 'lw-canvas-live' }, emptyTitle),
+          (graph || star || bus) && editLinks && visible.length > 1 && !selected && !edges.length &&
+            h('p', { className: 'lw-canvas-live' }, visible.filter(({ item }) =>
+              !item.canvasDraft && !item.automatic && !item.externalRun).length >= 2
+              ? LW('用节点上的连线按钮连接已有记录。') : LW('当前卡片还没有登记连线。')),
           h('div', { className: 'lw-canvas-frame', style: {
-            width: Math.ceil(size.width * zoom + Math.max(0, camera.x)),
-            height: Math.ceil(size.height * zoom + Math.max(0, camera.y)),
+            width: Math.max(scrollSpace.width, Math.ceil(size.width * zoom + Math.max(0, camera.x))),
+            height: Math.max(scrollSpace.height, Math.ceil(size.height * zoom + Math.max(0, camera.y))),
           } },
           h('div', { ref: stageRef, className: 'lw-canvas-stage',
             style: { transform: 'translate(' + camera.x + 'px,' + camera.y + 'px) scale(' + zoom + ')' } },
             h('svg', { className: 'lw-canvas-edges', 'aria-hidden': true },
-              paths.map(link => h('g', { key: link.from + ':' + link.to, 'data-from': link.from, 'data-to': link.to },
-                h('path', { d: link.d }), h('circle', { cx: link.end[0], cy: link.end[1], r: 2.5 })))),
-            [...lanes.entries()].sort(([a], [b]) => graph ? a - b : 0).map(([label, entries]) =>
+            h('defs', null, h('marker', { id: arrowId, viewBox: '0 0 8 8', refX: 8, refY: 4,
+              markerWidth: 9, markerHeight: 9, markerUnits: 'userSpaceOnUse', orient: 'auto' },
+              h('polygon', { className: 'lw-canvas-arrow', points: '0,0 8,4 0,8' }))),
+            paths.map(link => h('g', { key: link.from + ':' + link.to, 'data-from': link.from, 'data-to': link.to, 'data-kind': link.kind },
+                h('path', { d: link.d, markerEnd: link.kind !== 'related' ? 'url(#' + arrowId + ')' : undefined }),
+                link.kind === 'related' && h('circle', { cx: link.end[0], cy: link.end[1], r: 2.5 })))),
+            star || bus ? positioned.map((row, index) => {
+              const slot = busSlots.get(row.item.id) ?? index
+              return card(row, star ? starPosition(index)
+                : { gridRow: slot % 2 + 1, gridColumn: Math.floor(slot / 2) + 1 }, slot)
+            })
+            : [...lanes.entries()].sort(([a], [b]) => layered ? a - b : 0).map(([label, entries]) =>
               h('div', { key: label, className: 'lw-canvas-lane' },
-                typeof label === 'string' && h('h3', null, label), entries.map(card)))))))
+                layered ? h('h3', null, label === 0 ? LW('起点') : LW('第 ') + (label + 1) + LW(' 层'))
+                  : typeof label === 'string' && h('h3', null, label), entries.map(row => card(row))))))))
       return fullscreen ? ReactDOM.createPortal(h(Dialog, {
         title: LW('全屏画布'), className: 'lw-canvas-full', close: () => setFullscreen(false),
       }, canvas), document.body) : canvas
@@ -3292,32 +3810,136 @@ window.__ModuleLoader__.load({
       return result.concat(items.filter(item => remaining.has(item.id)))
     }
 
+    const dispatchStatuses = {
+      queued: ['待启动', 'neutral'], running: ['执行中', 'neutral'], completed: ['已完成', 'success'],
+      blocked: ['受阻', 'warning'], needs_follow_up: ['待跟进', 'warning'], incomplete: ['未完成', 'warning'],
+      failed: ['失败', 'danger'], cancelled: ['已取消', 'neutral'], interrupted: ['已中断', 'warning'],
+    }
+    const messageTime = ({ time }) => (typeof time === 'number' ? time : Date.parse(time)) || 0
+
+    function ConversationActivity({ activity, onToggle }) {
+      const phase = { preparing: '正在准备回复', reasoning: '正在梳理问题', reply: '正在生成回复',
+        tool: '正在处理任务', approval: '等待你的确认' }[activity?.phase]
+      const states = { running: '进行中', completed: '已完成', failed: '失败', stopped: '已停止' }
+      const tools = activity?.tools || []
+      const thinking = activity?.phase === 'reasoning'
+      const caption = phase && LW(phase)
+      const thoughtStatus = thinking ? '进行中' : activity?.reasoned ? '已完成思考' : activity?.reasoningStopped ? '已停止' : ''
+      return h('details', { className: 'lw-worker-activity', onToggle },
+        h('summary', null, h(Icon, { name: 'right' }), h('span', null, LW('执行过程')),
+          caption && h('span', { className: 'lw-worker-activity-caption', role: phase ? 'status' : undefined }, caption)),
+        h('ul', { className: 'lw-worker-steps', 'aria-label': LW('执行步骤') },
+          thoughtStatus && h('li', { 'data-step': 'reasoning' },
+            thinking ? h('img', { src: './weave-orbit.svg', alt: '' }) : h(Icon, { name: 'spark' }),
+            h('span', null, LW('思考')),
+            h('small', null, LW(thoughtStatus))),
+          tools.map(tool => h('li', { key: tool.id, 'data-status': tool.status },
+            h(Icon, { name: 'plugin' }), h('span', null, tool.title),
+            h('small', null, LW(states[tool.status] || '状态未知')))),
+          !tools.length && !thoughtStatus && h('li', { className: 'lw-hint' },
+            LW(activity === undefined ? '正在读取执行过程…' : '暂无执行步骤。'))))
+    }
+
+    function BotMessageAction({ icon, record, children, ...props }) {
+      return Btn({ variant: 'ghost', size: 'xs', className: 'lw-bot-message-action',
+        'data-record': record ? '' : undefined, ...props }, h(Icon, { name: icon }), children,
+        record && h(Icon, { name: 'right' }))
+    }
+
+    function WorkerDispatchActivity({ workspaceId, id, status }) {
+      const [open, setOpen] = React.useState(false)
+      const [activity, setActivity] = React.useState()
+      const active = ['queued', 'running'].includes(status)
+      React.useEffect(() => {
+        if (!open && !active) return
+        const controller = new AbortController()
+        const { signal } = controller
+        let timer
+        async function refresh() {
+          try {
+            const value = await project(workspaceId, 'bot_dispatch_activity', { id }, signal)
+            if (!signal.aborted) setActivity(value)
+          } catch {
+            if (!signal.aborted) setActivity(previous => previous ?? null)
+          } finally {
+            if (!signal.aborted && active) timer = setTimeout(refresh, 1500)
+          }
+        }
+        void refresh()
+        return () => { controller.abort(); clearTimeout(timer) }
+      }, [open, active, workspaceId, id])
+      return h(ConversationActivity, { activity, onToggle: event => setOpen(event.currentTarget.open) })
+    }
+
     function Panel({
       workspaceId, row, feature, featMeta, title, subtitle, emptyTitle,
-      value, loadError, persisted, bot, live, openModels, onRenamed,
-      openExperiment,
+      value, loadError, persisted, bot, live, liveError, openModels, onRenamed, fileChanges,
+      openExperiment, openTaskSource, sendTaskFollowUp,
     }) {
       const [busy, setBusy] = React.useState(false)
       const [error, setError] = React.useState('')
       const [notice, setNotice] = React.useState('')
       const [reading, setReading] = React.useState(null)
       const [activeItemId, setActiveItemId] = React.useState(null)
+      const [sourcePreview, setSourcePreview] = React.useState(null)
+      const previewRequest = React.useRef(0)
       const [activeReview, setActiveReview] = React.useState(null)
       const [deletingItem, setDeletingItem] = React.useState(null)
       const [browserLink, setBrowserLink] = React.useState(null)
       const [boardPercent, setBoardPercent] = React.useState(persisted.boardPercent || 58)
+      const [boardMinimized, setBoardMinimized] = React.useState(Boolean(persisted.boardMinimized))
+      const [boardExpanded, setBoardExpanded] = React.useState(Boolean(persisted.boardExpanded))
+      const boardId = React.useId()
       const [editingBot, setEditingBot] = React.useState(false)
       const [nodeEdit, setNodeEdit] = React.useState(null)
       const [draftText, setDraftText] = React.useState(() => persisted?.draft || '')
+      const [following, setFollowing] = React.useState(null)
+      const [followDraft, setFollowDraft] = React.useState('')
+      const [followSending, setFollowSending] = React.useState(false)
+      const [followError, setFollowError] = React.useState('')
+      const followRequest = React.useRef(null)
+      const sending = following ? followSending : bot.sending
+      const composerText = following ? followDraft : draftText
 
       const [editingId, setEditingId] = React.useState(null)
       const [editDraft, setEditDraft] = React.useState({ text: '', due: '' })
       const conversationRef = React.useRef(null)
+      const followScroll = React.useRef(true)
       const mainRef = React.useRef(null)
+      const updates = live?.messages || []
+      const taskGroups = new Map()
+      for (const item of updates) {
+        const group = taskGroups.get(item.dispatchId) || []
+        group.push(item)
+        taskGroups.set(item.dispatchId, group)
+      }
+      const messages = [...bot.messages, ...[...taskGroups.values()].map(items => ({
+        id: items[0].dispatchId, role: 'dispatch', time: items[0].ts, items,
+      }))].sort((a, b) => messageTime(a) - messageTime(b))
       function resizeBoard(percent) {
         const next = Math.max(25, Math.min(80, Math.round(percent)))
         persisted.boardPercent = next
         setBoardPercent(next)
+      }
+      function toggleBoard(minimized) {
+        persisted.boardMinimized = minimized
+        setBoardMinimized(minimized)
+        if (minimized) {
+          persisted.boardExpanded = false
+          setBoardExpanded(false)
+        }
+        requestAnimationFrame(() => mainRef.current?.querySelector(minimized ? '[data-canvas-restore]' : '[data-canvas-minimize]')?.focus())
+      }
+      const minimizeBoard = () => toggleBoard(true)
+      function toggleChatFill() {
+        const next = !boardExpanded
+        persisted.boardExpanded = next
+        setBoardExpanded(next)
+        if (next) {
+          persisted.boardMinimized = false
+          setBoardMinimized(false)
+        }
+        requestAnimationFrame(() => mainRef.current?.querySelector('[data-canvas-fill-chat]')?.focus())
       }
       function moveDivider(event) {
         if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
@@ -3326,19 +3948,38 @@ window.__ModuleLoader__.load({
       }
       React.useEffect(() => {
         const log = conversationRef.current
-        if (log) log.scrollTop = log.scrollHeight
-      }, [bot.messages.length])
+        if (log && followScroll.current) log.scrollTop = log.scrollHeight
+      }, [messages.length, updates.length, messages.at(-1)?.id, boardMinimized])
       const fileInputRef = React.useRef(null)
       const textareaRef = React.useRef(null)
       const changeDraft = text => { setDraftText(text); persisted.draft = text }
       const inputMenu = useBotInputMenu(bot, textareaRef, changeDraft)
+      function changeDestination(task) {
+        if (followSending) return
+        inputMenu.close()
+        setFollowError('')
+        setFollowing(task)
+        setFollowDraft(task ? persisted.followUps?.[task.dispatchId] || '' : '')
+        followRequest.current = null
+        requestAnimationFrame(() => textareaRef.current?.focus())
+      }
+      function updateComposer(text, caret) {
+        if (following) {
+          setFollowDraft(text)
+          const drafts = persisted.followUps ||= {}
+          drafts[following.dispatchId] = text
+        } else {
+          changeDraft(text)
+          inputMenu.update(text, caret)
+        }
+      }
 
       React.useLayoutEffect(() => {
         const el = textareaRef.current
         if (!el) return
         el.style.height = 'auto'
         el.style.height = Math.min(120, Math.max(32, el.scrollHeight)) + 'px'
-      }, [draftText])
+      }, [composerText, following])
 
       const run = async act => {
         if (busy) return
@@ -3357,23 +3998,76 @@ window.__ModuleLoader__.load({
         : value.rails[feature] || []
       const items = [...savedItems, ...(live?.drafts || [])]
       const action = (name, args) => project(workspaceId, name, args)
+      const projectRecords = new Map(Object.values(value.rails).flat().map(entry => [entry.id, entry]))
+      async function openSource(kind, target, page = 1) {
+        const sequence = ++previewRequest.current
+        const title = target.name || LW('来源资料')
+        setSourcePreview({ title, file: kind === 'file' ? target : null, pending: true })
+        try {
+          const entry = await action(kind === 'record' ? 'bot_source_record' : 'files/reference', { id: target.id, page })
+          if (sequence !== previewRequest.current) return
+          setSourcePreview({ title: kind === 'record' ? cardOverviewText(entry.title || entry.text, 72) || title : entry.name || title,
+            record: kind === 'record' ? entry : null, file: kind === 'file' ? target : null, entry })
+        } catch (error) {
+          if (sequence === previewRequest.current) {
+            setSourcePreview({ title, file: kind === 'file' ? target : null, error: error.message })
+          }
+        }
+      }
+      const referenceHandlers = {
+        titleFor: id => {
+          const record = projectRecords.get(id)
+          return record && cardOverviewText(record.title || record.text, 56)
+        },
+        openRecord: id => openSource('record', { id }),
+        openFile: file => openSource('file', file),
+      }
+      const closeSource = () => { previewRequest.current++; setSourcePreview(null) }
+      async function downloadSource(file) {
+        try {
+          const { saveStoredFile } = await import(new URL('./labweave-tools-panel.js', document.baseURI).href)
+          await saveStoredFile(project, workspaceId, file.id)
+        } catch (error) {
+          setSourcePreview(current => current?.file?.id === file.id ? { ...current, error: error.message } : current)
+        }
+      }
       const ordered = items.slice().reverse()
       const botLayout = featMeta.layout
       const typedLayout = botLayout && botLayoutLabels[botLayout]
+      const canvasReady = !featMeta.paradigm || Boolean(live || liveError)
       const extensionFields = featMeta.extension?.fields || []
       const effectiveParadigm = featMeta.extension?.base || featMeta.paradigm
       const engineering = effectiveParadigm === 'engineering'
       const paradigmAccent = botParadigms[effectiveParadigm]?.accent
       const addNode = parent => setNodeEdit({ parent, title: '', text: '' })
       const deleteNode = item => setNodeEdit({ remove: item })
+      const editLinks = (item, experimentSources = []) => setNodeEdit({
+        record: item, parentId: item.parentId || '', relatedIds: item.relatedIds || [], experimentSources,
+      })
+      const linkCandidates = nodeEdit?.record
+        ? savedItems.filter(item => !item.automatic && item.id !== nodeEdit.record.id)
+        : []
+      const linkLabel = item => [item.canvasGroup, botDisplayRecord(item, extensionFields, botLayout).title]
+        .filter(Boolean).join(' · ')
+      const parentCandidates = [...linkCandidates, ...(nodeEdit?.experimentSources || [])]
       const closeNodeEdit = () => { if (!busy) setNodeEdit(null) }
       async function saveNode(event) {
         event.preventDefault()
         if (nodeEdit.remove) {
           return run(async () => {
             const item = nodeEdit.remove
-            await action('entry_delete', { rail: item.canvasRail || feature, id: item.id })
+            if (item.externalRun) await action('bot/experiment_dismiss', { featureId: item.canvasRail || feature, id: item.id })
+            else if (item.automatic) await action('dismiss_feed', { id: item.id, key: item.url || item.text })
+            else await action('entry_delete', { rail: item.canvasRail || feature, id: item.id })
             if (activeItemId === item.id) setActiveItemId(null)
+            setNodeEdit(null)
+          })
+        }
+        if (nodeEdit.record) {
+          const { record, parentId, relatedIds } = nodeEdit
+          return run(async () => {
+            await action('feature_push', { featureId: record.canvasRail || feature, id: record.id,
+              parentId: parentId || null, relatedIds })
             setNodeEdit(null)
           })
         }
@@ -3426,9 +4120,24 @@ window.__ModuleLoader__.load({
 
       const submitComposer = async e => {
         e?.preventDefault?.()
-        const text = draftText.trim()
-        if (!text || bot.sending) return
+        const text = composerText.trim()
+        if (!text || sending || busy) return
         inputMenu.close()
+        if (following) {
+          if (followRequest.current?.text !== text) followRequest.current = { text, id: requestId() }
+          setFollowSending(true)
+          setFollowError('')
+          try {
+            await sendTaskFollowUp(following, text, followRequest.current.id)
+            followRequest.current = null
+            setFollowDraft('')
+            if (persisted.followUps) delete persisted.followUps[following.dispatchId]
+            window.dispatchEvent(new Event(updated))
+          } catch (err) {
+            setFollowError(err.message)
+          } finally { setFollowSending(false) }
+          return
+        }
         changeDraft('')
         try {
           await bot.sendPrompt(text)
@@ -3438,7 +4147,7 @@ window.__ModuleLoader__.load({
         }
       }
 
-      const activeItem = activeItemId ? items.find(x => x.id === activeItemId) : null
+      const activeItem = activeItemId ? items.find(x => x.id === activeItemId) || updates.find(x => x.id === activeItemId) : null
       const activeDisplay = activeItem && botDisplayRecord(activeItem, extensionFields, botLayout)
       const attachment = activeItem && (activeItem.libraryId || activeItem.path || isReadableEntry(activeItem)) && (libraryItemsFor(activeItem) || activeItem)
       function libraryItemsFor(item) {
@@ -3455,10 +4164,16 @@ window.__ModuleLoader__.load({
       const linkedIdeaIds = new Set(goalsList.map(g => g.ideaId).filter(Boolean))
 
       const progress = (bot.running && bot.progress) || (bot.sending && preparingReply)
+      const boardNotices = h(React.Fragment, null,
+        busy && h('p', { role: 'status', className: 'lw-hint' }, LW('正在处理…')),
+        notice && h('p', { role: 'status', className: 'lw-notice' }, notice),
+        (error || bot.error) && h('p', { role: 'alert', style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+          h('span', null, publicToolText(error || bot.error)),
+          openModels && /模型|API|key|密钥/i.test(error || bot.error) && Btn({ variant: 'ghost', size: 'xs', onClick: openModels }, LW('模型与 API 设置'))))
       const hasDetail = Boolean(reading || activeItem || activeReview)
       const hasContent = typedLayout || items.length > 0 || hasDetail || (feature === 'ideas' && (value.reviews?.length || 0) > 0)
 
-      const kindBadges = { paper: LW('论文'), news: LW('新闻'), repository: LW('仓库'), pdf: 'PDF', output: LW('实验产物'), link: LW('链接'), file: LW('文件'), push: LW('推送'), fresh: LW('灵感'), converted: LW('已转目标'), pending: LW('追踪中'), completed: LW('已完成') }
+      const kindBadges = { paper: LW('论文'), news: LW('新闻'), repository: LW('代码仓库'), pdf: 'PDF', output: LW('实验产物'), link: LW('链接'), file: LW('文件'), push: LW('推送'), fresh: LW('灵感'), converted: LW('已转目标'), pending: LW('追踪中'), completed: LW('已完成') }
       const entryKindKey = item => {
         const isFile = isReadableEntry(item) || isImageResource(item)
         if (feature === 'feed') return isFile ? 'file' : feedKind(item)
@@ -3470,7 +4185,7 @@ window.__ModuleLoader__.load({
       const entryBadgeLabel = item => kindBadges[entryKindKey(item)] || title
       const detailLabel = feature === 'feed' ? LW('动态详情') : LW('记录详情')
       const showRecordHeader = Boolean(activeItem && !reading && !browserLink && !activeReview && editingId !== activeItem.id)
-      const recordText = String(activeItem?.text || '').trim()
+      const recordText = botPublicText(activeItem?.text).trim()
       const hasRecordTitle = activeItem?.title || extensionFields.some(field => field.role === 'title' && activeItem?.elements?.[field.name])
       const plainShortTitle = recordText.length <= 44 && !/[\n：:]/.test(recordText) ? recordText : ''
       const recordTitle = hasRecordTitle ? activeDisplay?.title : plainShortTitle
@@ -3478,7 +4193,7 @@ window.__ModuleLoader__.load({
         h('div', { className: 'lw-record-meta' },
           h(Tag, { tone: 'neutral' }, entryBadgeLabel(activeItem)),
           activeItem.ts && h('time', { className: 'lw-hint lw-mono', dateTime: activeItem.ts }, fmtDateTime(activeItem.ts))),
-        h('h2', null, inlineMarkdown(recordTitle || detailLabel, 'record-title')))
+        h('h2', null, inlineMarkdown(botPublicText(recordTitle || detailLabel), 'record-title')))
       const catIcon = key => ({
         paper: 'file', news: 'activity', repository: 'repo',
         fresh: 'ideas', converted: 'goals', review: 'spark',
@@ -3489,13 +4204,65 @@ window.__ModuleLoader__.load({
       const doneGoals = feature === 'goals' ? items.filter(x => x.done).length : 0
       const goalPct = feature === 'goals' && items.length ? Math.round((doneGoals / items.length) * 100) : 0
       const ringCircumference = 2 * Math.PI * 13
-      return h('section', {
+      function dispatchThread(msg) {
+        const task = msg.items[0]
+        const [status, tone] = dispatchStatuses[task.dispatchStatus] || ['待处理', 'neutral']
+      const context = task.sourceText && botPublicText(task.sourceText) !== botPublicText(task.text)
+        return h('section', { key: task.dispatchId, className: 'lw-bot-task-thread', 'data-task-id': task.dispatchId },
+          h('article', { className: 'lw-bot-msg', 'data-role': 'assistant', 'aria-label': task.title },
+            h('div', { className: 'lw-bot-msg-meta' },
+              h('span', null, (task.originBotLabel || LW('项目主对话')) + ' · ' + (task.followUpOf ? LW('跟进分派') : LW('任务分派'))),
+              h('time', { dateTime: task.ts }, fmtDateTime(task.ts))),
+            h('div', { className: 'lw-bot-task-origin' },
+              h('div', { className: 'lw-actions' },
+                h(Icon, { name: 'list' }),
+                h('strong', null, task.taskTitle ? inlineMarkdown(botPublicText(task.taskTitle)) : LW('任务要求')),
+                h(Tag, { tone }, LW(status))),
+              h(BotMarkdown, { source: task.text }),
+              task.acceptance && h('div', null, h('strong', { className: 'lw-hint' }, LW('验收条件')),
+                h(BotMarkdown, { source: publicAcceptance(task.acceptance) })),
+              task.dependencyTitles?.length > 0 && h('div', { className: 'lw-hint' },
+                LW('前置成果 · '), inlineMarkdown(botPublicText(task.dependencyTitles.join('、')))),
+              task.sourceWithdrawn ? h('small', { className: 'lw-hint' }, LW('发起消息已撤回。'))
+                : context && h('details', { className: 'lw-bot-source-context' },
+                  h('summary', null, h(Icon, { name: 'right' }), LW('查看发起消息')),
+                  h('blockquote', null, h(BotMarkdown, { source: task.sourceText }))),
+              h('div', { className: 'lw-actions' },
+                taskGroups.has(task.followUpOf) && h(BotMessageAction, { icon: 'back', onClick: () =>
+                  conversationRef.current?.querySelector('[data-task-id="' + CSS.escape(task.followUpOf) + '"]')
+                    ?.scrollIntoView({ block: 'nearest' }) }, LW('回到原任务')),
+                task.parentSessionId && h(BotMessageAction, { icon: 'link',
+                  onClick: () => openTaskSource(task.parentSessionId, task.sourceMessageId) }, LW('回到发起对话')),
+                task.parentSessionId && !task.originBotLabel && !featMeta.archived && h(BotMessageAction, { icon: 'chat', disabled: followSending,
+                  onClick: () => changeDestination(task) }, LW('跟进任务')))),
+            h(WorkerDispatchActivity, { workspaceId, id: task.dispatchId, status: task.dispatchStatus })),
+          msg.items.slice(1).sort((a, b) => messageTime({ time: a.ts }) - messageTime({ time: b.ts })).map(item => {
+            if (item.taskFollowUp) return h('article', { key: item.id, className: 'lw-bot-msg', 'data-role': 'user', 'aria-label': LW('任务跟进') },
+              h('div', { className: 'lw-bot-msg-meta' }, LW('你 · 跟进'), h('time', { dateTime: item.ts }, fmtDateTime(item.ts))),
+              conversationText(item.text),
+              h(BotMessageAction, { icon: 'link', onClick: () => openTaskSource(item.parentSessionId, item.sourceMessageId) }, LW('在项目对话中查看')))
+            const saved = item.recordId && savedItems.find(record => record.id === item.recordId)
+            const label = item.taskResult ? LW(item.dispatchStatus === 'completed' ? '交付' : status) : LW('工作进展 · 待核验')
+            return h('article', { key: item.id, className: 'lw-bot-msg', 'data-role': 'assistant',
+              'data-task-part': item.taskResult ? 'result' : 'progress', 'aria-label': publicToolText(item.title) },
+              h('div', { className: 'lw-bot-msg-meta' }, h('span', null, title + ' · ' + label),
+                h('time', { dateTime: item.ts }, fmtDateTime(item.ts))),
+              h('strong', null, inlineMarkdown(botPublicText(item.title))),
+              item.text && item.text !== item.title && h(BotMarkdown, { source: item.text }),
+              h(BotSources, { item: saved || item }),
+              h(BotMessageAction, { icon: 'file', record: true, onClick: () => openEntry(saved || item) },
+                LW(saved ? '查看成果' : '查看记录')))
+          }))
+      }
+      return h(BotReferences.Provider, { value: referenceHandlers }, h('section', {
         className: 'lw-panel lw-fbot-shell',
         style: { flex: 1, minHeight: 0, gap: 0, '--lw-paradigm-accent': paradigmAccent },
         'data-paradigm': paradigmAccent ? effectiveParadigm : undefined,
         'aria-label': title,
       },
-        h('div', { ref: mainRef, className: 'lw-fbot-main', style: { '--lw-board-size': boardPercent + '%' } },
+        h('div', { ref: mainRef, className: 'lw-fbot-main', 'data-canvas-minimized': boardMinimized,
+          'data-canvas-expanded': boardExpanded,
+          style: { '--lw-board-size': boardPercent + '%' } },
           h('div', { className: 'lw-fbot-scroll' },
             h('div', { className: 'lw-fbot-center' },
               h('header', { className: 'lw-fbot-head' },
@@ -3508,21 +4275,20 @@ window.__ModuleLoader__.load({
                   h('span', { className: 'lw-bot-pill-badge', 'data-tone': feature, 'aria-hidden': true },
                     h(Icon, { name: botDisplayIcon(featMeta) })),
                   h('span', { className: 'lw-bot-pill-name' }, title),
-                  h('span', { className: 'lw-bot-pill-edit', 'aria-hidden': true }, h(Icon, { name: 'edit' })))),
+                  h('span', { className: 'lw-bot-pill-edit', 'aria-hidden': true }, h(Icon, { name: 'edit' }))),
+                boardMinimized ? Btn({ variant: 'ghost', size: 'xs', 'data-canvas-restore': true, 'aria-controls': boardId,
+                  onClick: () => toggleBoard(false) }, LW('显示画布'))
+                  : !typedLayout && Btn({ variant: 'ghost', size: 'xs', 'data-canvas-minimize': true,
+                    onClick: minimizeBoard }, LW('最小化画布'))),
 
-              h('div', { className: 'lw-bot-board' },
-              Boolean(live?.active) && h('p', { className: 'lw-canvas-live', role: 'status' },
-                live.active + LW(' 项任务正在整理，草稿随进度更新')),
-              busy && h('p', { role: 'status', className: 'lw-hint' }, LW('正在处理…')),
-              notice && h('p', { role: 'status', className: 'lw-notice' }, notice),
-              (error || bot.error) && h('p', { role: 'alert', style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
-                h('span', null, error || bot.error),
-                openModels && /模型|API|key|密钥/i.test(error || bot.error) && Btn({ variant: 'ghost', size: 'xs', onClick: openModels }, LW('模型与 API 设置'))),
+              h('div', { className: 'lw-bot-board', 'data-canvas': Boolean(typedLayout), id: boardId, hidden: boardMinimized },
+              !boardMinimized && boardNotices,
 
               engineering && h(React.Suspense, { fallback: h('p', { className: 'lw-hint' }, LW('正在读取实验…')) },
-                h(BotExperiments, { workspaceId, featureId: feature, updatedEvent: updated, layout: botLayout,
+                h(BotExperiments, { workspaceId, featureId: feature, updatedEvent: updated, layout: botLayout, fields: extensionFields, activeTasks: live?.active,
                   records: ordered.map(item => ({ ...botDisplayRecord(item, extensionFields, botLayout), id: item.id, item })),
-                  addNode, deleteNode, busy,
+                  addNode, deleteNode, editLinks, busy, onMinimize: minimizeBoard,
+                  onFillChat: toggleChatFill, chatFilled: boardExpanded, canvasReady, canvasHidden: boardMinimized,
                   openRecord: record => openEntry(record.item) })),
               !hasContent && !engineering ? h('div', { className: 'lw-fbot-empty-wrap' },
                 h('div', { className: 'lw-empty' },
@@ -3546,7 +4312,7 @@ window.__ModuleLoader__.load({
                           h('strong', { style: { fontSize: 'var(--lw-ui-sm)' } }, `完成 ${doneGoals} / ${items.length}`),
                           h('span', { className: 'lw-hint lw-mono', style: { fontSize: 'var(--lw-ui-xs)' } }, goalPct + '%'))))),
 
-                  hasDetail && ReactDOM.createPortal(h(Dialog, {
+                  hasDetail && !sourcePreview && ReactDOM.createPortal(h(Dialog, {
                     title: detailLabel, wide: true, close: closeDetail,
                     className: showRecordHeader ? 'lw-record-dialog' : '', header: recordHeader,
                   },
@@ -3567,6 +4333,8 @@ window.__ModuleLoader__.load({
                           reading.pages && h('span', { className: 'lw-hint lw-mono' }, reading.page, ' / ', reading.pages),
                           reading.pages && Btn({ variant: 'secondary', size: 'xs', disabled: busy || reading.page >= reading.pages, onClick: () => readResource(reading.id, reading.page + 1, activeItem) }, LW('下一页')),
                           Btn({ variant: 'ghost', size: 'xs', onClick: () => setReading(null) }, LW('返回详情')))),
+                      reading.visualizations?.length > 0 && h(React.Suspense, { fallback: LW('正在绘制图表…') },
+                        h(BotCharts, { charts: reading.visualizations, table: true, truncated: reading.truncated })),
                       h('pre', { className: 'lw-reader-body' }, reading.text || reading.files?.join('\n') || LW('该页没有可提取文本。')))
                     : activeReview ? h('div', { style: { display: 'grid', gap: 8 } },
                       h('strong', null, LW('AI 复盘详情')),
@@ -3591,8 +4359,9 @@ window.__ModuleLoader__.load({
                           Btn({ variant: 'primary', size: 'xs', type: 'submit', disabled: busy }, LW('保存')),
                           Btn({ variant: 'ghost', size: 'xs', onClick: () => setEditingId(null) }, LW('取消'))))
                       : (() => {
-                        const activeImgSrc = entryImageSrc(activeItem)
                         return h(React.Fragment, null,
+                          activeItem.summary && !recordText.startsWith(activeItem.summary) &&
+                            h('p', { className: 'lw-record-lead' }, inlineMarkdown(botPublicText(activeItem.summary))),
                           recordText !== recordTitle && h(RecordBody, { source: recordText }),
                           h(ExtensionElements, { values: Object.fromEntries([
                             [LW('完成条件'), activeItem.completionCriteria], [LW('假设'), activeItem.hypothesis],
@@ -3604,8 +4373,10 @@ window.__ModuleLoader__.load({
                               const target = items.find(item => item.id === id)
                               return target && botDisplayRecord(target, extensionFields, botLayout).title
                             } }),
-                          activeImgSrc && h(EntryImage, { src: activeImgSrc, alt: activeItem.caption || activeItem.title || LW('推送配图'),
-                            className: 'lw-fbot-detail-media', illustrated: true, caption: activeItem.caption }),
+                          h(RecordMedia, { key: activeItem.id, item: activeItem }),
+                          h(BotSources, { item: activeItem }),
+                          attachment && /\.(csv|tsv)$/i.test(attachment.path || '') &&
+                            h(RecordTableChart, { key: attachment.id, workspaceId, id: attachment.id }),
                           attachment && h('div', { className: 'lw-actions lw-canvas-attachment' },
                             h('span', { className: 'lw-actions' }, h(Icon, { name: 'file' }),
                               attachment.path?.split(/[\\/]/).pop()?.replace(/^[a-f0-9]{32}-/, '') || attachment.text),
@@ -3644,7 +4415,8 @@ window.__ModuleLoader__.load({
 
                   typedLayout && !engineering && h(BotParadigmView, {
                     layout: botLayout, items: ordered, fields: extensionFields, activeId: activeItemId, openEntry, busy,
-                    addNode, deleteNode, emptyTitle,
+                    addNode, deleteNode, editLinks, emptyTitle, activeTasks: live?.active, onMinimize: minimizeBoard,
+                    onFillChat: toggleChatFill, chatFilled: boardExpanded, canvasReady, canvasHidden: boardMinimized,
                     toggleGoal: effectiveParadigm === 'goals' ? item => run(() =>
                       action('feature_push', { featureId: item.canvasRail || feature, id: item.id, done: !item.done })) : null,
                   }),
@@ -3717,7 +4489,7 @@ window.__ModuleLoader__.load({
                           h(ExtensionElements, { values: item.elements }),
                           h(EntrySource, { item }))
                       }))))))),
-          h('div', { className: 'lw-bot-divider', role: 'separator', tabIndex: 0,
+          !boardMinimized && h('div', { className: 'lw-bot-divider', role: 'separator', tabIndex: 0,
             'aria-label': LW('调整画布与对话高度'), 'aria-orientation': 'horizontal',
             'aria-valuemin': 25, 'aria-valuemax': 80, 'aria-valuenow': boardPercent,
             onPointerDown: event => { if (event.button === 0) event.currentTarget.setPointerCapture(event.pointerId) },
@@ -3730,11 +4502,18 @@ window.__ModuleLoader__.load({
             },
           }),
           h('section', { className: 'lw-bot-conversation', 'aria-label': LW('与 Bot 对话') },
-            h('div', { ref: conversationRef, className: 'lw-bot-conversation-log' },
+            boardMinimized && boardNotices,
+            h('div', { ref: conversationRef, className: 'lw-bot-conversation-log', onScroll: event => {
+              const log = event.currentTarget
+              followScroll.current = log.scrollHeight - log.scrollTop - log.clientHeight < 56
+            } },
               h('div', { className: 'lw-bot-conversation-log-inner' },
-                  (bot.messages.length > 0 || progress) && h('div', { className: 'lw-bot-turns', 'aria-label': title + LW(' 对话记录') },
-                    bot.messages.map(msg => msg.role === 'speaker' ? h(SpeakerReply, { key: msg.id, label: msg.label, text: msg.text })
-                      : h('div', { key: msg.id, className: 'lw-bot-msg', 'data-role': msg.role, 'data-pending': msg.pending || undefined },
+                  (messages.length > 0 || progress) && h('div', { className: 'lw-bot-turns', 'aria-label': title + LW(' 对话记录') },
+                    messages.map(msg => {
+                      if (msg.role === 'speaker') return h(SpeakerReply, { key: msg.id, label: msg.label, text: publicToolText(msg.text) })
+                      if (msg.role === 'process') return h(ConversationActivity, { key: msg.id, activity: msg.activity })
+                      if (msg.role === 'dispatch') return dispatchThread(msg)
+                      return h('div', { key: msg.id, className: 'lw-bot-msg', 'data-role': msg.role, 'data-pending': msg.pending || undefined },
                       h('div', { className: 'lw-bot-msg-meta' },
                         h('span', null, msg.role === 'user' ? LW('你') : title),
                         h('div', { className: 'lw-bot-msg-actions' },
@@ -3747,12 +4526,21 @@ window.__ModuleLoader__.load({
                               setDraftText(restored)
                               requestAnimationFrame(() => textareaRef.current?.focus())
                             }) }))),
-                      msg.text.replace(/@\[((?:\\.|[^\\\]])*)\]\((?:weave-ref|dsh-session):[A-Za-z0-9_-]+\)/gu, '@$1'))),
+                      msg.role === 'assistant' ? h(BotMarkdown, { source: msg.text }) : conversationText(msg.text))
+                    }),
                     progress && h(TurnProgress, { progress, onApproval: bot.openApproval })))),
 
+          fileChanges,
+          bot.awaitingAnswer && h('div', { className: 'lw-bot-task-reply' },
+            h('span', null, LW('等待你的确认')),
+            h(BotMessageAction, { icon: 'chat', onClick: bot.openApproval }, LW('打开提问卡'))),
           h('form', { className: 'lw-fbot-composer-wrap', onSubmit: submitComposer },
+            following && h('div', { className: 'lw-bot-task-reply' },
+              h('span', null, LW('跟进任务 · ') + cardOverviewText(following.taskTitle || following.text, 110)),
+              h(BotMessageAction, { icon: 'back', disabled: followSending, onClick: () => changeDestination(null) }, LW('返回 Bot 对话'))),
+            followError && h('p', { className: 'lw-bot-task-reply lw-error', role: 'alert' }, publicToolText(followError)),
             h('div', { className: 'lw-fbot-composer' },
-              inputMenu.menu,
+              !following && inputMenu.menu,
               h('input', {
                 ref: fileInputRef,
                 type: 'file',
@@ -3761,20 +4549,22 @@ window.__ModuleLoader__.load({
                 style: { display: 'none' },
                 onChange: e => { const f = e.target.files[0]; e.target.value = ''; if (f) importFile(f) },
               }),
-              h(ComposerAttachmentMenu, { disabled: busy, onPick: imagesOnly => openComposerFile(fileInputRef.current, imagesOnly) }),
+              !following && h(ComposerAttachmentMenu, { disabled: busy, onPick: imagesOnly => openComposerFile(fileInputRef.current, imagesOnly) }),
               h('textarea', {
                 ref: textareaRef,
                 rows: 1,
-                'aria-label': LW('向 ') + title + LW(' 发送消息'),
-                placeholder: LW('消息，/ 指令，@ 引用或邀请'),
+                'aria-label': following ? LW('发送任务跟进') : LW('向 ') + title + LW(' 发送消息'),
+                placeholder: following ? LW('补充要求或提问，发送到发起对话') : LW('消息，/ 指令，@ 引用或邀请'),
                 'aria-controls': inputMenu.controls,
                 'aria-activedescendant': inputMenu.selected,
                 'aria-autocomplete': 'list',
-                value: draftText,
-                onChange: e => { changeDraft(e.target.value); inputMenu.update(e.target.value, e.target.selectionStart) },
+                value: composerText,
+                maxLength: following ? 4000 : undefined,
+                readOnly: followSending,
+                onChange: e => updateComposer(e.target.value, e.target.selectionStart),
                 onBlur: inputMenu.close,
                 onKeyDown: e => {
-                  if (inputMenu.key(e)) return
+                  if (!following && inputMenu.key(e)) return
                   if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent?.isComposing) {
                     e.preventDefault()
                     submitComposer()
@@ -3785,15 +4575,58 @@ window.__ModuleLoader__.load({
                 type: 'submit',
                 className: 'lw-fbot-send-btn',
                 'aria-label': LW('发送'),
-                title: bot.sending ? LW('发送中…') : LW('发送'),
-                disabled: busy || bot.sending || !draftText.trim(),
+                title: sending ? LW('发送中…') : LW('发送'),
+                disabled: busy || sending || !composerText.trim(),
               }, h(Icon, { name: 'send' })))))),
 
+        sourcePreview && ReactDOM.createPortal(h(Dialog, {
+          title: sourcePreview.title, close: closeSource, wide: true,
+        },
+          sourcePreview.pending && h('p', { role: 'status' }, LW('正在读取资料…')),
+          sourcePreview.error && h('p', { role: 'alert' }, publicToolText(sourcePreview.error)),
+          sourcePreview.record && h('div', { className: 'lw-record-content' },
+            h(RecordBody, { source: botPublicText(sourcePreview.record.text) }),
+            h(BotSources, { item: sourcePreview.record }),
+            sourcePreview.record.rail === 'library' && sourcePreview.record.path?.startsWith('resources/') &&
+              h(BotSources, { item: { outputFiles: [{ id: sourcePreview.record.id,
+                name: sourcePreview.record.title || sourcePreview.record.path.split('/').at(-1) }] } }),
+            h(EntrySource, { item: sourcePreview.record })),
+          sourcePreview.file && h(React.Fragment, null,
+            sourcePreview.entry?.note && h('p', null, sourcePreview.entry.note),
+            sourcePreview.entry?.text && h('pre', { className: 'lw-reader-body' }, sourcePreview.entry.text),
+            sourcePreview.entry?.truncated && h('p', { className: 'lw-hint' }, LW('预览仅显示文件开头。')),
+            h('div', { className: 'lw-actions' },
+              sourcePreview.entry?.pages > 1 && h(React.Fragment, null,
+                Btn({ size: 'xs', disabled: sourcePreview.entry.page <= 1,
+                  onClick: () => openSource('file', sourcePreview.file, sourcePreview.entry.page - 1) }, LW('上一页')),
+                h('span', null, sourcePreview.entry.page + ' / ' + sourcePreview.entry.pages),
+                Btn({ size: 'xs', disabled: sourcePreview.entry.page >= sourcePreview.entry.pages,
+                  onClick: () => openSource('file', sourcePreview.file, sourcePreview.entry.page + 1) }, LW('下一页'))),
+              Btn({ size: 'xs', onClick: () => downloadSource(sourcePreview.file) }, LW('下载 ') + sourcePreview.file.name)))),
+        document.body),
         nodeEdit && ReactDOM.createPortal(h(Dialog, {
-          title: nodeEdit.remove ? LW('删除节点') : nodeEdit.parent ? LW('添加分支') : LW('添加节点'), close: closeNodeEdit,
+          title: nodeEdit.remove ? LW('删除节点') : nodeEdit.record ? LW('编辑连线')
+            : nodeEdit.parent ? LW('添加分支') : LW('添加节点'), close: closeNodeEdit,
         }, h('form', { className: 'lw-form', onSubmit: saveNode },
           nodeEdit.remove ? h('p', null, LW('删除「') + botDisplayRecord(nodeEdit.remove, extensionFields, botLayout).title
-            + LW('」及其连线？下级节点会保留。'))
+            + (nodeEdit.remove.externalRun ? LW('」及其画布连线？运行记录和产物会保留。') : LW('」及其连线？下级节点会保留。')))
+            : nodeEdit.record ? h(React.Fragment, null,
+              h('label', null, LW('上级节点'), h(Select, { ariaLabel: LW('上级节点'), value: nodeEdit.parentId,
+                onChange: parentId => setNodeEdit({ ...nodeEdit, parentId }),
+                options: [
+                  { value: '', label: LW('无') },
+                  ...(nodeEdit.record.parentId && !parentCandidates.some(item => item.id === nodeEdit.record.parentId)
+                    ? [{ value: nodeEdit.record.parentId, label: LW('当前关联的来源') }] : []),
+                  ...parentCandidates.map(item => ({ value: item.id, label: linkLabel(item) })),
+                ] })),
+              h('fieldset', { className: 'lw-canvas-link-list' },
+                h('legend', null, LW('其他关联')),
+                !linkCandidates.length && h('span', { className: 'lw-hint' }, LW('先在画布上添加其他卡片。')),
+                linkCandidates.map(item => h('label', { key: item.id },
+                  h('input', { type: 'checkbox', checked: nodeEdit.relatedIds.includes(item.id), onChange: event =>
+                    setNodeEdit({ ...nodeEdit, relatedIds: event.target.checked
+                      ? [...nodeEdit.relatedIds, item.id] : nodeEdit.relatedIds.filter(id => id !== item.id) }) }),
+                  linkLabel(item)))))
             : h(React.Fragment, null,
               nodeEdit.parent && h('p', { className: 'lw-hint' }, LW('上级节点 ') + botDisplayRecord(nodeEdit.parent, extensionFields, botLayout).title),
               h('label', null, LW('节点标题'), h('input', { autoFocus: true, required: true, maxLength: 200,
@@ -3804,12 +4637,12 @@ window.__ModuleLoader__.load({
           h('div', { className: 'lw-actions lw-dialog-actions' },
             Btn({ variant: 'ghost', disabled: busy, onClick: closeNodeEdit }, LW('取消')),
             Btn({ variant: nodeEdit.remove ? 'danger' : 'primary', type: 'submit', disabled: busy },
-              LW(nodeEdit.remove ? '确认删除' : '保存节点'))))), document.body),
+              LW(nodeEdit.remove ? '确认删除' : nodeEdit.record ? '保存连线' : '保存节点'))))), document.body),
         editingBot && h(FeatureBotEditDialog, {
           workspaceId, projectName: row?.name, featureId: feature, featMeta,
           currentLabel: title, currentHint: subtitle,
           onSaved: onRenamed, onCancel: () => setEditingBot(false),
-        }))
+        })))
     }
 
     const paths = {
@@ -3887,19 +4720,14 @@ window.__ModuleLoader__.load({
     }))
 
     function install(ctx) {
-      // The host supplies fixed display labels in the authenticated index, before rendering.
-      const toolLabels = JSON.parse(document.getElementById('weave-tool-labels')?.textContent || '{}')
-      const toolLabel = name => {
-        const action = name.slice('labweave_'.length)
-        return Object.hasOwn(toolLabels, action) ? toolLabels[action] : 'Weave 工具：' + action
-      }
+      const toolLabel = publicToolName
       const nativeWorkLabels = {
         read: '阅读工作区文件', write: '写入工作区文件', edit: '修改工作区文件',
-        bash: '运行工作区命令', powershell: '运行工作区命令', web_search: '检索网页',
+        bash: '运行工作区命令', powershell: '运行工作区命令', pwsh: '运行工作区命令', web_search: '搜索网页',
         grep: '查找工作区内容', glob: '查找工作区文件',
       }
       // Use the active turn's events and stream block types to describe progress.
-      function conversationProgress(entries) {
+      function conversationProgress(entries, { bot = false } = {}) {
         const start = entries.findLastIndex(entry => entry.event.type === 'turn/start')
         if (start < 0) return preparingReply
         const calls = new Map(), approvals = new Set()
@@ -3934,6 +4762,7 @@ window.__ModuleLoader__.load({
               break
             case 'tool/call': {
               const name = data.name.replace(/^labweave_/, '')
+              if (bot && recordWriteTools.has(name)) break
               const label = Object.hasOwn(toolLabels, name) ? toolLabels[name]
                 : Object.hasOwn(nativeWorkLabels, name) ? nativeWorkLabels[name] : ''
               calls.set(data.callId, label)
@@ -3957,13 +4786,14 @@ window.__ModuleLoader__.load({
           }
         }
         let text
-        if (approvals.size) text = LW('等待你的工具授权')
-        else if (calls.size > 1) text = '正在处理 ' + calls.size + ' 个工具任务'
+        if (approvals.size) text = LW(bot ? '等待你的确认' : '等待你的工具授权')
+        else if (calls.size > 1) text = bot ? LW('正在并行处理') : '正在处理 ' + calls.size + ' 个工具任务'
         else if (calls.size === 1) {
           const [label] = calls.values()
-          text = label ? '正在' + label : LW('正在执行工具')
+          text = label ? '正在' + label : LW(bot ? '正在处理任务' : '正在执行工具')
         } else if (result && ['waiting', 'result'].includes(phase)) {
-          text = result.failed ? LW('工具返回错误，正在处理')
+          if (bot) text = LW(result.failed ? '遇到问题，正在处理' : '正在整理结果')
+          else text = result.failed ? LW('工具返回错误，正在处理')
             : result.label ? '正在整理「' + result.label + '」的结果' : LW('正在整理工具结果')
         } else {
           text = {
@@ -4200,6 +5030,121 @@ window.__ModuleLoader__.load({
       }
       const notice = msg => window.dispatchEvent(new CustomEvent('labweave:notice', { detail: msg }))
       const ready = refresh().catch(() => [])
+      const activityStorageKey = 'labweave.conversationActivity.v1'
+      const pageOpenedAt = Date.now()
+      let savedActivity
+      try { savedActivity = JSON.parse(localStorage.getItem(activityStorageKey)) } catch {}
+      const trackActivitySince = Number(savedActivity?.since) || pageOpenedAt
+      const outcomes = new Map(Object.entries(savedActivity?.outcomes || {}))
+      const openedStreams = new Map()
+      let activeStreams = new Set()
+      let completionToasts = []
+      let activityRevision = 0
+      const activityListeners = new Set()
+      const publishActivity = () => {
+        activityRevision++
+        activityListeners.forEach(listener => listener())
+      }
+      const useActivity = () => React.useSyncExternalStore(listener => {
+        activityListeners.add(listener)
+        return () => activityListeners.delete(listener)
+      }, () => activityRevision)
+      const activityLabels = { running: LW('执行中'), completed: LW('已完成，未查看'), failed: LW('执行失败，未查看') }
+      const botActivityKey = (workspaceId, featureId) => workspaceId + ':' + featureId
+      const activityDescription = status => ({ 'aria-description': activityLabels[status] })
+      const activityDot = status => status && h('span', {
+        className: 'lw-activity-dot', 'data-status': status, 'aria-hidden': true, title: activityLabels[status],
+      })
+      function activityStatus(key) {
+        const outcome = outcomes.get(key)
+        return activeStreams.has(key) ? 'running' : outcome && !outcome.seen ? outcome.status : undefined
+      }
+      const sessionActivity = session => session.running ? 'running' : activityStatus(session.id)
+      const botActivity = (row, featureId) => activityStatus(botActivityKey(row.workspaceId, featureId))
+      const aggregateActivity = statuses => ['running', 'failed', 'completed'].find(status => statuses.includes(status))
+      const workspaceActivity = (row, workspaces, sessions, excludedIds) => aggregateActivity([
+        ...sessionsFor(row.workspaceId, workspaces, sessions, excludedIds).map(sessionActivity),
+        ...(row.features || []).map(bot => botActivity(row, bot.id)),
+      ])
+      function saveActivity() {
+        try { localStorage.setItem(activityStorageKey, JSON.stringify({
+          since: trackActivitySince, outcomes: Object.fromEntries(outcomes),
+        })) } catch {}
+      }
+      function markActivitySeen(key) {
+        openedStreams.set(key, Date.now())
+        const outcome = outcomes.get(key)
+        if (!outcome || outcome.seen) return
+        outcomes.set(key, { ...outcome, seen: true })
+        saveActivity()
+        publishActivity()
+      }
+      function dismissCompletion(id) {
+        completionToasts = completionToasts.filter(item => item.terminal.id !== id)
+        publishActivity()
+      }
+      ctx.effect(() => {
+        const controller = new AbortController()
+        let timer
+        let fetching = false
+        saveActivity()
+        const mergeRead = event => {
+          if (event.key !== activityStorageKey || !event.newValue) return
+          try {
+            let updated = false
+            for (const [key, incoming] of Object.entries(JSON.parse(event.newValue).outcomes || {})) {
+              const current = outcomes.get(key)
+              if (incoming.seen && (!current || incoming.time > current.time || (current.id === incoming.id && !current.seen))) {
+                outcomes.set(key, incoming)
+                updated = true
+              }
+            }
+            if (updated) publishActivity()
+          } catch {}
+        }
+        async function pollActivity() {
+          clearTimeout(timer)
+          if (fetching || controller.signal.aborted) return
+          fetching = true
+          try {
+            const snapshot = await api('conversation-activity', undefined,
+              AbortSignal.any([controller.signal, AbortSignal.timeout(8000)]))
+            if (controller.signal.aborted) return
+            const running = new Set()
+            const finished = []
+            let updated = false
+            for (const item of snapshot) {
+              const key = item.sessionId || botActivityKey(item.workspaceId, item.featureId)
+              if (item.running) running.add(key)
+              const outcome = item.terminal
+              const previous = outcomes.get(key)
+              if (!outcome || outcome.time < trackActivitySince || previous?.id === outcome.id
+                  || previous?.time > outcome.time) continue
+              outcomes.set(key, { ...outcome, seen: outcome.time <= (openedStreams.get(key) || 0) })
+              updated = true
+              if (outcome.status === 'completed' && outcome.time >= pageOpenedAt) finished.push(item)
+            }
+            if (updated) saveActivity()
+            if (finished.length) completionToasts = [...completionToasts,
+              ...finished.sort((a, b) => a.terminal.time - b.terminal.time)]
+            const runningChanged = running.size !== activeStreams.size || [...running].some(key => !activeStreams.has(key))
+            activeStreams = running
+            if (updated || runningChanged) publishActivity()
+          } catch {} finally {
+            fetching = false
+            if (!controller.signal.aborted) timer = setTimeout(pollActivity, document.hidden ? 4000 : 1000)
+          }
+        }
+        window.addEventListener('storage', mergeRead)
+        document.addEventListener('visibilitychange', pollActivity)
+        void pollActivity()
+        return () => {
+          clearTimeout(timer)
+          controller.abort()
+          window.removeEventListener('storage', mergeRead)
+          document.removeEventListener('visibilitychange', pollActivity)
+        }
+      }, 'LabWeave conversation activity')
       function wrap(object, key, implementation) {
         const original = object[key]
         const replacement = function (...args) { return implementation.call(this, original.bind(this), ...args) }
@@ -4242,10 +5187,36 @@ window.__ModuleLoader__.load({
       }
       function forgetPage() { syncChoice(null); splitPanes = []; chatSplit = false }
       function openChat(id, { clearSplit = true } = {}) {
+        markActivitySeen(id)
         rememberChat(id)
         if (clearSplit) forgetPage()
         nav.openSession(id)
         changed()
+      }
+      let cancelSourceReveal = () => {}
+      function openTaskSource(row, sessionId, messageId) {
+        const source = sessionsFor(row.workspaceId, ctx.workspaces.list.getSnapshot(), ctx.sessions.list.getSnapshot())
+          .find(item => item.id === sessionId)
+        if (!source) {
+          notice(LW('发起对话当前不可用。'))
+          return
+        }
+        cancelSourceReveal()
+        openChat(source.id)
+        if (!messageId) return
+        const selector = '[data-conversation-content][data-conversation-session="' + CSS.escape(source.id) +
+          '"] [data-lw-source-message="' + CSS.escape(messageId) + '"]'
+        const reveal = () => {
+          const anchor = [...document.querySelectorAll(selector)].find(item => item.getClientRects().length)
+          if (!anchor) return
+          cancelSourceReveal()
+          anchor.scrollIntoView({ block: 'center' })
+        }
+        const observer = new MutationObserver(reveal)
+        observer.observe(document.body, { childList: true, subtree: true })
+        const timer = setTimeout(() => cancelSourceReveal(), 5000)
+        cancelSourceReveal = () => { observer.disconnect(); clearTimeout(timer) }
+        requestAnimationFrame(reveal)
       }
       function draft(scope, prompt) {
         const row = rows.find(r => r.scope === scope)
@@ -4257,7 +5228,7 @@ window.__ModuleLoader__.load({
         const members = historySessionsFor(row.workspaceId, ctx.workspaces.list.getSnapshot(), ctx.sessions.list.getSnapshot(), allBotSessionIds())
         const target = recentSessionFor(row.workspaceId, members)
         if (clearSplit) forgetPage()
-        if (target) { rememberChat(target.id); nav.openSession(target.id) }
+        if (target) { markActivitySeen(target.id); rememberChat(target.id); nav.openSession(target.id) }
         else nav.startSession(row.workspaceId)
         changed()
       }
@@ -4278,6 +5249,7 @@ window.__ModuleLoader__.load({
           return
         }
         if (!hasFeature(row, feature)) return
+        markActivitySeen(botActivityKey(row.workspaceId, feature))
         const pane = { workspaceId: row.workspaceId, feature }
         if (activePanel === pageKey && splitPanes.length === 0 && choice?.workspaceId) splitPanes = [choice]
         if (!splitPanes.some(p => p.workspaceId === pane.workspaceId && p.feature === pane.feature)) {
@@ -4358,7 +5330,7 @@ window.__ModuleLoader__.load({
       ctx.effect(() => wrap(ctx.workspaces, 'delete', async (remove, id) => {
         const known = await refresh()
         const row = known.find(r => r.workspaceId === id)
-        if (row?.scope === 'global') throw Error(LW('全局助手保留所有全局对话。可在侧栏归档单个会话。'))
+        if (row?.scope === 'global') throw Error(LW('全局助手保留所有全局对话。可在侧栏归档单个对话。'))
         if (row) await api('delete', { workspaceId: id })
         const result = await remove(id)
         splitPanes = splitPanes.filter(p => p.workspaceId !== id)
@@ -4367,41 +5339,48 @@ window.__ModuleLoader__.load({
         return result
       }), 'LabWeave global workspace lifetime')
       if (typeof ctx.locale.translate === 'function') ctx.effect(() => wrap(ctx.locale, 'translate', (original, ns, key, params) => {
+        const alignTerms = value => {
+          if (typeof value !== 'string' || !/[\u3400-\u9fff]/.test(value)) return value
+          return value.replaceAll('推理等级', '推理强度')
+            .replaceAll('自动化任务', '定时任务')
+            .replaceAll('预定任务', '定时任务')
+            .replaceAll('重复规则（RRULE）', '重复规则')
+        }
         if (ns === 'approval' && key === 'escalation' && params?.toolName?.startsWith('labweave_')) {
-          return original(ns, key, { ...params, toolName: toolLabel(params.toolName) })
+          return alignTerms(original(ns, key, { ...params, toolName: toolLabel(params.toolName) }))
         }
         if (ns === 'chat' && (key === 'message.toolAdded' || key === 'message.toolRemoved') && params?.name?.startsWith('labweave_')) {
-          return original(ns, key, { ...params, name: toolLabel(params.name) })
+          return alignTerms(original(ns, key, { ...params, name: toolLabel(params.name) }))
         }
         const branded = brandedTranslation(original, ns, key, params, ctx.locale.getSnapshot().active)
-        if (branded !== undefined) return branded
+        if (branded !== undefined) return alignTerms(branded)
         const originalText = original(ns, key, params)
         if (ns === 'chat' && (key === 'chat.deepDiving' || key === 'chat.deepDivingFor')) {
-          return originalText.replace(/^深度求索中/, '深度思考中')
+          return alignTerms(originalText.replace(/^深度求索中/, '深度思考中'))
         }
         if (key === 'brand.localBuild') return 'Weave'
         if (ns === 'settings' && key === 'developerTools.description') {
           return /[\u3400-\u9fff]/.test(originalText) ? '开启后，显示执行轨迹与本轮代码差异' : 'Shows execution trajectory and code diffs'
         }
         if (key === 'fontSize.text.description') {
-          return /[\u3400-\u9fff]/.test(originalText) ? '调整界面与会话正文字号（默认 16px）' : 'Adjusts interface and conversation font size (default 16px)'
+          return /[\u3400-\u9fff]/.test(originalText) ? '调整界面与对话正文字号（默认 16px）' : 'Adjusts interface and conversation font size (default 16px)'
         }
         if (ns === 'sidebar' && (key === 'session.new' || key === 'session.new.label')) return globalRow()?.name || 'Weave'
         if (ns === 'conversation') {
           if (key === 'workspace.defaultName') return globalRow()?.name || 'Weave'
-          if (!['hero.headline', 'hero.preview', 'placeholder.hero'].includes(key)) return originalText
+          if (!['hero.headline', 'hero.preview', 'placeholder.hero'].includes(key)) return alignTerms(originalText)
           const room = currentRow()
           if (key === 'hero.headline') return room?.scope === 'global' || !room ? (globalRow()?.name || 'Weave') : room.name
           if (key === 'hero.preview') return ''
           if (key === 'placeholder.hero' && /[\u3400-\u9fff]/.test(originalText)) return room?.scope === 'global' || !room
             ? LW('和助手聊聊你的想法…') : LW('在这个项目里继续讨论…')
         }
-        if (!['workspace', 'schedule.manager'].includes(ns)) return originalText
+        if (!['workspace', 'schedule.manager'].includes(ns)) return alignTerms(originalText)
         const cn = /[\u3400-\u9fff]/.test(originalText)
         if (key === 'workspace.defaultName' || key === 'host.defaultProject') return rows.find(r => r.scope === 'global')?.name || originalText
         if (key === 'section.workspaces' && (cn || originalText === 'Workspaces')) return cn ? LW('工作区') : 'Workspaces'
-        if (key === 'workspace.add' && (cn || /^add workspace$/i.test(originalText))) return cn ? createWorkspaceProject : 'New workspace project'
-        return originalText
+        if (key === 'workspace.add' && (cn || /^add workspace$/i.test(originalText))) return cn ? createWorkspaceProject : 'New project'
+        return alignTerms(originalText)
       }), 'LabWeave project labels')
       ctx.effect(() => {
         const apiEntries = new WeakMap()
@@ -4608,7 +5587,7 @@ window.__ModuleLoader__.load({
                 const found = await composerCandidates(session.sessionId, source.trigger, req.query, req.signal)
                 return found.map(item => ({
                   name: item.name, description: item.description, section: item.section,
-                  icon: item.section === '对话' || item.section === '邀请发言' ? 'session'
+                  icon: composerSessionSections.has(item.section) ? 'session'
                     : item.section === '空间存储' ? 'file' : item.drill ? 'folder' : undefined,
                   ...(item.drill && { drill: true }),
                   value: JSON.stringify({ weave: item }),
@@ -4648,7 +5627,7 @@ window.__ModuleLoader__.load({
               }
               if (chosen.drill && (args.action === 'drill' || !chosen.text)) return { text: '@' + chosen.drill, continue: true }
               if (source.trigger === '@') return { insert: { source: 'reference', ref: chosen.text,
-                label: chosen.label || chosen.name, appearance: chosen.section === '对话' || chosen.section === '邀请发言' ? 'session' : 'file',
+                label: chosen.label || chosen.name, appearance: composerSessionSections.has(chosen.section) ? 'session' : 'file',
                 clipboardText: chosen.text } }
               return { text: chosen.text }
             }))
@@ -4749,7 +5728,10 @@ window.__ModuleLoader__.load({
               } })
               const messageId = props.node?.data?.messageId
               const binding = messageId && ctx.sessions.binding(props.sessionId)
-              return binding ? h(React.Fragment, null, userRow, h(NativeSpeakerReplies, { binding, messageId })) : userRow
+              return binding ? h(React.Fragment, null,
+                h('span', { className: 'lw-followup-source', 'data-lw-source-message': messageId, 'aria-hidden': true }),
+                messageId.startsWith('weave-followup-') && h('small', { className: 'lw-followup-label' }, LW('来自 Bot 的任务跟进')),
+                userRow, h(NativeSpeakerReplies, { binding, messageId })) : userRow
             }
             entry.component = replacement
             wrapped.set(entry, { original, replacement })
@@ -4803,9 +5785,21 @@ window.__ModuleLoader__.load({
         const [items, setItems] = React.useState([])
         const [error, setError] = React.useState('')
         const [busy, setBusy] = React.useState(false)
+        const anchor = React.useRef(null)
+        const [composer, setComposer] = React.useState(null)
         const sending = React.useRef(false)
         const isVisible = () => Boolean(document.querySelector(
           '[data-conversation-content][data-conversation-session="' + CSS.escape(sessionId) + '"]')?.getClientRects().length)
+        React.useLayoutEffect(() => {
+          const conversation = anchor.current?.closest('[data-conversation-content]')
+          if (!conversation) return
+          const locate = () => setComposer(anchor.current?.closest('[data-composer-card]') ||
+            conversation.querySelector('[data-composer-card]'))
+          locate()
+          const observer = new MutationObserver(locate)
+          observer.observe(conversation, { childList: true, subtree: true })
+          return () => observer.disconnect()
+        }, [sessionId])
         async function forward(item, confirm) {
           if (sending.current || !isVisible()) return
           sending.current = true
@@ -4831,7 +5825,7 @@ window.__ModuleLoader__.load({
               const result = await projectSession.prompt([{ type: 'text', text: claimed.task }], 'queue')
               if (result?.ok === false) {
                 submitted = false
-                throw Error(sessionErrorText(result.error) || LW('目标项目会话暂时无法接单。'))
+                throw Error(sessionErrorText(result.error) || LW('目标项目对话暂时无法接单。'))
               }
               accepted = true
             })
@@ -4864,32 +5858,30 @@ window.__ModuleLoader__.load({
           const timer = setInterval(refresh, 1000)
           return () => { ctrl.abort(); clearInterval(timer) }
         }, [sessionId])
-        if (!items.length && !error) return null
-        return h('section', { className: 'lw-project-handoffs', 'aria-label': LW('项目转交') },
-          error && h('p', { role: 'alert' }, error),
-          items.map(item => h('article', { key: item.id, className: 'lw-speaker-reply' },
-            h('strong', null, LW('转交项目 ') + item.projectName),
-            h('p', null, item.task),
-            item.status === 'sending' ? Btn({ size: 'xs', onClick: () => openChat(item.targetSessionId) }, LW('到项目会话查看'))
-              : h('div', { className: 'lw-actions' },
-              h('span', { className: 'lw-hint' }, item.status === 'ready' ? LW('正在准备转交') : LW('等待确认')),
-              Btn({ variant: 'primary', size: 'xs', disabled: busy, onClick: () => forward(item, true) }, LW('确认并转交')),
-              Btn({ variant: 'ghost', size: 'xs', disabled: busy, onClick: async () => {
-                try {
-                  await api('project-handoffs', { sessionId, id: item.id, action: 'dismiss' })
-                  setItems(previous => previous.filter(entry => entry.id !== item.id))
-                } catch (err) { setError(err.message) }
-              } }, LW('取消'))))))
+        return h(React.Fragment, null, h('span', { hidden: true, ref: anchor }),
+          composer && (items.length > 0 || error) && ReactDOM.createPortal(
+            h('section', { className: 'lw-project-handoffs', 'aria-label': LW('项目转交'), 'aria-busy': busy },
+              error && h('p', { className: 'lw-error lw-project-handoff-error', role: 'alert' }, error),
+              items.map(item => h('article', { key: item.id, className: 'lw-project-handoff' },
+                h('div', { className: 'lw-project-handoff-heading' },
+                  h('span', { className: 'lw-project-handoff-icon', 'aria-hidden': true }, h(Icon, { name: 'send' })),
+                  h('strong', null, LW('转交给「') + item.projectName + '」')),
+                h('p', { className: 'lw-project-handoff-task' }, item.task),
+                h('div', { className: 'lw-project-handoff-actions' },
+                  item.status === 'sending'
+                    ? Btn({ size: 'xs', onClick: () => openChat(item.targetSessionId) }, LW('到项目对话查看'))
+                    : item.status === 'ready'
+                      ? h('span', { className: 'lw-hint', role: 'status' }, LW('正在转交…'))
+                      : h(React.Fragment, null,
+                        Btn({ variant: 'ghost', size: 'xs', disabled: busy, onClick: async () => {
+                          try {
+                            await api('project-handoffs', { sessionId, id: item.id, action: 'dismiss' })
+                            setItems(previous => previous.filter(entry => entry.id !== item.id))
+                            setError('')
+                          } catch (err) { setError(err.message) }
+                        } }, LW('取消')),
+                        Btn({ variant: 'primary', size: 'xs', disabled: busy, onClick: () => forward(item, true) }, LW('确认并转交'))))))), composer))
       }
-      slot('shell.overlay', { id: 'labweave-project-handoffs' }, function HandoffOverlay() {
-        useNav()
-        const sessions = useStore(ctx.sessions.list)
-        const workspaces = useStore(ctx.workspaces.list)
-        const global = rows.find(row => row.scope === 'global')
-        const workspace = global && workspaces.items.find(item => item.workspaceId === global.workspaceId)
-        const sessionId = workspace?.sessionIds.find(id => sessions.byId[id]?.retainedBy.mainView > 0)
-        return sessionId ? h(ProjectHandoffs, { key: sessionId, sessionId }) : null
-      })
       slot('conversation.input.dock', { id: 'labweave-messenger', order: 12, inject: sessionId => ({ sessionId }) }, ({ sessionId }) => {
         useNav()
         const workspace = useStore(ctx.workspaces.list).items.find(w => w.sessionIds.includes(sessionId))
@@ -4903,7 +5895,56 @@ window.__ModuleLoader__.load({
             scope + ' [data-variant="think"]{display:none!important}',
             scope + ' [data-content-phase="active"] [class*="scrollBody"],' + scope + ' [data-phase="active"] [class*="scrollBody"]{padding-top:8px}',
           ].join('')),
-          binding && h(GlobalConversationProgress, { key: sessionId, binding }))
+          binding && h(GlobalConversationProgress, { key: sessionId, binding }),
+          h(ProjectHandoffs, { key: 'handoffs:' + sessionId, sessionId }))
+      })
+      function ProjectConversationFiles({ sessionId, binding }) {
+        const [changes, setChanges] = React.useState([])
+        const [waitingApproval, setWaitingApproval] = React.useState(false)
+        React.useEffect(() => {
+          const controller = new AbortController()
+          let loading = false
+          async function refresh() {
+            if (loading || document.hidden) return
+            loading = true
+            try {
+              const events = await api('project-file-changes', { sessionId }, controller.signal)
+              if (!controller.signal.aborted) setChanges(events)
+            } catch {} finally { loading = false }
+          }
+          function approvals() {
+            const pending = new Set()
+            for (const { event } of binding?.eventSource?.getSnapshot()?.entries || []) {
+              if (event.type === 'approval/asked') pending.add(event.data.id)
+              if (event.type === 'approval/decided') pending.delete(event.data.id)
+              if (event.type === 'turn/end') pending.clear()
+            }
+            setWaitingApproval(pending.size > 0)
+          }
+          approvals()
+          void refresh()
+          const off = binding?.eventSource?.subscribe(approvals)
+          const timer = setInterval(refresh, 2500)
+          return () => { controller.abort(); clearInterval(timer); off?.() }
+        }, [sessionId, binding])
+        const scope = '[data-conversation-session="' + CSS.escape(sessionId) + '"]'
+        const replacedTools = ['[data-tool^="labweave_"]', '[data-tool^="mcp__labweave__"]',
+          ...['write', 'edit', 'bash', 'powershell', 'pwsh', 'apply_patch'].map(name => '[data-tool="' + name + '"]')].join(',')
+        const labels = { added: LW('新增'), changed: LW('修改'), removed: LW('删除') }
+        return h(React.Fragment, null,
+          !waitingApproval && h('style', null,
+            scope + ' [data-chat-call-id]:has(:is(' + replacedTools + ')){display:none!important}'),
+          changes.length > 0 && h('details', { className: 'lw-project-file-changes' },
+            h('summary', null, LW('项目文件变更')),
+            h('ul', { 'aria-label': LW('项目文件变更记录') },
+              changes.flatMap(change => change.files.map(file => h('li', { key: change.id + ':' + file.path },
+                h(Tag, { tone: file.action === 'removed' ? 'warning' : 'neutral' }, labels[file.action]),
+                h('span', null, file.path)))))))
+      }
+      slot('conversation.input.dock', { id: 'labweave-project-file-changes', order: 12, inject: sessionId => ({ sessionId }) }, ({ sessionId }) => {
+        const workspace = useStore(ctx.workspaces.list).items.find(w => w.sessionIds.includes(sessionId))
+        if (!workspace || !rows.some(row => row.workspaceId === workspace.workspaceId && row.scope !== 'global')) return null
+        return h(ProjectConversationFiles, { key: sessionId, sessionId, binding: ctx.sessions.binding(sessionId) })
       })
       slot('conversation.input.left', { id: 'labweave-assistant-attach', order: -20, inject: sessionId => ({ sessionId }) }, ({ sessionId }) => {
         useNav()
@@ -5055,12 +6096,16 @@ window.__ModuleLoader__.load({
         const current = currentSession()
         const panelId = ctx.layout.panelInfo.getSnapshot().activePanelId
         if (isAssistantOpen(panelId, current)) {
+          markActivitySeen(current.id)
           foldedAssistantId = current.id
           showWelcome()
           return
         }
         const folded = panelId === welcomeKey && ctx.sessions.list.getSnapshot().byId[foldedAssistantId]
-        const resume = folded && currentRow(folded)?.scope === 'global' ? folded : null
+        const members = g ? sessionsFor(g.workspaceId, ctx.workspaces.list.getSnapshot(), ctx.sessions.list.getSnapshot(), allBotSessionIds()) : []
+        const pending = members.find(session => sessionActivity(session) === 'running') ||
+          members.filter(session => activityStatus(session.id)).sort((a, b) => outcomes.get(b.id)?.time - outcomes.get(a.id)?.time)[0]
+        const resume = pending || (folded && currentRow(folded)?.scope === 'global' ? folded : null)
         foldedAssistantId = null
         if (!resume || resume.blank) queueAssistantEntrance(button)
         closeDrawer()
@@ -5075,12 +6120,14 @@ window.__ModuleLoader__.load({
       }
       slot('sidebar.brand.name', { priority: -30 }, () => {
         useNav()
+        useActivity()
         const ref = React.useRef(null)
         const panel = useStore(ctx.layout.panelInfo)
-        useStore(ctx.sessions.list)
-        useStore(ctx.workspaces.list)
+        const sessions = useStore(ctx.sessions.list)
+        const workspaces = useStore(ctx.workspaces.list)
         const active = Boolean(isAssistantOpen(panel.activePanelId, currentSession()))
         const label = active ? LW('收回助手') : LW('打开助手')
+        const status = globalRow() && workspaceActivity(globalRow(), workspaces, sessions, allBotSessionIds())
         React.useLayoutEffect(() => {
           const btn = ref.current?.closest('button')
           if (!btn) return
@@ -5095,6 +6142,16 @@ window.__ModuleLoader__.load({
           btn.addEventListener('click', onClick)
           return () => btn.removeEventListener('click', onClick)
         }, [label, active])
+        React.useLayoutEffect(() => {
+          const btn = ref.current?.closest('button')
+          if (!btn || !status) return
+          btn.dataset.lwAssistantActivity = status
+          btn.setAttribute('aria-description', activityLabels[status])
+          return () => {
+            delete btn.dataset.lwAssistantActivity
+            btn.removeAttribute('aria-description')
+          }
+        }, [status])
         return h('span', { ref, className: 'lw-brand-entry' },
           h('span', { className: 'lw-wordmark' }, 'Weave'),
           h('span', { className: 'lw-brand-assistant', 'data-active': active ? 'true' : 'false', 'aria-hidden': true }, label))
@@ -5115,27 +6172,41 @@ window.__ModuleLoader__.load({
           if (currentSession()?.id !== blank.id || ctx.layout.panelInfo.getSnapshot().activePanelId !== null || chatSplit) return jump(blank.id)
           return closeDrawer()
         }
+        if (hasFeature(row, feature)) markActivitySeen(botActivityKey(row.workspaceId, feature))
         selectPage(row.workspaceId, feature); closeDrawer()
       }
       function startProjectChat(row) { forgetPage(); nav.startSession(row.workspaceId); closeDrawer(); changed() }
       function jump(id) { openChat(id); closeDrawer() }
 
       function ProjectBranch({ row, sessions, activePage, current, filter, onRenameChat, onDeleteChat, onRenameFeature, onDeleteFeature }) {
+        useActivity()
         const { value, error } = useProject(row.workspaceId, 'navigation')
         const [chatsOpen, setChatsOpen] = React.useState(true)
+        const [archiveOpen, setArchiveOpen] = React.useState(false)
+        const archiveId = React.useId()
         const featureList = projectFeatures(row, value)
         const archivedBots = featureList.filter(bot => bot.archived)
+        const hasArchivedBots = archivedBots.length > 0
+        React.useEffect(() => {
+          if (!hasArchivedBots) setArchiveOpen(false)
+        }, [hasArchivedBots])
         const labels = value?.labels || Object.fromEntries(featureList.map(f => [f.id, f.label]))
         const hidden = allBotSessionIds(value)
         const visibleSessions = sessions.filter(s => !hidden.has(s.id))
         const matches = visibleSessions.filter(s => !filter || chatTitle(s).toLocaleLowerCase().includes(filter))
-        const entry = (id, text, icon, click, active, extra = {}) => h('button', { type: 'button', className: 'lw-row-main',
-          'aria-current': active ? 'page' : undefined, ...extra, onClick: click }, h(Icon, { name: icon }), h('span', null, text))
+        const entry = (id, text, icon, click, active, extra = {}) => {
+          const status = id === 'chat' ? aggregateActivity(visibleSessions.map(sessionActivity))
+            : id === 'archive' ? aggregateActivity(archivedBots.map(bot => botActivity(row, bot.id))) : botActivity(row, id)
+          return h('button', { type: 'button', className: 'lw-row-main',
+            'aria-current': active ? 'page' : undefined, ...activityDescription(status), ...extra, onClick: click },
+            h(Icon, { name: icon }), h('span', null, text), activityDot(status))
+        }
         return h('nav', { className: 'lw-tier', 'aria-label': row.name + LW(' 项目功能') },
           featureList.filter(bot => !bot.archived && !bot.clusterParent).map(feat => {
             const id = feat.id
             const label = labels[id] || feat.label || features[id] || id
             const members = featureList.filter(bot => bot.clusterParent === id && !bot.archived)
+            const membersStatus = aggregateActivity(members.map(member => botActivity(row, member.id)))
             return h(React.Fragment, { key: id },
               h('div', { className: 'lw-row' }, entry(id, label, botDisplayIcon(feat), () => {
                 if (id === 'chat') {
@@ -5152,10 +6223,10 @@ window.__ModuleLoader__.load({
               h('span', { className: 'lw-row-tools' },
                 id === 'chat' && tool('plus', LW('在') + row.name + LW('中新建对话'), () => { setChatsOpen(true); startProjectChat(row) }),
                 onRenameFeature && tool('edit', LW('重命名功能 ') + label, () => onRenameFeature(row, feat, label)),
-                id!=='chat' && onDeleteFeature && tool('trash',LW('删除功能 ')+label,()=>onDeleteFeature(row,feat,label),'lw-tool-danger'),
+                id !== 'chat' && onDeleteFeature && tool('trash', LW('删除功能 ') + label, () => onDeleteFeature(row, feat, label), 'lw-tool-danger'),
                 tool('split', LW('分屏打开') + label, () => splitPage(row, id)))),
               members.length > 0 && h('details', { className: 'lw-sessions' },
-                h('summary', null, LW('成员 Bot') + ' · ' + members.length),
+                h('summary', activityDescription(membersStatus), LW('功能 Bot') + ' · ' + members.length, activityDot(membersStatus)),
                 members.map(member => h('div', { className: 'lw-row', key: member.id },
                   entry(member.id, member.label, botDisplayIcon(member),
                     () => openPage(row, member.id), activePage === member.id,
@@ -5163,23 +6234,34 @@ window.__ModuleLoader__.load({
               id === 'chat' && (chatsOpen || Boolean(filter)) && matches.length > 0 && h('div', { className: 'lw-sessions', 'aria-label': row.name + LW(' 对话') },
                 matches.map(s => h('div', { className: 'lw-row', key: s.id },
                   h('button', { type: 'button', className: 'lw-row-main', 'aria-current': current === s.id ? 'page' : undefined,
-                    onClick: () => jump(s.id) }, h('span', null, chatTitle(s))),
+                    ...activityDescription(sessionActivity(s)), onClick: () => jump(s.id) },
+                    h('span', null, chatTitle(s)), activityDot(sessionActivity(s))),
                   h('span', { className: 'lw-row-tools' },
                     tool('edit', LW('重命名对话 ') + chatTitle(s), () => onRenameChat(s)),
                     tool('trash', LW('删除对话 ') + chatTitle(s), () => onDeleteChat(row, s), 'lw-tool-danger'))))))
           }),
-          archivedBots.length > 0 && h('details', { className: 'lw-sessions' },
-            h('summary', null, LW('已归档 Bot') + ' · ' + archivedBots.length),
-            archivedBots.map(bot => h('div', { className: 'lw-row', key: bot.id },
-              entry(bot.id, bot.label, botDisplayIcon(bot), () => openPage(row, bot.id), activePage === bot.id,
-                paradigmKeyFor(bot) ? { 'data-paradigm': paradigmKeyFor(bot), style: { '--lw-paradigm-accent': paradigmAccentFor(bot) } } : {}),
-              tool('back', LW('恢复 ') + bot.label, async () => {
-                try {
-                  await project(row.workspaceId, 'bot_restore', { featureId: bot.id })
-                  await refresh()
-                  window.dispatchEvent(new Event(updated))
-                } catch (failure) { notice(failure.message) }
-              })))),
+          hasArchivedBots && h('div', { className: 'lw-row' }, entry('archive', LW('归档 Bot'), 'folder',
+            event => { event.stopPropagation(); setArchiveOpen(open => !open) }, false, {
+              'aria-expanded': archiveOpen, 'aria-controls': archiveId,
+              title: archiveOpen ? LW('收起归档 Bot') : LW('展开归档 Bot'),
+            })),
+          hasArchivedBots && h('div', { className: 'lw-sessions', id: archiveId, role: 'group', 'aria-label': LW('已归档 Bot'), hidden: !archiveOpen },
+            archiveOpen && archivedBots.map(bot => {
+              const label = labels[bot.id] || bot.label
+              const active = activePage === bot.id || splitPanes.some(p => p.workspaceId === row.workspaceId && p.feature === bot.id)
+              return h('div', { className: 'lw-row', key: bot.id },
+                entry(bot.id, label, botDisplayIcon(bot), () => openPage(row, bot.id), active,
+                  paradigmKeyFor(bot) ? { 'data-paradigm': paradigmKeyFor(bot), style: { '--lw-paradigm-accent': paradigmAccentFor(bot) } } : {}),
+                h('span', { className: 'lw-row-tools' },
+                  tool('back', LW('恢复 ') + label, async () => {
+                    try {
+                      await project(row.workspaceId, 'bot_restore', { featureId: bot.id })
+                      await refresh()
+                      window.dispatchEvent(new Event(updated))
+                    } catch (failure) { notice(failure.message) }
+                  }),
+                  tool('split', LW('分屏打开') + label, () => splitPage(row, bot.id))))
+            })),
           error && h('small', { role: 'alert' }, error))
       }
 
@@ -5242,6 +6324,7 @@ window.__ModuleLoader__.load({
 
       function ResearchTree({ wide, expandSidebar }) {
         useNav()
+        useActivity()
         const workspace = useStore(ctx.workspaces.list), sessions = useStore(ctx.sessions.list), panel = useStore(ctx.layout.panelInfo)
         const [expanded, setExpanded] = React.useState({})
         const [filter, setFilter] = React.useState(null)
@@ -5300,7 +6383,7 @@ window.__ModuleLoader__.load({
         }
         const dialogs = h(React.Fragment, null,
           dialog?.type==='delete-bot' && h(Dialog,{title:LW('删除功能 Bot'),close},h('div',{className:'lw-form'},
-            h('p',null,LW('从「')+dialog.row.name+LW('」移除「')+dialog.label+LW('」并撤销分配给它的任务？项目文件和已有记录会保留。')),
+            h('p',null,LW('从「')+dialog.row.name+LW('」移除「')+dialog.label+LW('」并撤销分派给它的任务？项目文件和已有记录会保留。')),
             err&&h('p',{role:'alert'},err),h('div',{className:'lw-actions lw-dialog-actions'},
               Btn({variant:'ghost',disabled:busy,onClick:close},LW('取消')),
               Btn({variant:'danger',disabled:busy,onClick:async()=>{
@@ -5317,7 +6400,7 @@ window.__ModuleLoader__.load({
             await refresh();window.dispatchEvent(new Event(updated));setDialog(undefined)
             setExpanded(prev=>({...prev,[row.workspaceId]:true}));setFilter(null);openPage(row,feat.id)
           }}),
-          dialog?.type === 'create' && h(ProjectForm, { refresh, onCreated: created, onCancel: close, pickDirectory: () => nav.pickDirectory() }),
+          dialog?.type === 'create' && h(ProjectForm, { refresh, onCreated: created, onCancel: close, pickDirectory: () => pickLocalDirectory(nav) }),
           dialog?.type === 'rename' && h(Dialog, { title: LW('重命名项目'), close }, h('form', { className: 'lw-form',
             onSubmit: async e => {
               e.preventDefault(); if (busy || !rename.trim()) return
@@ -5338,7 +6421,7 @@ window.__ModuleLoader__.load({
             onSaved: refresh, onCancel: close,
           }),
           dialog?.type === 'project-settings' && h(ProjectSettingsDialog, {
-            key: dialog.row.workspaceId, row: dialog.row, close, refresh, removeProject, pickDirectory: () => nav.pickDirectory(),
+            key: dialog.row.workspaceId, row: dialog.row, close, refresh, removeProject, pickDirectory: () => pickLocalDirectory(nav),
           }))
         const hiddenSessions = allBotSessionIds()
         const projectRows = rows.filter(r => r.scope !== 'global')
@@ -5351,10 +6434,10 @@ window.__ModuleLoader__.load({
             setFlyout(prev => prev?.id === id ? null : { id, top: Math.max(12, Math.min(rect.top, window.innerHeight - 360)) })
           }
           return h(React.Fragment, null,
-            h('nav', { ref: railRef, className: 'lw-rail', 'aria-label': LW('工作区项目快捷栏') },
+            h('nav', { ref: railRef, className: 'lw-rail', 'aria-label': LW('项目快捷栏') },
               !projectRows.length
                 ? h('button', {
-                    type: 'button', className: 'lw-rail-btn', 'aria-label': LW('工作区项目'), title: LW('工作区项目'),
+                    type: 'button', className: 'lw-rail-btn', 'aria-label': LW('项目'), title: LW('项目'),
                     'aria-expanded': flyout?.id === '__empty__', onClick: e => openFlyout('__empty__', e),
                   }, h(Icon, { name: 'folder' }))
                 : projectRows.map(row => {
@@ -5362,13 +6445,15 @@ window.__ModuleLoader__.load({
                     const allMembers = sessionsFor(id, workspace, sessions, hiddenSessions)
                     const inside = !panel.activePanelId && allMembers.some(s => s.id === current?.id)
                     const active = selected?.workspaceId === id || inside
+                    const status = workspaceActivity(row, workspace, sessions, hiddenSessions)
                     return h('button', {
                       key: id, type: 'button', className: 'lw-rail-btn',
                       'aria-label': row.name, title: row.name,
                       'aria-expanded': flyout?.id === id,
                       'data-active': active ? 'true' : 'false',
+                      ...activityDescription(status),
                       onClick: e => openFlyout(id, e),
-                    }, h(Icon, { name: 'folder' }))
+                    }, h(Icon, { name: 'folder' }), activityDot(status))
                   }),
               h('button', {
                 type: 'button', className: 'lw-rail-btn', 'aria-label': createWorkspaceProject, title: createWorkspaceProject,
@@ -5377,7 +6462,7 @@ window.__ModuleLoader__.load({
             flyout && ReactDOM.createPortal(
               h('div', {
                 ref: flyoutRef, className: 'lw-rail-popover', role: 'dialog',
-                'aria-label': flyRow ? flyRow.name + LW(' 项目菜单') : LW('工作区项目菜单'),
+                'aria-label': flyRow ? flyRow.name + LW(' 项目菜单') : LW('项目菜单'),
                 style: { top: flyout.top },
                 onClick: e => {
                   const btn = e.target.closest('button')
@@ -5403,7 +6488,7 @@ window.__ModuleLoader__.load({
                   }))
                   : h(React.Fragment, null,
                     h('div', { className: 'lw-rail-popover-head' },
-                      h('strong', null, LW('工作区项目')),
+                      h('strong', null, LW('项目')),
                       tool('close', LW('关闭菜单'), () => setFlyout(null))),
                     Btn({ variant: 'primary', size: 'sm', onClick: () => { setFlyout(null); setDialog({ type: 'create' }) } }, createWorkspaceProject),
                     Btn({ variant: 'ghost', size: 'sm', onClick: () => { setFlyout(null); nav.startSession() } }, LW('回到全局助手 ') + (globalRow()?.name || 'Weave')))),
@@ -5424,10 +6509,11 @@ window.__ModuleLoader__.load({
             const matchesName = row.name.toLocaleLowerCase().includes(q)
             if (!matchesName && !historyMembers.some(s => chatTitle(s).toLocaleLowerCase().includes(q))) return null
             const open = q ? true : (expanded[id] ?? (choice?.workspaceId === id || inside))
+            const status = workspaceActivity(row, workspace, sessions, hiddenSessions)
             return h('div', { key: id }, h('div', { className: 'lw-row' },
               h('button', { className: 'lw-row-main', type: 'button', 'aria-expanded': !!open,
-                onClick: () => setExpanded(prev => ({ ...prev, [id]: !open })) },
-                h(Icon, { name: open ? 'down' : 'right' }), h(Icon, { name: 'folder' }), h('span', null, row.name)),
+                ...activityDescription(status), onClick: () => setExpanded(prev => ({ ...prev, [id]: !open })) },
+                h(Icon, { name: open ? 'down' : 'right' }), h(Icon, { name: 'folder' }), h('span', null, row.name), activityDot(status)),
               h('span', { className: 'lw-row-tools' },
                 tool('plus', LW('在')+row.name+LW('创建功能 Bot'),()=>setDialog({type:'create-bot',row})),
                 tool('gear', LW('项目设置 ') + row.name, () => setDialog({ type: 'project-settings', row }))),
@@ -5446,7 +6532,7 @@ window.__ModuleLoader__.load({
           !projectRows.length && h('button', {
             type: 'button', className: 'lw-sidebar-empty-btn lw-add-action',
             onClick: () => setDialog({ type: 'create' }),
-          }, h(Icon, { name: 'plus' }), h('span', null, LW('新建第一个工作区项目'))),
+          }, h(Icon, { name: 'plus' }), h('span', null, LW('新建第一个项目'))),
           dialogs)
       }
       slot('sidebar.workspaces', { priority: -25 }, ResearchTree)
@@ -5475,7 +6561,7 @@ window.__ModuleLoader__.load({
         feed: LW('订阅并追踪前沿动态'),
         ideas: LW('把灵感转化为目标'),
         goals: LW('追踪里程碑和实验'),
-        library: LW('文献、仓库和产物'),
+        library: LW('文献、代码仓库和产物'),
       }
       const featureEmpties = {
         feed: LW('还没有收到任何动态推送'),
@@ -5524,6 +6610,7 @@ window.__ModuleLoader__.load({
       function useFeatureBot(row, feature, featMeta, value) {
         const sid = featMeta?.botSessionId && ctx.sessions.list.getSnapshot().byId[featMeta.botSessionId]
           ? featMeta.botSessionId : null
+        const interaction = useStore(ctx.uiSession.sessionStatus).get(sid)?.pendingInteraction
         const [eventsState, setEventsState] = React.useState({ messages: [], pending: [], running: false, progress: null, error: '' })
         const [sending, setSending] = React.useState(false)
         const createdSession = React.useRef(null)
@@ -5546,23 +6633,64 @@ window.__ModuleLoader__.load({
             const entries = snap?.entries || []
             const cuts = rewindCuts(entries.map(record => record.event))
             const messages = []
+            const calls = new Map()
+            let activity
+            function process(event) {
+              if (!activity) {
+                activity = { tools: [] }
+                messages.push({ id: 'process-' + event.seq, role: 'process', time: event.time, activity })
+              }
+              return activity
+            }
             let newestToolSeq = lastToolSeq
             for (const rec of entries) {
               const ev = rec?.event
               if (!ev || isRewound(cuts, ev.seq)) continue
-              if (ev.type === 'user/message') {
+              if (ev.type === 'turn/start') {
+                activity = undefined
+              } else if (ev.type === 'turn/end') {
+                for (const tool of activity?.tools || []) if (tool.status === 'running') tool.status = 'stopped'
+                if (activity?.phase === 'reasoning') {
+                  activity.reasoningStopped = true
+                  activity.phase = null
+                }
+                activity = undefined
+              } else if (ev.type === 'user/message') {
                 if (ev.data?.source?.kind === 'labweave-speaker') {
-                  messages.push({ id: 's-' + ev.seq, role: 'speaker', label: ev.data.source.label, text: featureBotMessageText(ev) })
+                  messages.push({ id: 's-' + ev.seq, role: 'speaker', label: ev.data.source.label, text: featureBotMessageText(ev), time: ev.time })
                   continue
                 }
                 if (isInjectedContextEvent(ev)) continue
                 const text = featureBotMessageText(ev)
                 if (text.trim()) messages.push({ id: 'u-' + ev.seq, role: 'user', seq: ev.seq, text: text.trim(), time: ev.time })
+              } else if (ev.type === 'assistant/live-chunk') {
+                if (ev.data.chunk?.type === 'reasoning-delta' && ev.data.chunk.text?.trim()) process(ev).phase = 'reasoning'
+                if (ev.data.chunk?.type === 'text-delta' && activity?.phase === 'reasoning') {
+                  activity.reasoned = true
+                  activity.phase = null
+                }
               } else if (ev.type === 'assistant/message') {
                 const raw = ev.data?.message?.content ?? []
+                if (Array.isArray(raw) && raw.some(block => block.type === 'reasoning' && block.text?.trim())
+                    && !ev.data.interrupted) process(ev).reasoned = true
+                if (activity?.phase === 'reasoning') {
+                  activity.reasoningStopped = Boolean(ev.data.interrupted)
+                  activity.reasoned ||= !ev.data.interrupted
+                  activity.phase = null
+                }
                 const text = Array.isArray(raw) ? raw.filter(b => b?.type === 'text' && b.text).map(b => b.text).join('\n') : ''
                 if (text.trim()) messages.push({ id: 'a-' + ev.seq, role: 'assistant', seq: ev.seq, text: text.trim(), time: ev.time })
+              } else if (ev.type === 'tool/call') {
+                const name = ev.data.name?.replace(/^labweave_/, '')
+                if (recordWriteTools.has(name)) continue
+                const label = Object.hasOwn(toolLabels, name) ? toolLabels[name]
+                  : Object.hasOwn(nativeWorkLabels, name) ? nativeWorkLabels[name] : LW('调用外部工具')
+                const tool = { id: ev.seq, title: label, status: 'running' }
+                process(ev).tools.push(tool)
+                calls.set(ev.data.callId, tool)
               } else if (ev.type === 'tool/result') {
+                const tool = calls.get(ev.data.message?.toolCallId)
+                if (tool) tool.status = ev.data.message.isError ? 'failed' : 'completed'
                 newestToolSeq = Math.max(newestToolSeq, ev.seq)
               }
             }
@@ -5572,7 +6700,7 @@ window.__ModuleLoader__.load({
               refresh().catch(() => {})
             }
             const running = Boolean(sessSnap?.running)
-            const progress = running ? conversationProgress(entries) : null
+            const progress = running ? conversationProgress(entries, { bot: true }) : null
             const errMsg = sessionErrorText(sessSnap?.promptError?.error) || sessionErrorText(sessSnap?.lastAgentError)
             setEventsState(prev => ({ messages, running, progress, error: errMsg,
               pending: reconcileBotPrompts(prev.pending, messages, sid) }))
@@ -5586,10 +6714,10 @@ window.__ModuleLoader__.load({
               parse()
               window.dispatchEvent(new Event('labweave:model-updated'))
             }).catch(err => {
-              if (!disposed) setEventsState(prev => ({ ...prev, error: err?.message || LW('Bot 会话加载失败。') }))
+              if (!disposed) setEventsState(prev => ({ ...prev, error: err?.message || LW('Bot 对话加载失败。') }))
             })
           } catch (err) {
-            setEventsState(prev => ({ ...prev, error: err?.message || LW('Bot 会话不可用。') }))
+            setEventsState(prev => ({ ...prev, error: err?.message || LW('Bot 对话不可用。') }))
           }
           return () => {
             disposed = true
@@ -5644,7 +6772,8 @@ window.__ModuleLoader__.load({
         }
 
         return { ...eventsState, messages: [...eventsState.messages, ...eventsState.pending],
-          sessionId: sid, sending, sendPrompt, ensureSession, openApproval: () => openChat(sid),
+          sessionId: sid, sending, sendPrompt, ensureSession, awaitingAnswer: interaction?.kind === 'question',
+          openApproval: () => openChat(sid),
           openRewind: (message, restore) => openConversationRewind(sid, message.role, message.seq, restore) }
       }
 
@@ -5652,7 +6781,7 @@ window.__ModuleLoader__.load({
         const { value, error: loadError } = useProject(row.workspaceId, 'view', '', 5000)
         const featureList = projectFeatures(row, value)
         const featMeta = featureList.find(f => f.id === feature) || { id: feature, label: features[feature] || feature }
-        const { value: live } = useProject(row.workspaceId, 'bot_canvas', featMeta.paradigm ? feature : '', 1500)
+        const { value: live, error: liveError } = useProject(row.workspaceId, 'bot_canvas', featMeta.paradigm ? feature : '', 1500)
         const labels = value?.labels || Object.fromEntries(featureList.map(f => [f.id, f.label]))
         const title = labels[feature] || featMeta.label || features[feature] || feature
         const pane = { workspaceId: row.workspaceId, feature }
@@ -5678,7 +6807,15 @@ window.__ModuleLoader__.load({
               }, h(Icon, { name: 'close' })))),
           h(Panel, {
             workspaceId: row.workspaceId, row, feature, featMeta, title, subtitle, emptyTitle,
-            value, loadError, persisted, bot, live, openModels: () => openSettingsRef?.('models'), draft, onRenamed: refresh,
+            value, loadError, persisted, bot, live, liveError, openModels: () => openSettingsRef?.('models'), draft, onRenamed: refresh,
+            fileChanges: bot.sessionId && h(ProjectConversationFiles, { key: bot.sessionId, sessionId: bot.sessionId }),
+            openTaskSource: (sid, messageId) => openTaskSource(row, sid, messageId),
+            sendTaskFollowUp: async (task, text, followId) => {
+              await ensureSessionRoutableModel(task.parentSessionId)
+              return project(row.workspaceId, 'bot_dispatch_followup', {
+                id: task.dispatchId, featureId: feature, requestId: followId, text,
+              })
+            },
           }))
       }
 
@@ -5827,6 +6964,7 @@ window.__ModuleLoader__.load({
 
       slot('conversation.header.leading', { id: 'labweave-global-sessions', priority: -20 }, () => {
         useNav()
+        useActivity()
         const workspaces = useStore(ctx.workspaces.list)
         const sessions = useStore(ctx.sessions.list)
         useStore(ctx.layout.panelInfo)
@@ -5866,6 +7004,7 @@ window.__ModuleLoader__.load({
         }, [open])
         if (!isGlobal) return null
         const historyList = historySessionsFor(row.workspaceId, workspaces, sessions, allBotSessionIds())
+        const status = aggregateActivity(historyList.map(sessionActivity))
         const startNewGlobalSession = () => {
           assistantEntrance = null
           setOpen(false)
@@ -5877,8 +7016,10 @@ window.__ModuleLoader__.load({
           h('button', {
             ref: triggerRef, type: 'button', className: 'lw-corner-btn',
             'aria-expanded': open, 'aria-haspopup': 'dialog', 'aria-label': LW('助手历史对话'),
+            ...activityDescription(status),
             onClick: () => { if (!open) placePopover(); setOpen(prev => !prev) },
-          }, h(Icon, { name: 'chat' }), h('span', null, LW('历史对话')), historyList.length > 0 && h('span', { className: 'lw-seg-count' }, historyList.length)),
+          }, h(Icon, { name: 'chat' }), h('span', null, LW('历史对话')),
+          historyList.length > 0 && h('span', { className: 'lw-seg-count' }, historyList.length), activityDot(status)),
           !current.blank && h('button', {
             type: 'button', className: 'lw-corner-btn lw-add-action', 'aria-label': LW('新建全局对话'),
             onClick: startNewGlobalSession,
@@ -5892,7 +7033,7 @@ window.__ModuleLoader__.load({
             h('div', { className: 'lw-session-popover-head' },
               h('strong', null, LW('历史对话')),
               h('span', { className: 'lw-actions', style: { gap: 4 } },
-                Btn({ variant: 'ghost', size: 'xs', className: 'lw-add-action', disabled: Boolean(current.blank), onClick: startNewGlobalSession },
+                Btn({ variant: 'add', size: 'xs', className: 'lw-add-action', disabled: Boolean(current.blank), onClick: startNewGlobalSession },
                   h(Icon, { name: 'plus' }), LW('新对话')),
                 tool('close', LW('关闭列表'), () => setOpen(false)))),
             h('div', { className: 'lw-session-popover-list' },
@@ -5902,22 +7043,17 @@ window.__ModuleLoader__.load({
                   h('button', {
                     type: 'button', className: 'lw-row-main',
                     'aria-current': current.id === s.id ? 'page' : undefined,
+                    ...activityDescription(sessionActivity(s)),
                     onClick: () => { setOpen(false); openChat(s.id) },
                   },
                   h('span', { className: 'lw-row-title' }, chatTitle(s)),
-                  Boolean(s.updatedAt) && h('span', { className: 'lw-row-time' }, fmtDate(s.updatedAt))),
+                  Boolean(s.updatedAt) && h('span', { className: 'lw-row-time' }, fmtDate(s.updatedAt)), activityDot(sessionActivity(s))),
                   h('span', { className: 'lw-row-tools' },
                     tool('edit', LW('重命名对话 ') + chatTitle(s), () => { setOpen(false); setSessionDialog({ type: 'rename-session', row, session: s }) }),
                     tool('trash', LW('删除对话 ') + chatTitle(s), () => { setOpen(false); setSessionDialog({ type: 'delete-session', row, session: s }) }, 'lw-tool-danger')))))),
             document.body),
           sessionDialog && h(SessionActionDialog, { dialog: sessionDialog, onCancel: () => setSessionDialog(null) }))
       })
-
-      const dispatchStatuses = {
-        queued: ['待启动', 'neutral'], running: ['执行中', 'neutral'], completed: ['已完成', 'success'],
-        blocked: ['受阻', 'warning'], needs_follow_up: ['待跟进', 'warning'], incomplete: ['未完成', 'warning'],
-        failed: ['失败', 'danger'], cancelled: ['已取消', 'neutral'], interrupted: ['已中断', 'warning'],
-      }
 
       function ProjectDispatchCard({ task, row, close }) {
         const [expanded, setExpanded] = React.useState(false)
@@ -5941,7 +7077,7 @@ window.__ModuleLoader__.load({
         return h('details', { className: 'lw-project-task-item', onToggle: e => setExpanded(e.currentTarget.open) },
           h('summary', null, h(Icon, { name: 'right' }),
             h('span', { className: 'lw-project-task-title' },
-              h('strong', null, task.title || task.task.split('\n')[0].slice(0, 110)),
+              h('strong', null, cardOverviewText((task.title || task.publicTask || task.task).split('\n')[0], 110)),
               h('span', { className: 'lw-hint' }, affiliation)),
             h(Tag, { tone }, LW(status))),
           expanded && h('div', { className: 'lw-project-task-detail' },
@@ -5950,11 +7086,15 @@ window.__ModuleLoader__.load({
             !detail && !error && h('p', { className: 'lw-hint', role: 'status' }, LW('正在读取任务详情…')),
             detail && h(React.Fragment, null,
               h('small', { className: 'lw-hint' }, LW('分派于 ') + fmtDateTime(detail.createdAt)),
-              h('p', null, detail.task),
-              detail.answer && h(Markdown, { source: detail.answer }),
-              detail.detail && h('p', { className: 'lw-hint' }, detail.detail)),
+              h(BotMarkdown, { source: detail.publicTask || detail.task }),
+              detail.answer && h(BotMarkdown, { source: detail.answer }),
+              detail.detail && h('p', { className: 'lw-hint' }, publicToolText(detail.detail))),
+            h(WorkerDispatchActivity, { workspaceId: row.workspaceId, id: task.id, status: task.status }),
             h('div', { className: 'lw-actions' },
-              origin && Btn({ variant: 'secondary', size: 'xs', onClick: () => { close(); openChat(origin.id) } }, LW('返回发起对话')),
+              origin && Btn({ variant: 'secondary', size: 'xs', onClick: () => {
+                close()
+                openTaskSource(row, origin.id, detail?.requestId)
+              } }, LW('返回发起对话')),
               task.botState !== 'removed' && Btn({ variant: 'secondary', size: 'xs',
                 onClick: () => { close(); openPage(row, task.featureId) } }, LW('查看 Bot')))))
       }
@@ -6499,7 +7639,7 @@ window.__ModuleLoader__.load({
               h('button', { type: 'button', className: 'lw-mo-back', onClick: () => switchPane('root') },
                 h(Icon, { name: 'back' }), h('span', null, LW('启用推理强度')))),
             h('p', { className: 'lw-hint', style: { margin: '4px 8px', fontSize: 12 } },
-              LW('为该自定义/第三方模型启用标准推理档位，启用后可直接在上方「推理等级」中切换。')),
+              LW('为该自定义/第三方模型启用标准推理档位，启用后可直接在上方「推理强度」中切换。')),
             h('button', {
               type: 'button', className: 'lw-mo-opt', disabled: busy || locked,
               onClick: async () => {
@@ -6534,7 +7674,7 @@ window.__ModuleLoader__.load({
         const [pane, setPane] = React.useState(null)
         React.useEffect(() => {
           const sync = () => {
-            const menus = document.querySelectorAll('[role="menu"][aria-label="模型与推理等级"], [role="group"][aria-label="模型与推理等级"]')
+            const menus = document.querySelectorAll('[role="menu"][aria-label="模型与推理强度"], [role="group"][aria-label="模型与推理强度"]')
             for (const menu of menus) {
               const kind = nativeModelSubpane(menu)
               if (!kind || !menu.getClientRects().length) continue
@@ -6550,7 +7690,7 @@ window.__ModuleLoader__.load({
         }, [])
         if (!pane) return null
         const { menu, kind } = pane
-        const title = kind === 'model' ? LW('模型') : LW('推理等级')
+        const title = kind === 'model' ? LW('模型') : LW('推理强度')
         return ReactDOM.createPortal(
           h('div', { className: 'lw-mo-subhead lw-mo-native-back' },
             h('button', {
@@ -6679,7 +7819,7 @@ window.__ModuleLoader__.load({
               options: Object.entries(permissionLabels).filter(([value]) => permission?.options.includes(value))
                 .map(([value, label]) => ({ value, label })),
             })),
-          h('p', { className: 'lw-hint' }, LW('完全权限可直接转交。其他级别先确认。项目任务按目标项目会话的权限执行。')),
+          h('p', { className: 'lw-hint' }, LW('完全权限可直接转交。其他级别先确认。项目任务按目标项目对话的权限执行。')),
           permissionError && h('p', { role: 'alert' }, permissionError))
       }
       slot('settings.section', { id: 'labweave-assistant', order: 8, label: () => LW('助手设置') }, AssistantSettingsSection)
@@ -6695,6 +7835,83 @@ window.__ModuleLoader__.load({
             'aria-label': label, title: label, onClick: click,
           }, h(Icon, { name: icon }), wide && h('span', null, label))))
       })
+
+      function CompletionToast({ item, row, session }) {
+        const id = item.terminal.id
+        const [hovered, setHovered] = React.useState(false)
+        const [focused, setFocused] = React.useState(false)
+        React.useEffect(() => {
+          if (hovered || focused) return
+          const timer = setTimeout(() => dismissCompletion(id), 8000)
+          return () => clearTimeout(timer)
+        }, [id, hovered, focused])
+        const bot = row.features?.find(feature => feature.id === item.featureId)
+        const heading = bot ? LW('Bot 已完成') : row.scope === 'global' ? LW('助手已完成') : LW('项目对话已完成')
+        const label = row.name + (bot ? ' · ' + bot.label : session && !session.blank ? ' · ' + chatTitle(session) : '')
+        function open() {
+          if (bot) openPage(row, bot.id)
+          else jump(item.sessionId)
+          dismissCompletion(id)
+        }
+        return h('div', {
+          className: 'lw-completion-toast',
+          onPointerEnter: () => setHovered(true), onPointerLeave: () => setHovered(false),
+          onFocus: () => setFocused(true),
+          onBlur: event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false) },
+        },
+        h('button', { type: 'button', className: 'lw-completion-toast-main', onClick: open,
+          'aria-label': heading + ' · ' + label, title: LW('打开对应对话') },
+          h(Icon, { name: 'check' }),
+          h('span', { className: 'lw-completion-toast-text', role: 'status' },
+            h('strong', null, heading), h('small', null, label))),
+        tool('close', LW('关闭完成提醒'), () => dismissCompletion(id)))
+      }
+
+      function CompletionToasts() {
+        useActivity()
+        const navigation = useNav()
+        const sessions = useStore(ctx.sessions.list)
+        const stackRef = React.useRef(null)
+        const visibleCount = Math.min(3, completionToasts.length)
+        React.useLayoutEffect(() => {
+          const stack = stackRef.current
+          if (!stack) return
+          const composers = [...document.querySelectorAll('[data-composer-card], .lw-fbot-composer')]
+          const main = document.querySelector('[class*="centerCol"]')
+          const update = () => {
+            const zoom = stack.currentCSSZoom || 1
+            const mainRect = main?.getBoundingClientRect()
+            if (mainRect && mainRect.width > 40) {
+              stack.style.setProperty('--lw-completion-right', Math.max(0, window.innerWidth - mainRect.right) / zoom + 16 + 'px')
+              stack.style.setProperty('--lw-completion-max', mainRect.width / zoom + 'px')
+            } else {
+              stack.style.removeProperty('--lw-completion-right')
+              stack.style.setProperty('--lw-completion-max', window.innerWidth / zoom + 'px')
+            }
+            const { left, right, height } = stack.getBoundingClientRect()
+            const overlaps = composers.map(element => element.getBoundingClientRect())
+              .filter(card => card.height > 0 && card.top < window.innerHeight && card.right > left && card.left < right)
+            const clearance = Math.max(0, ...overlaps.map(card => window.innerHeight - card.top + 10))
+            stack.style.setProperty('--lw-completion-clearance', Math.min(clearance, Math.max(0, window.innerHeight - height - 12)) / zoom + 'px')
+          }
+          const observer = new ResizeObserver(update)
+          observer.observe(stack)
+          if (main) observer.observe(main)
+          for (const composer of composers) observer.observe(composer)
+          window.addEventListener('resize', update)
+          update()
+          return () => {
+            observer.disconnect()
+            window.removeEventListener('resize', update)
+          }
+        }, [visibleCount, navigation])
+        if (!visibleCount) return null
+        return ReactDOM.createPortal(h('div', { ref: stackRef, className: 'lw-completion-stack' }, completionToasts.slice(0, visibleCount).map(item => {
+          const row = rows.find(row => row.workspaceId === item.workspaceId)
+          if (item.featureId && !row?.features?.some(feature => feature.id === item.featureId)) return null
+          return row && h(CompletionToast, { key: item.terminal.id, item, row, session: sessions.byId[item.sessionId] })
+        })), document.body)
+      }
 
       slot('shell.overlay', { id: 'labweave-plugins' }, function Overlay() {
         useNav()
@@ -6753,6 +7970,7 @@ window.__ModuleLoader__.load({
           splitTarget) : null
         return h(React.Fragment, null,
           h(ModelMenuNativeBack),
+          h(CompletionToasts),
           splitPortal,
           error && h(Dialog, { title: LW('工作区'), close: () => setError('') }, h('p', { role: 'alert' }, error),
             Btn({ variant: 'secondary', onClick: () => setError('') }, LW('关闭'))),
@@ -6773,7 +7991,7 @@ window.__ModuleLoader__.load({
           }))
       })
     }
-    return { inject: ['slots', 'uiWorkspace', 'uiConversation', 'conversation', 'workspaces', 'sessions', 'layout',
+    return { inject: ['slots', 'uiWorkspace', 'uiConversation', 'uiSession', 'conversation', 'workspaces', 'sessions', 'layout',
       'locale', 'theme', 'configForms', 'sidebarRight', 'sidebarRightTabs'], apply: install }
   },
 })

@@ -2,7 +2,7 @@
   "name": "labweave",
   "version": "2.0.0",
   "private": true,
-  "description": "Browser integration tests; the application itself has no Node.js runtime dependency.",
+  "description": "Browser integration tooling for Weave, a local-first workspace for AI-assisted projects.",
   "engines": {
     "node": "24.x"
   },

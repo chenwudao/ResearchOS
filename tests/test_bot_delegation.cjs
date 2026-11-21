@@ -50,7 +50,13 @@ test('one batch reserves isolated Bot workers and only archives completed assign
   })
   const exec = { agent: parent, signal: controller.signal }
   await assert.rejects(tool.execute({ assignments: [{ featureId: 'other-project', task: 'out of scope' }] }, exec))
+  const blocked = JSON.parse(await tool.execute({
+    assignments: [{ featureId: bots[0].id, task: '核对下一批资料', dependsOn: ['unfinished'] }],
+  }, exec))
+  assert.equal(blocked[0].status, 'blocked')
+  assert.match(blocked[0].detail, /前置/)
   assert.equal(launches.length, 0)
+  assert.equal(tracked.length, 0)
   const pending = tool.execute({ assignments: bots.map(bot => ({ featureId: bot.id, task: bot.label })) }, exec)
   await Promise.resolve()
   assert.equal(launches.length, 2)
@@ -59,7 +65,14 @@ test('one batch reserves isolated Bot workers and only archives completed assign
   const [notes, engineering] = launches.map(run => ({ session: { header: { id: run.spec.childId } } }))
   assert.equal(delegation.binding(notes).bot.id, bots[0].id)
   assert.match(launches[0].spec.prompt[0].text, /报告页码/)
+  assert.match(launches[0].spec.prompt[0].text, /weave-research-notes/)
+  assert.match(launches[1].spec.prompt[0].text, /weave-research-engineering/)
   assert.equal(launches[0].spec.provider, 'spawn')
+  assert.equal(guard({ agent: notes, name: 'labweave_paper_search' }), undefined)
+  assert.equal(guard({ agent: notes, name: 'labweave_paper_citations' }), undefined)
+  assert.equal(guard({ agent: notes, name: 'labweave_paper_neighbors' }), undefined)
+  assert.equal(guard({ agent: notes, name: 'labweave_evidence_add' }), undefined)
+  assert.ok(guard({ agent: notes, name: 'labweave_paper_search', arguments: { projectId: 'project-b' } }))
   assert.ok(guard({ agent: notes, name: 'labweave_experiment_list' }))
   assert.equal(guard({ agent: engineering, name: 'labweave_experiment_list' }), undefined)
   assert.ok(guard({ agent: notes, name: 'labweave_memory_search', arguments: { projectId: 'project-b' } }))
@@ -68,6 +81,7 @@ test('one batch reserves isolated Bot workers and only archives completed assign
   assert.ok(guard({ agent: notes, name: 'bash' }))
   mode = 'read-only'
   assert.ok(guard({ agent: engineering, name: 'bash' }))
+  assert.ok(guard({ agent: notes, name: 'labweave_evidence_add' }))
   mode = 'workspace-write'
   assert.equal(guard({ agent: notes, name: 'labweave_bot_canvas_draft' }), undefined)
   await assert.rejects(draftTool.execute({ key: 'note', title: '准备', text: '待核验' }, exec))

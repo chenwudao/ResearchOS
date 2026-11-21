@@ -14,7 +14,7 @@ from dsh_workspace_map import BindingError, WorkspaceBindings
 class WorkspaceBindingTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="labweave-map-test-")
-        self.base = Path(self.temporary.name)
+        self.base = Path(self.temporary.name).resolve()
         self.root = self.base / "projects"
         self.root.mkdir()
         self.a = self.root / "proj_a"

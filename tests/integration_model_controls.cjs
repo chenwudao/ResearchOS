@@ -29,17 +29,17 @@ async function main() {
     const openComposerModelMenu = async () => {
       const btn = page.locator('[data-composer-card] button[aria-haspopup="menu"][aria-label^="选择模型"]:visible').last()
       await btn.waitFor()
-      const menu = page.locator('[role="menu"][aria-label="模型与推理等级"], [role="group"][aria-label="模型与推理等级"]').last()
+      const menu = page.locator('[role="menu"][aria-label="模型与推理强度"], [role="group"][aria-label="模型与推理强度"]').last()
       if (!await menu.isVisible()) await btn.click()
       await menu.waitFor()
       return { btn, menu }
     }
 
-    step = '验证模型弹出菜单展示模型、推理等级、上下文窗口，且不含模型与 API 设置或全局默认'
+    step = '验证模型弹出菜单展示模型、推理强度、上下文窗口，且不含模型与 API 设置或全局默认'
     {
       const { menu } = await openComposerModelMenu()
       await menu.getByRole('menuitem', { name: /模型\s+DeepSeek/ }).waitFor()
-      await menu.getByRole('menuitem', { name: /推理等级/ }).waitFor()
+      await menu.getByRole('menuitem', { name: /推理强度/ }).waitFor()
       await menu.getByRole('menuitem', { name: /上下文窗口/ }).waitFor()
       assert.equal(await menu.getByRole('menuitem', { name: /模型供应商/ }).count(), 0)
       assert.equal(await menu.getByRole('menuitem', { name: /模型与 API 设置/ }).count(), 0)
@@ -47,16 +47,16 @@ async function main() {
 
       const assertRoot = async () => {
         await menu.getByRole('menuitem', { name: /^模型\s/ }).waitFor()
-        await menu.getByRole('menuitem', { name: /^推理等级/ }).waitFor()
+        await menu.getByRole('menuitem', { name: /^推理强度/ }).waitFor()
         await menu.getByRole('menuitem', { name: /^上下文窗口/ }).waitFor()
       }
       const checkNavigation = async () => {
-        for (const name of ['模型', '推理等级', '上下文窗口']) {
+        for (const name of ['模型', '推理强度', '上下文窗口']) {
           await menu.getByRole('menuitem', { name: new RegExp('^' + name + '\\s') }).click()
           const back = menu.locator('.lw-mo-back').filter({ hasText: new RegExp('^' + name + '$') })
           await back.waitFor()
           if (name === '上下文窗口') {
-            assert.equal(await menu.getByRole('menuitem', { name: /^(模型|推理等级|推理强度)/ }).count(), 0)
+            assert.equal(await menu.getByRole('menuitem', { name: /^(模型|推理强度)/ }).count(), 0)
           }
           await back.click()
           await assertRoot()
@@ -109,8 +109,8 @@ async function main() {
         await reasonPanel.getByRole('button', { name: /启用（Off \/ Low \/ Medium \/ High）/ }).click()
         await reasonPanel.waitFor({ state: 'hidden' })
       }
-      await menu.getByRole('menuitem', { name: /推理等级/ }).click()
-      await page.locator('button.lw-mo-back').filter({ hasText: '推理等级' }).waitFor()
+      await menu.getByRole('menuitem', { name: /推理强度/ }).click()
+      await page.locator('button.lw-mo-back').filter({ hasText: '推理强度' }).waitFor()
       await menu.getByRole('menuitemradio', { name: 'Low', exact: true }).click()
 
       if (await menu.isVisible().catch(() => false)) {
@@ -121,7 +121,7 @@ async function main() {
 
     {
       const { menu } = await openComposerModelMenu()
-      await menu.getByRole('menuitem', { name: /推理等级\s+Low/ }).waitFor()
+      await menu.getByRole('menuitem', { name: /推理强度\s+Low/ }).waitFor()
       await menu.getByRole('menuitem', { name: /上下文窗口/ }).click()
       const ctxPanel = menu.getByRole('group', { name: '上下文窗口长度' })
       await ctxPanel.waitFor()
@@ -180,7 +180,7 @@ async function main() {
       await page.evaluate(() => { document.documentElement.style.zoom = '' })
     }
 
-    step = '页面刷新后验证上下文窗口、推理等级与所选模型持久化'
+    step = '页面刷新后验证上下文窗口、推理强度与所选模型持久化'
     await page.setViewportSize({ width: 1280, height: 820 })
     await page.reload({ waitUntil: 'domcontentloaded' })
     const { menu } = await openComposerModelMenu()

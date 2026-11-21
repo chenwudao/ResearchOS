@@ -18,9 +18,10 @@ MAX_REQUEST_BYTES = 1024 * 1024
 class _Server(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, scope, token):
+    def __init__(self, scope, token, bot_binding):
         self.scope = scope
         self.token = token
+        self.bot_binding = bot_binding
         super().__init__(("127.0.0.1", 0), _Handler)
 
     def handle_error(self, request, client_address):
@@ -71,7 +72,8 @@ class _Handler(BaseHTTPRequestHandler):
         except (ValueError, UnicodeError, json.JSONDecodeError):
             self._send(400)
             return
-        response = research_mcp.dispatch(request, self.server.scope, protocol_version="2025-03-26")
+        response = research_mcp.dispatch(request, self.server.scope, protocol_version="2025-03-26",
+                                         bot_binding=self.server.bot_binding)
         if response is None:
             self._send(202)
         else:
@@ -80,10 +82,10 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 @contextmanager
-def private_bridge(data_path, scope, token):
+def private_bridge(data_path, scope, token, *, bot_binding=None):
     """Run a scope-bound server only for the lifetime of its DSH worker."""
     workspace.DATA = Path(data_path)
-    server = _Server(scope, token)
+    server = _Server(scope, token, bot_binding)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -123,16 +125,15 @@ def prepare_windows_config(config, redactions):
     if (item.get("name") != "@deepseek-ai/dsh-mcp-client"
             or original.get("transport") != "stdio" or original.get("serverName") != "researchos"
             or original.get("failOnStartupError") is not True
-            or not isinstance(args, list) or len(args) != 3 or not isinstance(args[0], str)
-            or not isinstance(args[1], str) or not args[1]
-            or Path(args[0]).resolve() != expected or not isinstance(args[2], str) or not args[2]):
+            or not isinstance(args, list) or len(args) not in (3, 5) or not all(isinstance(arg, str) and arg for arg in args)
+            or Path(args[0]).resolve() != expected):
         raise ValueError("Invalid project MCP configuration")
     token = secrets.token_urlsafe(32)
     redactions.add(token)
     private_root = Path.home() / ".labweave" / "run"
     private_root.mkdir(mode=0o700, parents=True, exist_ok=True)
     with TemporaryDirectory(prefix="mcp-", dir=private_root) as directory:
-        with private_bridge(args[1], args[2], token) as url:
+        with private_bridge(args[1], args[2], token, bot_binding=tuple(args[3:]) or None) as url:
             new_config = {key: value for key, value in original.items()
                           if key not in ("transport", "command", "args", "env", "cwd")}
             placeholder = "__LABWEAVE_AUTH_" + secrets.token_hex(16) + "__"

@@ -177,14 +177,7 @@ export function createToolPane(React, project, ui = {}) {
       setDownloading(true)
       setError('')
       try {
-        const {name, data} = await project(row.workspaceId, 'files/download', { id: file.id })
-        const bytes = Uint8Array.from(atob(data), character => character.charCodeAt(0))
-        const url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }))
-        const link = document.createElement('a')
-        link.href = url
-        link.download = name
-        link.click()
-        setTimeout(() => URL.revokeObjectURL(url), 1000)
+        await saveStoredFile(project, row.workspaceId, file.id)
       } catch (err) {
         setError(err.message)
       } finally {
@@ -231,4 +224,15 @@ export function createToolPane(React, project, ui = {}) {
   return function ToolPane({row, kind}) {
     return h(kind === 'labweave-files' ? FilesView : GitView, {row})
   }
+}
+
+export async function saveStoredFile(project, workspaceId, id) {
+  const { name, data } = await project(workspaceId, 'files/download', { id })
+  const bytes = Uint8Array.from(atob(data), character => character.charCodeAt(0))
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = name
+  link.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

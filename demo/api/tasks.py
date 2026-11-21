@@ -67,6 +67,16 @@ def project(project_id):
     return project_service.project(workspace.snapshot(), project_id)
 
 
+def task_bot(project_id, feature_id):
+    import features
+    if project_id != "global" and isinstance(feature_id, str):
+        bot = next((item for item in features.list_features(project_id, project_id)
+                    if item["id"] == feature_id and item.get("paradigm") and not item.get("archived")), None)
+        if bot:
+            return bot
+    raise workspace.WorkspaceError(404, "请选择当前项目中的活动 Bot。")
+
+
 def create(payload):
     item = project(payload.get("projectId"))
     prompt = workspace.text(payload.get("prompt"), 12000)
@@ -85,20 +95,26 @@ def create(payload):
         if any(dependency in pending for dependency in goal.get("dependsOn", [])):
             raise workspace.WorkspaceError(409, "请先完成前置目标。")
     resume = payload.get("resume")
+    feature_id = payload.get("featureId")
     if resume:
         original = get(resume)
         if original["projectId"] != item["id"] or original["status"] not in TERMINAL:
             raise workspace.WorkspaceError(409, "该任务尚不能继续。")
         session = original["sessionId"]
+        if feature_id is not None and original.get("featureId") != feature_id:
+            raise workspace.WorkspaceError(409, "继续任务时须使用原来的 Bot。")
+        feature_id = original.get("featureId")
     else:
         session = "researchos-" + uuid4().hex
+    if feature_id is not None:
+        task_bot(item["id"], feature_id)
     with LOCK:
         if any(t["sessionId"] == session and t["status"] not in TERMINAL for t in all_tasks()):
-            raise workspace.WorkspaceError(409, "该会话已有任务。")
+            raise workspace.WorkspaceError(409, "该对话已有任务。")
         task = store({"id": uuid4().hex, "projectId": item["id"], "sessionId": session,
                       "prompt": prompt, "goalId": goal_id, "resume": bool(resume),
                       "status": "WAITING_APPROVAL", "created": now(), "events": [],
-                      "result": "", "error": ""})
+                      "result": "", "error": "", **({"featureId": feature_id} if feature_id is not None else {})})
     return task
 
 
@@ -149,25 +165,38 @@ def stop_process(process):
 
 
 def execute(task_id):
+    import research_skills
+
     process = None
     diagnostics = []
     redactions = [workspace.deepseek_key()]
     try:
         task = get(task_id)
+        bot = task_bot(task["projectId"], task["featureId"]) if task.get("featureId") else None
         folder, data = context(project(task["projectId"]))
         started = time.time()
         runtime_cfg = model_config.sdk_runtime_config()
         redactions.extend(runtime_cfg.get("secrets") or ())
         patch = workspace.DATA / "runtime-config" / (task["id"] + ".json")
         patch.parent.mkdir(parents=True, exist_ok=True)
+        mcp_config = {"serverName": "researchos", "transport": "stdio", "command": sys.executable,
+                      "args": [str(Path(__file__).with_name("research_mcp.py").resolve()),
+                               str(workspace.DATA.resolve()), task["projectId"]],
+                      "failOnStartupError": True}
+        if bot:
+            mcp_config["args"].extend((bot["id"], task["sessionId"]))
+        if openalex_key := os.environ.get("OPENALEX_API_KEY", "").strip():
+            redactions.append(openalex_key)
+            runtime_cfg["env"]["OPENALEX_API_KEY"] = openalex_key
+            mcp_config.update(expandTemplates=True, env={"OPENALEX_API_KEY": "${credential:OPENALEX_API_KEY}"})
         patch_items = [
             {"id": "session-log-deepseek", "config": {"enabled": False}},
+            {"id": "skill-filesystem", "config": {
+                "customSkillDirs": [str(research_skills.DIRECTORY), str(research_skills.WORKFLOWS)],
+            }},
             {"insert": [{
                 "id": "researchos-mcp", "name": "@deepseek-ai/dsh-mcp-client",
-                "config": {"serverName": "researchos", "transport": "stdio", "command": sys.executable,
-                           "args": [str(Path(__file__).with_name("research_mcp.py").resolve()),
-                                    str(workspace.DATA.resolve()), task["projectId"]],
-                           "failOnStartupError": True}
+                "config": mcp_config,
             }]},
             *runtime_cfg["patches"],
         ]
@@ -200,6 +229,12 @@ def execute(task_id):
                       "可使用工具读写当前项目目录，将生成的文件保存到当前目录。"
                       "\n项目上下文\n" + json.dumps(data, ensure_ascii=False) +
                       "\n用户任务\n" + task["prompt"])
+        if bot:
+            prompt = ("遵循当前项目权限。以下为承接 Bot 的核心科研 Skill。工具请使用当前 SDK 会话中对应的名称。\n"
+                      + research_skills.core(bot) + "\n\nBot 职责\n"
+                      + json.dumps({key: bot.get(key) for key in ("id", "label", "hint", "paradigm", "extension")},
+                                   ensure_ascii=False)
+                      + "\n\n" + prompt)
         with LOCK:
             if get(task_id)["status"] == "CANCELLED":
                 return
@@ -248,7 +283,7 @@ def execute(task_id):
             update(task_id, status="SUCCEEDED" if final_result["reason"] == "completed" else "FAILED",
                    result=final_result["text"], error="" if final_result["reason"] == "completed" else str(final_result["reason"]))
         if not completed:
-            update(task_id, status="FAILED", error=_redact_secrets("".join(diagnostics)[-2000:] or "Weave 运行进程中断，可继续原会话重试。", redactions))
+            update(task_id, status="FAILED", error=_redact_secrets("".join(diagnostics)[-2000:] or "Weave 运行进程中断，可继续原对话重试。", redactions))
     except Exception as exc:
         update(task_id, status="FAILED", error=_redact_secrets(str(exc), redactions)[:2000])
     finally:
@@ -308,7 +343,7 @@ def recover():
     with LOCK:
         for task in all_tasks():
             if task["status"] in ("RUNNING", "QUEUED") or (task["status"] == "WAITING_APPROVAL" and task.get("pending")):
-                update(task["id"], status="FAILED", pending=None, error="服务已重启。可继续原会话恢复任务。")
+                update(task["id"], status="FAILED", pending=None, error="服务已重启。可继续原对话恢复任务。")
 
 
 def shutdown():
@@ -321,7 +356,7 @@ def chat_task(payload):
     thread_id = workspace.text(payload.get("threadId"), 150)
     item = project(project_id)
     if thread_id not in {thread["id"] for thread in item.get("threads", [])}:
-        raise workspace.WorkspaceError(404, "项目会话不存在。")
+        raise workspace.WorkspaceError(404, "项目对话不存在。")
     prior = next((task for task in all_tasks() if task["projectId"] == project_id
                   and task.get("threadId") == thread_id), None)
     created = create({"projectId": project_id, "prompt": payload.get("prompt"),

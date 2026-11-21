@@ -119,10 +119,15 @@ def prepare_profile(home):
     dependencies[name] = "file:" + PLUGIN.as_posix()
     target = profile / "node_modules" / name
     for src in PLUGIN.rglob("*"):
-        if src != package_path and src.suffix in (".js", ".json", ".yml", ".svg", ".png") and src.is_file():
+        skill = src.name == "SKILL.md" and src.relative_to(PLUGIN).parts[0] == "research-skills"
+        if src != package_path and (src.suffix in (".js", ".json", ".yml", ".svg", ".png") or skill) and src.is_file():
             destination = target / src.relative_to(PLUGIN)
             destination.parent.mkdir(parents=True, exist_ok=True)
             write_changed(destination, src.read_bytes())
+    for src in (ROOT / "skills").glob("*/SKILL.md"):
+        destination = target / "research-workflows" / src.parent.name / src.name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        write_changed(destination, src.read_bytes())
     write_changed(target / package_path.name, package)
     for filename in ("cordis.yml", "cordis.patch.yml"):
         if not (profile / filename).exists():

@@ -1,23 +1,26 @@
-import { toolLabels } from './assistant-history.js'
+import { recordWriteTools, toolLabels } from './assistant-history.js'
 import { displayAssignment } from './bot-assignments.js'
 import { registerBranding } from './branding.js'
 import { registerBrowser } from './browser.js'
 import { registerNative } from './native.js'
+import { registerResearchSkills } from './research-skills.js'
 
 export const name = 'labweave-research-workspace'
 export const inject = ['webServer', 'connection', 'workspaceRegistry', 'tools', 'sessions', 'sessionController',
   'sessionPersistence', 'sessionQuery', 'sessionReferenceResolver', 'permissionPresets', 'systemPrompt', 'schedule', 'sandboxPolicy',
-  'llm', 'agents', 'agentDefaultModel', 'subagents']
+  'llm', 'agents', 'agentDefaultModel', 'subagents', 'skills', 'userQuestions']
 
 const port = process.env.LABWEAVE_BRIDGE_PORT
 const token = process.env.LABWEAVE_BRIDGE_TOKEN
 if (token) delete process.env.LABWEAVE_BRIDGE_TOKEN
 
 export async function apply(ctx) {
+  registerResearchSkills(ctx)
   registerBranding(ctx)
   registerBrowser(ctx)
   const labels = JSON.stringify(toolLabels).replaceAll('<', '\\u003c')
   const metadata = `<script type="application/json" id="weave-tool-labels">${labels}</script>`
+    + `<script type="application/json" id="weave-record-write-tools">${JSON.stringify([...recordWriteTools])}</script>`
   ctx.effect(() => ctx.webServer.tapIndex(html => html.replace('</head>', () => metadata + '</head>')), 'Weave tool display names')
 
   // The scheduler UI opens and edits a copy of the catalog row. Leave its

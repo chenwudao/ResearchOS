@@ -30,10 +30,11 @@ Export BibTeX/CSV-friendly rows for `evidence-ledger`.
 
 ## Steps
 
-1. Resolve seeds to stable IDs.
-2. Expand prior / derivative / similar via open APIs when available.
-3. Deduplicate; attach relation labels.
-4. Write artifact + run-log; pass set to `foundational-frontier-split`.
+1. Resolve seeds to stable IDs. For a seed title or topic, call the available Weave `paper_search` tool with `includeStatus: true`. Keep the query and each provider's status with the run log.
+2. Use `paper_lookup` to resolve seed identifiers. Use `paper_neighbors` for outgoing references and incoming citations. The indexed count describes the source coverage and may exceed returned rows. `paper_citations` provides Crossref's outgoing references as an additional source. Explain coverage gaps before drawing conclusions.
+3. Deduplicate by DOI or provider ID. Keep version links for a preprint and a published paper when the source supports that link. Label topical similarity separately from citation relationships.
+4. Treat search results as metadata. For a claim about methods, datasets, or results, use `paper_read` with the registered project PDF or exact arXiv version and record the returned page and source locator.
+5. Write the paper set and search log, then pass them to `foundational-frontier-split` and `evidence-ledger`.
 
 ## Quality check
 
@@ -41,6 +42,7 @@ Export BibTeX/CSV-friendly rows for `evidence-ledger`.
 - [ ] Prior / derivative / similar not all identical lists
 - [ ] Duplicates merged
 - [ ] No invented paper titles or DOIs
+- [ ] The search log lists provider failures and missing coverage
 
 ## Acceptance tests
 

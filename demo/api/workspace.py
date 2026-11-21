@@ -109,8 +109,8 @@ def deepseek_key():
     return ""
 
 
-def fetch_source(url):
-    request = Request(url, headers={"User-Agent": "LabWeave/1.0"})
+def fetch_source(url, *, headers=None):
+    request = Request(url, headers={"User-Agent": "LabWeave/1.0", **(headers or {})})
     with urlopen(request, timeout=12) as response:
         return response.read(2_000_000)
 

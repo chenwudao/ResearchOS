@@ -1,10 +1,17 @@
 // Old Bot tasks also have the full generated ownership footer. A user-authored
 // occurrence of the old product name is ordinary prompt text.
+function assignmentFooter(owner, verb = '分派') {
+  return '\n任务归属：' + owner + '。先读取此 Bot 的' + verb + '任务'
+}
+function hasAssignmentFooter(prompt, owner) {
+  return prompt.includes(assignmentFooter(owner)) || prompt.includes(assignmentFooter(owner, '分配'))
+}
+
 export function displayAssignment(record) {
   const match = /^\[LabWeave ([\w-]+)\/([\w-]+)\]\n/.exec(record.prompt)
   if (!match) return record
   const owner = JSON.stringify({ projectId: match[1], featureId: match[2] })
-  if (!record.prompt.includes('\n任务归属：' + owner + '。先读取此 Bot 的分配任务')) return record
+  if (!hasAssignmentFooter(record.prompt, owner)) return record
   return { ...record, prompt: '[Weave ' + record.prompt.slice('[LabWeave '.length) }
 }
 
@@ -36,7 +43,7 @@ export function botAssignments(ctx, {rows, caller, registry, call, output, refre
   }
   const local=(t,action,args)=>call('project',{workspace:t.workspace,action,args:{...args,featureId:t.bot.id}})
   function promptFor(t,instruction) {
-    return marker(t)+instruction+'\n任务归属：'+JSON.stringify({projectId:t.row.scope,featureId:t.bot.id})+'。先读取此 Bot 的分配任务，按要求完成并记录结果。'
+    return marker(t)+instruction+assignmentFooter(JSON.stringify({projectId:t.row.scope,featureId:t.bot.id}))+'，按要求完成并记录结果。'
   }
   function recurrence(rule) {
     const rrule = rule.trim()
@@ -65,11 +72,11 @@ export function botAssignments(ctx, {rows, caller, registry, call, output, refre
     const t=target(scope,args.featureId)
     const title=String(args.title||'').trim(), instruction=String(args.instruction||'').trim(), rrule=String(args.rrule||'').trim()
     if(!title||title.length>80||!instruction||instruction.length>3000)throw fail('任务名称或说明无效。')
-    if(!rrule)throw fail('定时任务需要 RRULE。')
+    if(!rrule)throw fail('定时任务需要重复规则。')
     const prompt=promptFor(t,instruction), timing=recurrence(rrule)
     if(args.id){
       const current=(await schedules(t)).find(s=>s.id===args.id)
-      if(!current)throw fail('定时任务已移除，请重新分配。',404)
+      if(!current)throw fail('定时任务已移除，请重新分派。',404)
       if(args.expectedUpdatedAt!==undefined && args.expectedUpdatedAt!==(current.updatedAt??null))
         throw fail('定时任务已变更，请重新读取后操作。',409)
       const result=await edit({id:current.id,action:'update',expectedUpdatedAt:current.updatedAt??null,
@@ -124,7 +131,7 @@ export function botAssignments(ctx, {rows, caller, registry, call, output, refre
   async function edit(request,session,signal) {
     const result=await scheduleWrite('edit',request,session,signal)
     if(result.code && result.code!=='schedule_not_found')throw fail('定时任务已变更，请重新读取后操作。',409)
-    if(result.code && request.action==='update')throw fail('定时任务已移除，请重新分配。',404)
+    if(result.code && request.action==='update')throw fail('定时任务已移除，请重新分派。',404)
     return result
   }
   function scoped(args,exec) {
@@ -136,7 +143,7 @@ export function botAssignments(ctx, {rows, caller, registry, call, output, refre
   }
   const properties={featureId:{type:'string'},projectId:{type:'string'},kind:{type:'string',enum:['duty','schedule']},
     title:{type:'string'},instruction:{type:'string'},rrule:{type:'string'}}
-  ctx.tools.register({name:'labweave_bot_assign',description:'Assign or update a real task for one project Feature Bot from conversation. Use duty for responsibilities and work rules; instruction is Markdown source rendered in the Bot task panel. Schedule with an RRULE for actual recurring delivery. Same kind and title updates the task. Global chat requires projectId. Resolve featureId from feature_list.',
+  ctx.tools.register({name:'labweave_bot_assign',description:'Assign or update a real task for one project Feature Bot from conversation. Use duty for responsibilities and work rules; instruction is Markdown source rendered in the Bot task panel. Schedule with a timed recurrence rule for actual recurring delivery. Same kind and title updates the task. Global chat requires projectId. Resolve featureId from feature_list.',
     parameters:{type:'object',properties,required:['kind','title','instruction'],additionalProperties:false},output,
     async execute(args,exec){return serial(async()=>{
       const t=scoped(args,exec), title=args.title.trim(), instruction=args.instruction.trim()
@@ -146,7 +153,7 @@ export function botAssignments(ctx, {rows, caller, registry, call, output, refre
         await refresh()
         return JSON.stringify(rules)
       }
-      if(!args.rrule)throw Error('定时任务需要 RRULE。')
+      if(!args.rrule)throw Error('定时任务需要重复规则。')
       const prompt=promptFor(t,instruction)
       const old=(await schedules(t)).find(s=>s.title===title)
       const timing=recurrence(args.rrule)

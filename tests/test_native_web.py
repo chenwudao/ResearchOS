@@ -22,7 +22,7 @@ import workspace
 class NativeWorkspaceTests(unittest.TestCase):
     def setUp(self):
         self.tmp = TemporaryDirectory()
-        self.root = Path(self.tmp.name)
+        self.root = Path(self.tmp.name).resolve()
         self.old = workspace.DATA
         workspace.DATA = self.root / "data"
         self.projects = [web.dispatch("create", {"name": n, "requestId": k * 32})["scope"]
@@ -36,6 +36,19 @@ class NativeWorkspaceTests(unittest.TestCase):
     def tearDown(self):
         workspace.DATA = self.old
         self.tmp.cleanup()
+
+    def test_composer_references_resolve_only_within_the_project(self):
+        alpha, beta = self.projects
+        paper = web.projects.create_entry(alpha, "library", {"title": "相识别文献", "text": "本项目的核验依据"})
+        web.projects.remember(alpha, "所有结论附原始出处", category="rule", pinned=True)
+        rows = web.project_action(alpha, {"action": "composer/references", "args": {"kind": "library", "query": "相识别"}})
+        self.assertEqual([row["id"] for row in rows], [paper["id"]])
+        reference = {"action": "composer/reference", "args": {"kind": "library", "id": paper["id"]}}
+        self.assertIn("核验依据", web.project_action(alpha, reference)["text"])
+        with self.assertRaises(workspace.WorkspaceError):
+            web.project_action(beta, reference)
+        rules = web.project_action(alpha, {"action": "composer/references", "args": {"kind": "rule", "query": "出处"}})
+        self.assertEqual([item["name"] for item in rules], ["所有结论附原始出处"])
 
     def test_create_project_saves_initial_read_only_sources_as_one_operation(self):
         first, second = self.root / "文献", self.root / "笔记"
@@ -278,6 +291,86 @@ class NativeWorkspaceTests(unittest.TestCase):
         self.assertNotIn("上一版本", remaining["elements"])
         self.assertNotIn("parentId", remaining)
 
+    def test_bot_flow_replays_project_updates_and_gates_dependencies(self):
+        a, b = self.projects
+        bot = features.create_feature(a, "原文核对", paradigm="notes")["feature"]["id"]
+        first, next_task = ("weave-bot-run-" + mark * 32 for mark in ("a", "b"))
+
+        def call(route, **data):
+            return web.dispatch(route, {"workspace": self.records[a], **data})
+
+        def start(identity, dependencies=(), version=0):
+            return call("bot-dispatch-start", parentSessionId="project-chat", jobs=[{
+                "id": identity, "featureId": bot, "task": "核验", "requestId": "message-1",
+                "dependsOn": list(dependencies), "policyVersion": version,
+            }])
+
+        entry = {"action": "input", "sessionId": "project-chat", "messageId": "message-1", "text": "核验原文"}
+        call("project-flow", **entry)
+        call("project-flow", **entry)
+        snapshot = call("project-flow", action="read")
+        self.assertEqual(len(snapshot["events"]), 1)
+        self.assertEqual(web.dispatch("project-flow", {"workspace": self.records[b], "action": "read"})["events"], [])
+        start(first)
+        with self.assertRaises(workspace.WorkspaceError):
+            start(next_task, [first])
+        call("bot-dispatch-update", id=first, status="completed", result={"answer": "已核实", "policyVersion": 0})
+        start(next_task, [first])
+        updates = call("project-flow", action="read", after=snapshot["cursor"])
+        self.assertEqual([event["status"] for event in updates["events"]], ["queued", "completed", "queued"])
+        call("project-flow", action="decision", sessionId="project-chat", messageId="rule-2", text="更换验收条件")
+        stale = call("bot-dispatch-update", id=next_task, status="completed", result={"answer": "旧版", "policyVersion": 0})
+        self.assertEqual(stale["status"], "needs_follow_up")
+        with self.assertRaises(workspace.WorkspaceError):
+            start("weave-bot-run-" + "c" * 32, [first], call("project-flow", action="read")["version"])
+        version = call("project-flow", action="read")["version"]
+        call("project-flow", action="retract", sessionId="project-chat",
+             messageId="rewind-1", messageIds=["message-1"])
+        events = call("project-flow", action="read")["events"]
+        self.assertEqual(events[-1]["messageIds"], ["message-1"])
+        self.assertFalse(any(event["kind"] == "input" for event in events))
+        with self.assertRaises(workspace.WorkspaceError):
+            start("weave-bot-run-" + "d" * 32, version=version)
+
+    def test_research_artifact_changes_reach_other_paradigms_and_stale_dependencies_wait(self):
+        import research_records
+        a, b = self.projects
+        notes = features.create_feature(a, "依据", paradigm="notes")["feature"]["id"]
+        mindmap = features.create_feature(a, "关系", paradigm="mindmap")["feature"]["id"]
+        first, downstream = ("weave-bot-run-" + mark * 32 for mark in ("a", "b"))
+
+        def call(route, **args):
+            return web.dispatch(route, {"workspace": self.records[a], **args})
+
+        def start(task, bot, depends=()):
+            return call("bot-dispatch-start", parentSessionId="project-chat", jobs=[{
+                "id": task, "featureId": bot, "task": "核对资料", "requestId": "research-request",
+                "dependsOn": list(depends), "policyVersion": 0,
+            }])
+
+        start(first, notes)
+        record = web.projects.create_entry(a, notes, {"title": "资料初审", "text": "证据摘要"})
+        call("bot-dispatch-update", id=first, status="completed", result={"recordId": record["id"], "policyVersion": 0})
+        start(downstream, mindmap, [first])
+        web.projects.update_entry(a, notes, {"id": record["id"], "text": "更正后的证据"})
+        run = research_records.save(a, "experiment", {"name": "离线基线", "status": "completed",
+                                     "metrics": {"accuracy": [0.75, 0.81]}, "logs": "PRIVATE_LOG"})
+        audience = {"sessionId": "mindmap-chat", "botId": mindmap, "includeArtifacts": True, "dependencyTaskIds": [first]}
+        changes = call("project-flow", action="read", audience=audience)
+        self.assertEqual(changes["changedDependencies"], [first])
+        last = next(event for event in changes["events"] if event.get("recordId") == run["id"])
+        self.assertEqual(last["metrics"], {"accuracy": 0.81})
+        self.assertNotIn("PRIVATE_LOG", json.dumps(changes))
+        self.assertEqual(changes["version"], 0)
+        with self.assertRaises(workspace.WorkspaceError):
+            web.projects.create_entry(a, mindmap, {"text": "使用已失效的前置成果",
+                                                   "policyVersion": 0, "workflowDependencies": [first]})
+        self.assertEqual(call("bot-dispatch-update", id=downstream, status="completed", result={})["status"], "needs_follow_up")
+        with self.assertRaises(workspace.WorkspaceError):
+            start("weave-bot-run-" + "c" * 32, mindmap, [first])
+        self.assertEqual(web.dispatch("project-flow", {"workspace": self.records[b], "action": "read",
+                                                     "audience": audience})["events"], [])
+
     def test_bot_dispatches_update_with_grouping_and_keep_archived_delivery(self):
         import bot_dispatches
 
@@ -302,6 +395,10 @@ class NativeWorkspaceTests(unittest.TestCase):
         canvas = action("bot_canvas", featureId=member)
         self.assertEqual(canvas["active"], 1)
         self.assertEqual([draft["text"] for draft in canvas["drafts"]], ["修订"])
+        self.assertEqual([(message["id"], message["text"]) for message in canvas["messages"]
+                          if not message.get("taskOverview")],
+                         [(draft["id"], draft["text"]) for draft in canvas["drafts"]])
+        self.assertNotIn("修订", [message["text"] for message in action("bot_canvas", featureId=target)["messages"]])
         with self.assertRaises(workspace.WorkspaceError):
             web.dispatch("bot-dispatch-draft", {"workspace": self.records[b], "id": identity,
                          "args": {"key": "source", "title": "跨项目", "text": "错误"}})
@@ -314,6 +411,10 @@ class NativeWorkspaceTests(unittest.TestCase):
             dispatch("bot-dispatch-draft", id=identity, args={"key": "source", "title": "重试", "text": "已结束"})
         dispatch("bot-dispatch-update", id=identity, status="running")
         dispatch("bot-complete", featureId=member, recordId=entry["id"])
+        history = [message for message in action("bot_canvas", featureId=member)["messages"]
+                   if not message.get("taskOverview")]
+        self.assertEqual([message["text"] for message in history], ["修订", "已核对第 4 页"])
+        self.assertEqual(history[-1]["recordId"], entry["id"])
         task = action("bot_dispatch_detail", id=identity)
         self.assertEqual((task["status"], task["botState"], task["answer"]), ("completed", "archived", "已核对第 4 页"))
         action("bot_restore", featureId=member)
@@ -345,6 +446,63 @@ class NativeWorkspaceTests(unittest.TestCase):
         self.assertEqual([card["title"] for card in canvas["drafts"]], ["阶段回报", "第一篇"])
         view = dispatch("project", action="view", args={})
         self.assertEqual(view["rails"].get(bot), [])
+
+    def test_worker_experiment_reads_latest_metrics_in_cluster_overview(self):
+        project, _ = self.projects
+        record = self.records[project]
+        root, member = [features.create_feature(project, name, paradigm="engineering")["feature"]["id"]
+                        for name in ("运行总览", "训练")]
+        features.cluster_bots(project, root, [member])
+        run = "weave-bot-run-" + "d" * 32
+        web.dispatch("bot-dispatch-start", {"workspace": record, "parentSessionId": "parent", "jobs": [
+            {"id": run, "featureId": member, "task": "训练"},
+        ]})
+        data = {"workspace": record, "tool": "experiment_record", "featureId": member, "sessionId": run,
+                "args": {"name": "训练一", "status": "running", "taskId": run,
+                         "parameters": {"artifacts": ["outputs/metrics.csv"]}}}
+        web.dispatch("tool", data)
+        with self.assertRaises(workspace.WorkspaceError):
+            web.dispatch("tool", {**data, "featureId": root})
+        output = workspace.DATA / "projects" / project / "outputs"
+        output.mkdir(exist_ok=True)
+        metrics = output / "metrics.csv"
+        metrics.write_text("step,loss\n" + "".join(f"{i},{i}\n" for i in range(1200)), encoding="utf-8")
+
+        def latest():
+            return web.dispatch("project", {"workspace": record, "action": "bot/experiments",
+                                            "args": {"featureId": root}})[0]
+
+        self.assertEqual(latest()["botLabel"], "训练")
+        self.assertEqual(latest()["visualizations"][0]["points"][-1], {"x": 1199, "y": 1199})
+        with metrics.open("a", encoding="utf-8") as stream:
+            stream.write("1200,0.5\n")
+        self.assertEqual(latest()["visualizations"][0]["points"][-1], {"x": 1200, "y": 0.5})
+
+    def test_canvas_links_can_cross_cluster_members_only(self):
+        project, _ = self.projects
+        record = self.records[project]
+
+        def action(name, **args):
+            return web.dispatch("project", {"workspace": record, "action": name, "args": args})
+
+        root, member, other = [features.create_feature(project, label, paradigm="mindmap")["feature"]["id"]
+                               for label in ("聚类入口", "成员", "其他 Bot")]
+        a, b, c = [action("feature_push", featureId=bot, text=label)["id"]
+                   for bot, label in zip((root, member, other), ("前置", "下游", "范围外"), strict=True)]
+        with self.assertRaises(workspace.WorkspaceError):
+            action("feature_push", featureId=member, id=b, parentId=a)
+        action("bot_cluster", targetId=root, memberIds=[member])
+        downstream = action("feature_push", featureId=member, id=b, parentId=a, dependsOn=[a], relatedIds=[a])
+        self.assertEqual((downstream["parentId"], downstream["dependsOn"], downstream["relatedIds"]), (a, [a], [a]))
+        with self.assertRaises(workspace.WorkspaceError):
+            action("feature_push", featureId=root, id=a, dependsOn=[b])
+        with self.assertRaises(workspace.WorkspaceError):
+            action("feature_push", featureId=member, id=b, relatedIds=[c])
+        action("entry_delete", rail=root, id=a)
+        child = next(entry for entry in action("view")["rails"][member] if entry["id"] == b)
+        self.assertNotIn("parentId", child)
+        self.assertEqual(child["dependsOn"], [])
+        self.assertEqual(child["relatedIds"], [])
 
     def test_bot_cluster_and_retirement_keep_original_records(self):
         a, b = self.projects

@@ -1,5 +1,7 @@
 # ResearchOS / Research Companion — Skill Survey: Research Guidance & Literature
 
+> Historical survey for Weave's research application. The current workflow and implementation map are in the [README](../README.md#科研应用).
+
 **Purpose.** Map products, papers, and agent-skill patterns onto a student Research Companion that (1) guides BIG direction → SMALL questions, (2) surfaces foundational + frontier work, (3) improves project skills. Existing modules: **Radar / ReproBox / Debugger / LabLens / Replay**. Existing skills: `project-gap-audit`, `module-spec`, `pilot-eval-design`, `evidence-ledger`. **Gap:** literature search, paper comparison, and planning skills.
 
 **Method note.** WebSearch + WebFetch (2026-10-23, user zone UTC+8). Product claims below are from vendor pages / papers as cited. **Fetch failures:** `https://scispace.com/` → 403 Forbidden; `https://openalex.org/` → bot wall (API docs usable). Do not invent paper results beyond what those sources state.

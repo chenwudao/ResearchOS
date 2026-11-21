@@ -24,6 +24,27 @@ class LocalTests(unittest.TestCase):
         workspace.DATA = self.previous
         self.temporary.cleanup()
 
+    def test_worker_context_keeps_project_decisions_and_task_relevant_updates(self):
+        import project_flow
+
+        def add(session, identity, body, **fields):
+            project_flow.write(self.project, {"sessionId": session, "messageId": identity, "text": body, **fields})
+
+        add("project-chat", "original", "Original instructions")
+        add("project-chat", "after", "Follow-up for a later run", followUpOf="run")
+        add("other-bot-session", "local", "Unrelated Bot conversation")
+        add("project-chat", "rule", "Confirmed shared rule", action="decision")
+        with closing(workspace.database()) as db, db:
+            project_flow.append(db, self.project, "run-progress", "progress", {"taskId": "run", "text": "My progress"})
+            project_flow.append(db, self.project, "dependency-result", "task", {"taskId": "dep", "text": "Predecessor result"})
+            project_flow.append(db, self.project, "other-run", "progress", {"taskId": "other", "text": "Unrelated progress"})
+        audience = {"sessionId": "worker", "parentSessionId": "project-chat",
+                    "requestId": "original", "taskIds": ["run", "dep"]}
+        result = project_flow.read(self.project, audience=audience)
+        self.assertEqual([event["text"] for event in result["events"]],
+                         ["Original instructions", "Confirmed shared rule", "My progress", "Predecessor result"])
+        self.assertEqual(project_flow.read(self.project, result["cursor"], audience)["events"], [])
+
     def test_dependencies_and_isolation(self):
         a = project_service.create_entry(self.project, "goals", {"text":"first"})
         b = project_service.create_entry(self.project, "goals", {"text":"second","dependsOn":[a["id"]],"parentId":a["id"]})

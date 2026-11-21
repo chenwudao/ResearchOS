@@ -112,8 +112,8 @@ async function main() {
     throw Error('目标会话未出现')
   }
   async function newProject(name) {
-    await button('新建工作区项目').click()
-    const form = page.getByRole('dialog', { name: '新建工作区项目' })
+    await button('新建项目').click()
+    const form = page.getByRole('dialog', { name: '新建项目' })
     const create = form.getByRole('button', { name: '创建', exact: true })
     assert.ok(await create.isDisabled())
     await form.getByLabel('项目名称').fill(name)
@@ -159,7 +159,7 @@ async function main() {
     await page.evaluate(() => window.dispatchEvent(new Event('labweave:project-updated')))
   }
   async function checkProjectTools(name, scope) {
-    step = '项目聊天右侧栏'
+    step = '项目对话右侧栏'
     await button('工具').click()
     await page.locator('[data-sidebar-right-open]').waitFor()
     const right = page.locator('[data-rightbar-col]')
@@ -310,7 +310,7 @@ async function main() {
       assert.equal(recovered.data.rails[customFeat.id]?.[0]?.text, '本周实验进展汇总')
       const schedule = JSON.parse(fs.readFileSync(path.join(root, 'home/storages/schedule.json')))
       const persisted = Object.values(schedule.tables.tasks).find(r => r.record?.title === '仅乙的定时复盘')
-      assert.ok(persisted, '指定项目的自动化任务未持久化')
+      assert.ok(persisted, '指定项目的定时任务未持久化')
       assert.equal(path.basename(persisted.target.create.cwd), before.projectB)
       assert.ok(persisted.record.prompt.startsWith('[LabWeave '), '查看任务应保留历史任务原始指令')
       step = '原生项目改名与设置'
@@ -451,7 +451,7 @@ async function main() {
     const profileAvatar = profileModal.locator('.lw-ap-avatar-circle img')
     await profileAvatar.waitFor()
     await profileModal.getByRole('tab', { name: '活动', exact: true }).click()
-    await profileModal.getByRole('button',{ name:'查看所有预定任务' }).waitFor()
+    await profileModal.getByRole('button',{ name:'查看所有定时任务' }).waitFor()
     await profileModal.getByRole('tab', { name: '审核', exact: true }).click()
     await profileModal.getByText('暂无批准记录', { exact: true }).waitFor()
     await profileAvatar.waitFor()
@@ -502,10 +502,10 @@ async function main() {
     await page.mouse.move(480, 450)
     await page.locator('[data-sidebar-toggle] img.lw-brand-mark').waitFor()
     assert.equal(await page.locator('[class*="newSession"]:visible').count(), 0)
-    await assertCollapsedRailAligned(page.locator('nav[aria-label="工作区项目快捷栏"] button').first(), '收起后项目图标应与上方品牌图标纵向对齐')
-    await page.locator('nav[aria-label="工作区项目快捷栏"] button').first().click()
-    await page.getByRole('dialog', { name: '工作区项目菜单' }).waitFor()
-    await page.getByRole('dialog', { name: '工作区项目菜单' }).getByRole('button', { name: /回到全局助手/ }).click()
+    await assertCollapsedRailAligned(page.locator('nav[aria-label="项目快捷栏"] button').first(), '收起后项目图标应与上方品牌图标纵向对齐')
+    await page.locator('nav[aria-label="项目快捷栏"] button').first().click()
+    await page.getByRole('dialog', { name: '项目菜单' }).waitFor()
+    await page.getByRole('dialog', { name: '项目菜单' }).getByRole('button', { name: /回到全局助手/ }).click()
     await button('打开侧边栏').click()
     assert.equal(await page.locator('[data-slot="conversation.hero.agentPreset"] button:visible').count(), 0)
     assert.equal(await page.getByText('标准模式', { exact: true }).count(), 0)
@@ -574,7 +574,7 @@ async function main() {
     for (const label of ['聊天','动态','点子','目标','资源库']) await projectBar.getByRole('button', { name: label, exact: true }).waitFor()
     assert.equal(await projectBar.locator('xpath=ancestor::*[@data-sidebar-scrollport]').count(), 1)
     await button('收起侧边栏').click()
-    const collapsedProjectBtn = page.locator('nav[aria-label="工作区项目快捷栏"]').getByRole('button', { name: '研究甲', exact: true })
+    const collapsedProjectBtn = page.locator('nav[aria-label="项目快捷栏"]').getByRole('button', { name: '研究甲', exact: true })
     await assertCollapsedRailAligned(collapsedProjectBtn, '收起后项目图标尺寸与水平位置应与顶部对齐')
     await collapsedProjectBtn.click()
     const projectPopover = page.getByRole('dialog', { name: '研究甲 项目菜单' })
@@ -807,16 +807,16 @@ async function main() {
     const schedProfile = page.getByRole('dialog', { name: '全局助手设置' })
     await schedProfile.waitFor()
     await schedProfile.getByRole('tab', { name: '活动', exact: true }).click()
-    await schedProfile.getByRole('button', { name: '查看所有预定任务', exact: true }).click()
+    await schedProfile.getByRole('button', { name: '查看所有定时任务', exact: true }).click()
     await schedProfile.waitFor({ state: 'hidden' })
-    await button('新建自动化任务').click()
+    await button('新建定时任务').click()
     await checkProductCopy(page.locator('body'))
     const target = page.getByRole('button', { name: /关联工作区/ })
     assert.match(await target.innerText(), /Weave/)
     await target.click()
     await page.getByRole('menu').getByText('研究乙', { exact: true }).click()
     assert.match(await target.innerText(), /研究乙/)
-    await page.getByLabel('自动化任务名称').fill('仅乙的定时复盘')
+    await page.getByLabel('定时任务名称').fill('仅乙的定时复盘')
     const savedInstruction = '查看 DSH 论文里的 $DSH_HOME 示例。'
     const legacyTask = `[LabWeave ${b.scope}/ideas]\n${savedInstruction}\n任务归属：${JSON.stringify({ projectId: b.scope, featureId: 'ideas' })}。先读取此 Bot 的分配任务，按存储要求将结果写入对应功能。`
     await page.locator('textarea:visible').fill(legacyTask)

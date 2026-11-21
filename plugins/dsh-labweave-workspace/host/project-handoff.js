@@ -23,14 +23,14 @@ export function registerProjectHandoff(ctx, { caller, rows, ownerRoute, call, ou
     const clean = typeof task === 'string' ? task.trim() : ''
     if (!row || !clean || clean.length > 8000) throw fail('请明确选择项目并填写任务。', 400)
     const bot = botId && row.features.find(feature => feature.id === botId && !feature.archived)
-    if (botId && !bot) throw fail('该项目 Bot 已不可用。', 409)
+    if (botId && !bot) throw fail('该功能 Bot 已不可用。', 409)
     const sessionId = agent.session.header.id
     const id = sessionId + '/' + (key || randomUUID())
     if (requests.has(id)) return requests.get(id)
     const { preset } = await call('assistant-permission', {}, signal)
     if (requests.has(id)) return requests.get(id)
     if (requests.size >= 256) {
-      const old = [...requests].find(([, item]) => item.status === 'sent' || item.status === 'dismissed')
+      const old = [...requests].find(([, item]) => item.status === 'dismissed' || (item.status === 'sent' && item.messageId))
       if (!old) throw fail('请先处理现有的项目转交请求。', 409)
       requests.delete(old[0])
     }
@@ -43,7 +43,7 @@ export function registerProjectHandoff(ctx, { caller, rows, ownerRoute, call, ou
   ownerRoute('project-handoffs', ['POST'], async data => {
     const items = [...requests.values()].filter(item => item.sessionId === data.sessionId)
     if (!data.action) return items.filter(item => ['pending', 'ready', 'sending'].includes(item.status))
-      .map(({ claim: _claim, ...item }) => item)
+      .map(({ claim: _claim, deliveredText: _deliveredText, messageId: _messageId, ...item }) => item)
     const item = items.find(entry => entry.id === data.id)
     if (!item) throw fail('这个转交请求已不可用。', 404)
     if (data.action === 'dismiss' && ['ready', 'pending'].includes(item.status)) {
@@ -59,10 +59,10 @@ export function registerProjectHandoff(ctx, { caller, rows, ownerRoute, call, ou
       const workspace = row && ctx.workspaceRegistry.get(row.workspaceId)
       const sid = data.targetSessionId
       if (!workspace?.sessionIds.includes(sid) || row.botSessionIds?.includes(sid)
-          || ctx.workspaceRegistry.archivedSessionIds.includes(sid)) throw fail('请选择目标项目的主会话。')
+          || ctx.workspaceRegistry.archivedSessionIds.includes(sid)) throw fail('请选择目标项目的主对话。')
       const target = ctx.sessions.get(sid) || (await ctx.sessionQuery.filterSessions([{ kind: 'id', values: [sid] }]))[0]
       if (!target || target.header.origin === 'subagent' || target.header.cwd !== workspace.path) {
-        throw fail('请选择目标项目的主会话。')
+        throw fail('请选择目标项目的主对话。')
       }
       if (item.status !== 'ready' && !(item.status === 'pending' && data.confirm === true)) {
         throw fail('任务已由另一个窗口接收。', 409)
@@ -72,13 +72,17 @@ export function registerProjectHandoff(ctx, { caller, rows, ownerRoute, call, ou
       item.status = 'sending'
       item.targetSessionId = sid
       item.claim = randomUUID()
-      return { claim: item.claim, task: '来自全局助手的项目转交。请在本项目中处理以下用户任务。'
-        + (bot ? '\n交给 Bot「' + bot.label + '」（' + bot.id + '）。' : '') + '\n\n' + item.task }
+      item.deliveredText = '来自全局助手的项目转交。请在本项目中处理以下用户任务。'
+        + (bot ? '\n交给 Bot「' + bot.label + '」（' + bot.id + '）。' : '') + '\n\n' + item.task
+      return { claim: item.claim, task: item.deliveredText }
     }
     if (['sent', 'release'].includes(data.action) && item.status === 'sending' && data.claim === item.claim) {
       item.status = data.action === 'sent' ? 'sent' : 'pending'
       delete item.claim
-      if (data.action === 'release') delete item.targetSessionId
+      if (data.action === 'release') {
+        delete item.targetSessionId
+        delete item.deliveredText
+      }
       return { ok: true }
     }
     throw fail('任务状态已更新，请重新打开项目转交。', 409)
@@ -88,7 +92,7 @@ export function registerProjectHandoff(ctx, { caller, rows, ownerRoute, call, ou
     let origin
     try { origin = caller(exec) } catch { return }
     if (origin.row.scope === 'global' && !managementTools.has(exec.name)) {
-      return '全局助手负责管理。具体执行请使用 labweave_project_handoff 转交项目会话。'
+      return '全局助手负责管理。具体执行请使用 labweave_project_handoff 转交项目对话。'
     }
   })
   ctx.tools.register({
@@ -99,11 +103,22 @@ export function registerProjectHandoff(ctx, { caller, rows, ownerRoute, call, ou
     } },
     async execute(args, exec) {
       const result = await request(exec.agent, { ...args, key: exec.callId }, exec.signal)
-      return JSON.stringify({ status: result.status === 'ready' ? '将在项目会话发送' : '等待用户确认转交',
+      return JSON.stringify({ status: result.status === 'ready' ? '将在项目对话发送' : '等待用户确认转交',
         project: result.projectName, id: result.id })
     },
   }, { when: ({ agent }) => {
     try { return caller({ agent }).row.scope === 'global' } catch { return false }
   } })
+  request.match = (sessionId, message) => {
+    const text = message.content.length === 1 && message.content[0].type === 'text' && message.content[0].text
+    if (!text) return
+    const item = [...requests.values()].find(entry => entry.targetSessionId === sessionId
+      && entry.deliveredText === text && ['sending', 'sent'].includes(entry.status)
+      && (!entry.messageId || entry.messageId === message.id))
+    if (item) {
+      item.messageId = message.id
+      return { task: item.task, botId: item.botId, handoffId: item.id, sourceSessionId: item.sessionId }
+    }
+  }
   return request
 }

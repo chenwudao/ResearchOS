@@ -16,10 +16,10 @@ BUILTIN_ORDER = ("chat", "feed", "ideas", "goals", "library")
 OPTIONAL_BUILTINS = ("feed", "ideas", "goals", "library")
 PROTECTED_FEATURES = frozenset({"chat"})
 BOT_LAYOUTS = {
-    "goals": ("checklist", "path"),
+    "goals": ("checklist", "path", "bus"),
     "notes": ("library", "timeline"),
-    "mindmap": ("graph", "lineage"),
-    "ideas": ("branches", "reasoning"),
+    "mindmap": ("graph", "lineage", "star", "bus"),
+    "ideas": ("branches", "reasoning", "star"),
     "engineering": ("sequence", "matrix"),
 }
 FIELD_TYPES = ("text", "number", "date", "boolean", "url", "reference")
@@ -29,6 +29,7 @@ FIELD_ROLES = {
     "detail": ("text", "number", "date", "boolean", "url"),
 }
 BOT_RECORD_TEXT_FIELDS = {
+    "summary": ("Card overview in one or two plain-text sentences. Keep the detailed article in text.", 240),
     "priority": ("优先级", 80), "completionCriteria": ("完成条件", 1000),
     "relationLabel": ("关系类型", 80), "relationStatus": ("关系核查状态", 80),
     "hypothesis": ("假设", 1000), "validation": ("最小验证", 1000), "result": ("结果", 1000),
@@ -155,7 +156,7 @@ FEATURE_META = {
         "emptyText": "还没有设定任何目标",
     },
     "library": {
-        "hint": "文献、仓库和产物",
+        "hint": "文献、代码仓库和产物",
         "emptyText": "还没有收录任何资源",
     },
 }
@@ -246,7 +247,7 @@ def _validate_caller(caller_scope, projects):
     if not isinstance(caller_scope, str) or (
         caller_scope != "global" and caller_scope not in projects
     ):
-        raise workspace.WorkspaceError(404, "未找到对应的工作区会话。")
+        raise workspace.WorkspaceError(404, "未找到对应的工作区对话。")
 
 
 def _resolve_target(caller_scope, project_id=None, *, require_project_from_global=False, allow_all=False):
@@ -440,6 +441,7 @@ def list_features(caller_scope, project_id=None):
                     "hint": hint or "",
                     "symbol": symbol or "",
                     "keywords": parsed_kw,
+                    "layout": layout,
                 }
             continue
         prev = custom_entries.get(fid)
@@ -478,7 +480,7 @@ def list_features(caller_scope, project_id=None):
             "symbol": override.get("symbol", ""),
             "keywords": override.get("keywords", []),
             "paradigm": paradigm,
-            "layout": layout,
+            "layout": override.get("layout") or layout,
             "emptyText": meta["emptyText"],
             "botSessionId": None if fid == "chat" else bot_map.get(fid),
         })
@@ -608,7 +610,7 @@ def create_feature(caller_scope, label, hint="", project_id=None, *, symbol=None
 
 def cluster_bots(project, target_id, member_ids):
     if not isinstance(member_ids, list) or not member_ids or not all(isinstance(value, str) for value in member_ids):
-        raise workspace.WorkspaceError(400, "请选择要聚类的成员 Bot。")
+        raise workspace.WorkspaceError(400, "请选择要聚类的功能 Bot。")
     target_id = _clean_id(target_id)
     members = set(member_ids)
     with closing(workspace.database()) as db, db:
@@ -827,6 +829,27 @@ def update_feature(caller_scope, feature_id, *, label=None, hint=None, symbol=No
     return {"scope": target, "feature": updated_item}
 
 
+def set_layout(project, feature_id, layout):
+    bot = next((item for item in list_features(project, project) if item["id"] == feature_id), {})
+    if not isinstance(layout, str) or layout not in BOT_LAYOUTS.get(bot.get("paradigm"), ()) or bot.get("extension"):
+        raise workspace.WorkspaceError(400, "该排布与当前 Bot 范式不兼容。")
+    with closing(workspace.database()) as db, db:
+        ensure_tables(db)
+        if bot.get("builtin"):
+            db.execute(
+                "INSERT OR IGNORE INTO labweave_features (scope, feature_id, label, hint, deleted, sort_order, updated_ts) "
+                "VALUES (?, ?, ?, '', 0, ?, ?)",
+                (project, feature_id, bot["label"], (BUILTIN_ORDER.index(feature_id) + 1) * 10, int(time.time())),
+            )
+        updated = db.execute(
+            "UPDATE labweave_features SET layout=? WHERE scope=? AND feature_id=? AND deleted=0",
+            (layout, project, feature_id),
+        )
+        if not updated.rowcount:
+            raise workspace.WorkspaceError(400, "只能修改当前项目中创建的 Bot。")
+    return {"featureId": feature_id, "layout": layout}
+
+
 def assignment_map(project):
     with closing(workspace.database()) as db:
         ensure_tables(db)
@@ -878,7 +901,7 @@ def assignments(project, fid, change=None):
             else:
                 instruction = workspace.text(change.get("instruction"), 3000)
                 if not instruction:
-                    raise workspace.WorkspaceError(400, "请说明要分配的任务。")
+                    raise workspace.WorkspaceError(400, "请说明要分派的任务。")
                 previous = change.get("originalTitle")
                 if previous is not None:
                     previous = naming.display_name(previous)

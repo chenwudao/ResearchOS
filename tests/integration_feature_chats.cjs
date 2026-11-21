@@ -111,7 +111,7 @@ async function main() {
     await nav('文献梳理').getByRole('button',{name:local,exact:true}).waitFor({timeout:18000})
     await featurePage('文献梳理',local,localNote)
     await screenshot('功能创建-功能Bot对话')
-    console.log('从已打开空间存储的项目聊天切入功能分屏')
+    console.log('从已打开空间存储的项目对话切入功能分屏')
     await nav('文献梳理').getByRole('button',{name:'聊天',exact:true}).click()
     await chatScope(cfg.alpha);await openFileStorage()
     await nav('文献梳理').getByRole('button',{name:'分屏打开资源库',exact:true}).click()
@@ -145,19 +145,19 @@ async function main() {
           return visible
         })
       }
-      step='全局助理整条回复'
+      step='全局助手整条回复'
       await page.locator('style[data-lw-messenger]').first().waitFor({state:'attached'})
       assert.equal(await partialVisible(),false)
       await send('请只用一句话回答，以“叶绿素”开头，说明叶片为什么通常是绿色的。')
       await until(async()=>page.locator('[data-conversation-session]:visible').last()
         .locator('p:visible').evaluateAll(ps=>ps.some(p=>p.textContent.trim().startsWith('叶绿素'))),step,140000)
-      step='项目聊天保留逐字回复'
-      console.log('全局助理已回复。')
+      step='项目对话保留逐字回复'
+      console.log('全局助手已回复。')
       await nav('文献梳理').getByRole('button',{name:'聊天',exact:true}).click()
       await chatScope(cfg.alpha)
       assert.equal(await partialVisible(),true)
       step='点子 Bot 保存后给出独立回话'
-      console.log('项目聊天已保留流式渲染。')
+      console.log('项目对话已保留流式渲染。')
       await nav('文献梳理').getByRole('button',{name:'点子',exact:true}).click()
       const main=page.getByRole('main',{name:'文献梳理的点子',exact:true})
       await main.getByRole('textbox',{name:'向 点子 发送消息'}).fill('请帮我把「比较两种叶片取样时间」记进本项目的点子，完成后一句话告诉我。')
@@ -192,10 +192,10 @@ async function main() {
       return
     }
     if(cfg.assign){
-      step='真实对话为一个功能 Bot 分配工作'
+      step='真实对话为一个功能 Bot 分派工作'
       await nav('文献梳理').getByRole('button',{name:'聊天',exact:true}).click()
       await chatScope(cfg.alpha)
-      await send('请实际给当前项目的点子 Bot 分配三项工作。职责叫“筛选假设”，说明是核对可验证性；存储要求叫“保留出处”，说明是保留原文页码；定时任务叫“每周点子回顾”，每周一上午九点汇总待验证点子。请用功能 Bot 的任务分配工具分别保存这三项，不要只写进聊天。')
+      await send('请实际给当前项目的点子 Bot 分派三项工作。职责叫“筛选假设”，说明是核对可验证性；存储要求叫“保留出处”，说明是保留原文页码；定时任务叫“每周点子回顾”，每周一上午九点汇总待验证点子。请用功能 Bot 的任务分派工具分别保存这三项，不要只写进聊天。')
       const assigned=async ws=>(await owner('workspace-page',{workspaceId:ws,action:'bot_assignments',args:{featureId:'ideas'}})).data
       const tasks=await until(async()=>{const ts=await assigned(a);return Array.isArray(ts)&&new Set(ts.map(t=>t.kind)).size===3&&ts},'三类任务未全部写入',190000)
       assert.deepEqual(await assigned(b),[])
@@ -215,7 +215,7 @@ async function main() {
       assert.ok(!(await view(a)).features.some(f=>f.id==='ideas'))
       const ledger=(await owner('assistant-history')).data
       assert.ok(!ledger.schedules.some(s=>s.id===job.id))
-      console.log('真实模型分配职责、存储要求和 DSH 周期任务；右栏、删除取消与确认、定时任务清理及项目隔离通过。')
+      console.log('真实模型分派职责、存储要求和 DSH 周期任务；右栏、删除取消与确认、定时任务清理及项目隔离通过。')
       return
     }
     if(cfg.form){
@@ -268,7 +268,7 @@ async function main() {
     assert.equal(await sandbox.count(), 0)
     await featurePage('文献梳理',aLabel,aNote)
     await screenshot('功能创建-全局助手')
-    step='项目聊天创建本项目功能'; console.log(step)
+    step='项目对话创建本项目功能'; console.log(step)
     await nav('方法复现').getByRole('button',{name:'聊天',exact:true}).click()
     await chatScope(cfg.beta)
     await send('请在当前项目实际新建一个名为「复现清单」的功能 Bot，用来整理复现实验的准备事项。创建后在它的记录流写入一条内容为「固定随机种子」的记录，完成后简短回复。')
@@ -285,7 +285,7 @@ async function main() {
     assert.equal((await created(a,aLabel,aNote)).id,aFeature.id)
     assert.equal((await created(b,bLabel,bNote)).id,bFeature.id)
     await featurePage('方法复现',bLabel,bNote)
-    console.log('全局与项目对话均成功创建新功能、归类首条记录、即时显示并在刷新后恢复。两项目互不串写。右侧沙盒仅在项目主聊天显示。')
+    console.log('全局与项目对话均成功创建新功能、归类首条记录、即时显示并在刷新后恢复。两项目互不串写。右侧沙盒仅在项目主对话显示。')
   } catch(e){
     console.error('失败步骤 '+step)
     console.error('已显示的功能按钮：'+(await page.getByRole('navigation').getByRole('button').allTextContents().catch(()=>[])).join(' ').slice(0,400))

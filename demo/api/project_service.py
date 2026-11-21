@@ -13,6 +13,8 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 from xml.etree import ElementTree
 import workspace
+import visualizations
+import project_flow
 
 
 MAX_RESOURCE_BYTES = 25 * 1024 ** 2
@@ -35,14 +37,19 @@ def project(saved, project_id):
     return item
 
 
-def mutate(project_id, operation):
+def mutate(project_id, operation, *, before_commit=None, flow_event=None):
     for _ in range(5):
         saved = workspace.snapshot()
         item = project(saved, project_id)
         result = operation(item)
         item["updatedAt"] = timestamp()
+        def commit(db):
+            if before_commit:
+                before_commit(db)
+            if flow_event:
+                flow_event(db, result)
         try:
-            workspace.save(saved)
+            workspace.save(saved, before_commit=commit if before_commit or flow_event else None)
             return result
         except workspace.WorkspaceError as exc:
             if not getattr(exc, "retryable", False):
@@ -258,6 +265,8 @@ def _valid_date(value):
 
 def _bot_record_fields(args, entry):
     from features import BOT_RECORD_TEXT_FIELDS
+    if "visualizations" in args:
+        entry["visualizations"] = visualizations.validate(args["visualizations"])
     for key, (_, limit) in BOT_RECORD_TEXT_FIELDS.items():
         if key in args:
             entry[key] = workspace.text(args[key], limit)
@@ -308,6 +317,134 @@ def _entry_elements(args, entry, extension, records):
     entry["elements"] = merged
 
 
+def _canvas_link_rails(project_id, rail):
+    import features
+    bots = {bot["id"]: bot for bot in features.list_features(project_id, project_id) if not bot.get("archived")}
+    bot = bots.get(rail)
+    if not bot or not bot.get("paradigm"):
+        return {rail}
+    root = bot.get("clusterParent") or rail
+    if root not in bots:
+        return {rail}
+    return {key for key, other in bots.items() if other.get("paradigm") == bot["paradigm"]
+            and (other.get("clusterParent") or key) == root}
+
+
+def _canvas_link_records(item, rails):
+    return [record for rail in rails for record in item["rails"].get(rail, [])]
+
+
+def _entry_relations(args, entry, records):
+    if "relatedIds" not in args:
+        return
+    ids = {record["id"] for record in records} - {entry["id"]}
+    related = args["relatedIds"]
+    if not isinstance(related, list) or len(related) > 100 or any(
+        not isinstance(identity, str) or identity not in ids for identity in related
+    ):
+        raise workspace.WorkspaceError(400, "关联只能指向当前 Bot 或同一聚类中的其他记录（最多 100 条）。")
+    selected = set(related)
+    identity = entry["id"]
+    for record in records:
+        if record["id"] == identity:
+            continue
+        backlinks = record.get("relatedIds") or []
+        if record["id"] in selected and identity not in backlinks:
+            if len(backlinks) >= 100:
+                raise workspace.WorkspaceError(400, "有节点已达到 100 条关联的上限。")
+            record["relatedIds"] = [*backlinks, identity]
+        elif record["id"] not in selected and identity in backlinks:
+            record["relatedIds"] = [other for other in backlinks if other != identity]
+    entry["relatedIds"] = list(dict.fromkeys(related))
+
+
+def _external_canvas_parent(project_id, rail, identity):
+    if not isinstance(identity, str):
+        return False
+    if rail == "feed" and identity.startswith("feed_"):
+        import automation
+        entries = automation.public_jobs().get(project_id, {}).get("feed", {}).get("items", [])
+        return next((entry.get("url") or entry["text"] for entry in entries if entry["id"] == identity), None)
+    if re.fullmatch(r"[a-f0-9]{32}", identity):
+        import research_records
+        owners = _canvas_link_rails(project_id, rail)
+        return next(((entry["featureId"],) for entry in research_records.records(project_id, "experiment")
+                     if entry["id"] == identity and entry.get("featureId") in owners), None)
+    return False
+
+
+def _active_canvas_parent(item, rail, identity, access_key):
+    if not access_key:
+        return False
+    if rail == "feed" and identity.startswith("feed_"):
+        return access_key not in item.get("dismissedFeed", [])
+    return identity not in item.get("dismissedExperimentNodes", {}).get(access_key[0], [])
+
+
+def _check_canvas_direction(entry, item, rail, records, external_parent, *, edited):
+    by_id = {record["id"]: record for record in records}
+    parent = entry.get("parentId")
+    dependencies = entry.get("dependsOn", [])
+    if "dependsOn" in edited and (not isinstance(dependencies, list) or any(
+            not isinstance(dep, str) or dep not in by_id for dep in dependencies)):
+        raise workspace.WorkspaceError(400, "前置记录不在当前 Bot 或同一聚类内。")
+    if "parentId" in edited and parent is not None and (not isinstance(parent, str) or (
+            parent not in by_id and not _active_canvas_parent(item, rail, parent, external_parent))):
+        raise workspace.WorkspaceError(400, "上级记录不在当前 Bot 或同一聚类内。")
+    pending = [parent, *(dependencies if isinstance(dependencies, list) else [])]
+    seen = set()
+    while pending:
+        identity = pending.pop()
+        if not isinstance(identity, str) or identity in seen:
+            continue
+        if identity == entry["id"]:
+            raise workspace.WorkspaceError(400, "分支和前置依赖不能形成循环。")
+        seen.add(identity)
+        record = by_id.get(identity)
+        if record:
+            pending.append(record.get("parentId"))
+            if isinstance(record.get("dependsOn"), list):
+                pending.extend(record["dependsOn"])
+
+
+def source_record(project_id, identity, state=None):
+    if isinstance(identity, str) and re.fullmatch(r"n_[0-9a-f]{32}", identity):
+        state = state if state is not None else project(workspace.snapshot(), project_id)
+        for rail, entries in state["rails"].items():
+            entry = next((entry for entry in entries if entry.get("id") == identity), None)
+            if entry is not None:
+                return {**entry, "rail": rail}
+    raise workspace.WorkspaceError(404, "这条来源记录在当前项目中已不可用。")
+
+
+def record_sources(project_id, sources, state=None):
+    if not isinstance(sources, list) or len(sources) > 12:
+        raise workspace.WorkspaceError(400, "每条正文最多关联 12 个来源。")
+    normalized = {}
+    for source in sources:
+        if not isinstance(source, dict) or set(source) - {"title", "recordId", "url"}:
+            raise workspace.WorkspaceError(400, "来源需要名称和项目记录或原文链接。")
+        title = workspace.text(source.get("title"), 240)
+        if source.get("recordId") and not source.get("url"):
+            if state is None:
+                state = project(workspace.snapshot(), project_id)
+            record = source_record(project_id, source["recordId"], state)
+            title = record.get("title") or title or workspace.text(record.get("text"), 80) or "项目资料"
+            normalized[("recordId", record["id"])] = {"title": title, "recordId": record["id"]}
+        elif title and not source.get("recordId"):
+            url = workspace.text(source.get("url"), 2000)
+            try:
+                valid = not re.search(r"[\s\x00-\x1f]", url) and workspace.safe_link(url) and urlsplit(url).hostname
+            except ValueError:
+                valid = False
+            if not valid:
+                raise workspace.WorkspaceError(400, "原文来源必须是有效的网页链接。")
+            normalized[("url", url)] = {"title": title, "url": url}
+        else:
+            raise workspace.WorkspaceError(400, "每个来源应指定一个项目记录或一个原文链接。")
+    return list(normalized.values())
+
+
 def create_entry(project_id, rail, args):
     import features
     if not features.is_valid_rail(project_id, rail):
@@ -328,19 +465,40 @@ def create_entry(project_id, rail, args):
             entry[field] = args[field]
     _apply_rich_fields(project_id, args, entry, allow_clear=False)
     _bot_record_fields(args, entry)
+    if "outputPaths" in args:
+        entry["outputFiles"] = output_references(project_id, args["outputPaths"])
+    policy_version = args.get("policyVersion")
+    workflow_dependencies = args.get("workflowDependencies")
+    link_fields = set(args) & {"parentId", "dependsOn", "relatedIds"}
+    link_rails = _canvas_link_rails(project_id, rail) if link_fields else {rail}
+
+    def verify_policy(db):
+        if policy_version is not None:
+            project_flow.ensure(db)
+            if type(policy_version) is not int or project_flow.current_version(db, project_id) != policy_version:
+                raise workspace.WorkspaceError(409, "项目规则已更新，请核对阶段成果后继续。")
+        if workflow_dependencies:
+            project_flow.ensure(db)
+            if project_flow.changed_prerequisites(db, project_id, workflow_dependencies):
+                raise workspace.WorkspaceError(409, "前置成果已变化，请核对后再发布。")
+        if len(link_rails) > 1 and not link_rails <= _canvas_link_rails(project_id, rail):
+            raise workspace.WorkspaceError(409, "Bot 聚类已变化，请刷新后重新连线。")
+
+    external_parent = _external_canvas_parent(project_id, rail, entry.get("parentId"))
     def operation(item):
         records = item["rails"].setdefault(rail, [])
+        if "sources" in args:
+            entry["sources"] = record_sources(project_id, args["sources"], item)
         _entry_elements(args, entry, extension, records)
-        if rail == "goals" or rail.startswith("feat_") or "parentId" in entry:
-            ids = {record["id"] for record in records}
-            dependencies = entry.get("dependsOn", [])
-            if not isinstance(dependencies, list) or any(not isinstance(value, str) or value not in ids for value in dependencies):
-                raise workspace.WorkspaceError(400, "前置条目不存在。")
-            if "parentId" in entry and (not isinstance(entry["parentId"], str) or entry["parentId"] not in ids):
-                raise workspace.WorkspaceError(400, "关联条目不在这个 Bot 内。")
+        if link_fields:
+            candidates = _canvas_link_records(item, link_rails)
+            _check_canvas_direction(entry, item, rail, candidates, external_parent, edited=link_fields)
+            _entry_relations(args, entry, candidates)
         records.append(entry)
         return entry
-    return mutate(project_id, operation)
+    return mutate(project_id, operation,
+                  before_commit=verify_policy if policy_version is not None or workflow_dependencies or len(link_rails) > 1 else None,
+                  flow_event=lambda db, record: project_flow.record_change(db, project_id, rail, record, "saved"))
 
 
 def update_entry(project_id, rail, args):
@@ -350,6 +508,13 @@ def update_entry(project_id, rail, args):
     bot = next((feature for feature in features.list_features(project_id, project_id) if feature["id"] == rail), {}) if rail.startswith("feat_") else {}
     extension = bot.get("extension")
     is_goal = rail == "goals" or bot.get("paradigm") == "goals" or bool(extension and extension["base"] == "goals")
+    external_parent = _external_canvas_parent(project_id, rail, args.get("parentId"))
+    link_fields = set(args) & {"parentId", "dependsOn", "relatedIds"}
+    link_rails = _canvas_link_rails(project_id, rail) if link_fields else {rail}
+
+    def verify_cluster(_db):
+        if not link_rails <= _canvas_link_rails(project_id, rail):
+            raise workspace.WorkspaceError(409, "Bot 聚类已变化，请刷新后重新连线。")
 
     def operation(item):
         entry = next((note for note in item["rails"].get(rail, []) if note["id"] == args.get("id")), None)
@@ -360,6 +525,8 @@ def update_entry(project_id, rail, args):
             if not text:
                 raise workspace.WorkspaceError(400, "内容为空。")
             entry["text"] = text
+        if "sources" in args:
+            entry["sources"] = record_sources(project_id, args["sources"], item)
         if "category" in args and args["category"] is not None:
             category = workspace.text(args["category"], 80)
             if not category:
@@ -374,22 +541,15 @@ def update_entry(project_id, rail, args):
         _bot_record_fields(args, entry)
         records = item["rails"].get(rail, [])
         _entry_elements(args, entry, extension, records)
-        if "parentId" in args and (is_goal or rail.startswith("feat_")):
-            parent = args["parentId"]
-            if parent is None:
+        if link_fields:
+            candidates = _canvas_link_records(item, link_rails)
+            for key in ("parentId", "dependsOn"):
+                if key in args:
+                    entry[key] = args[key]
+            if "parentId" in args and args["parentId"] is None:
                 entry.pop("parentId", None)
-            else:
-                by_id = {record["id"]: record for record in records}
-                if not isinstance(parent, str) or parent not in by_id:
-                    raise workspace.WorkspaceError(400, "关联条目不在这个 Bot 内。")
-                seen = {entry["id"]}
-                current = parent
-                while isinstance(current, str) and current in by_id:
-                    if current in seen:
-                        raise workspace.WorkspaceError(400, "关联条目不能形成循环。")
-                    seen.add(current)
-                    current = by_id[current].get("parentId")
-                entry["parentId"] = parent
+            _check_canvas_direction(entry, item, rail, candidates, external_parent, edited=link_fields)
+            _entry_relations(args, entry, candidates)
         if is_goal:
             if "due" in args:
                 entry["due"] = args["due"]
@@ -421,7 +581,14 @@ def update_entry(project_id, rail, args):
                 entry["done"] = bool(args["done"])
         entry["updatedAt"] = timestamp()
         return entry
-    return mutate(project_id, operation)
+    return mutate(project_id, operation, before_commit=verify_cluster if len(link_rails) > 1 else None,
+                  flow_event=lambda db, record: project_flow.record_change(db, project_id, rail, record, "updated"))
+
+
+def detach_canvas_parent(item, rail, entry_id):
+    for entry in item["rails"].get(rail, []):
+        if entry.get("parentId") == entry_id:
+            entry.pop("parentId", None)
 
 
 def delete_entry(project_id, rail, entry_id):
@@ -438,36 +605,43 @@ def delete_entry(project_id, rail, entry_id):
         if not target:
             raise workspace.WorkspaceError(404, "条目不存在。")
         item["rails"][rail] = [note for note in entries if note["id"] != entry_id]
-        for entry in item["rails"][rail]:
-            if entry.get("parentId") == entry_id:
-                entry.pop("parentId", None)
+        for owner in item["rails"]:
+            detach_canvas_parent(item, owner, entry_id)
+        for entry in _canvas_link_records(item, item["rails"]):
             dependencies = entry.get("dependsOn")
             if isinstance(dependencies, list) and entry_id in dependencies:
                 entry["dependsOn"] = [dep for dep in dependencies if dep != entry_id]
+            if entry_id in (entry.get("relatedIds") or []):
+                entry["relatedIds"] = [identity for identity in entry["relatedIds"] if identity != entry_id]
+        for entry in item["rails"][rail]:
             elements = entry.get("elements") or {}
             for name in reference_fields:
                 if elements.get(name) == entry_id:
                     elements.pop(name)
         return {"ok": True, "id": entry_id}
 
-    return mutate(project_id, operation)
+    return mutate(project_id, operation,
+                  flow_event=lambda db, record: project_flow.record_change(db, project_id, rail, record, "removed"))
 
 
 def dismiss_feed(project_id, args):
     entry_id = args.get("id")
     key = workspace.text(args.get("key"), 4000)
+    if isinstance(entry_id, str) and entry_id:
+        try:
+            return delete_entry(project_id, "feed", entry_id)
+        except workspace.WorkspaceError as error:
+            if error.status != 404:
+                raise
 
     def operation(item):
-        if isinstance(entry_id, str) and entry_id:
-            before = len(item["rails"]["feed"])
-            item["rails"]["feed"] = [note for note in item["rails"]["feed"] if note.get("id") != entry_id]
-            if len(item["rails"]["feed"]) != before:
-                return {"ok": True}
         if not key:
             raise workspace.WorkspaceError(400, "缺少动态条目标识。")
         hidden = item.setdefault("dismissedFeed", [])
         if key not in hidden:
             hidden.append(key)
+        if entry_id:
+            detach_canvas_parent(item, "feed", entry_id)
         return {"ok": True}
 
     return mutate(project_id, operation)
@@ -505,6 +679,13 @@ def read_resource(project_id, resource_id, page=1):
                 "text": (reader.pages[index].extract_text() or "")[:30000]}
     if path.stat().st_size > 2 * 1024 * 1024:
         raise workspace.WorkspaceError(413, "文本文件过大。")
+    suffix = path.suffix.lower()
+    if suffix in (".csv", ".tsv"):
+        with path.open(encoding="utf-8-sig", errors="replace", newline="") as file:
+            text = file.read(30001)
+        truncated = len(text) > 30000
+        return {"text": text[:30000], "truncated": truncated,
+                "visualizations": visualizations.table_charts(text[:30000], suffix, truncated)}
     return {"text": path.read_text(encoding="utf-8", errors="replace")[:30000]}
 
 
@@ -553,6 +734,20 @@ def stored_files(project_id):
     return sorted(entries, key=lambda entry: (entry.get("storedAt") or "", entry["id"]), reverse=True)
 
 
+def output_references(project_id, paths):
+    if not isinstance(paths, list) or len(paths) > 12 or any(
+            not isinstance(path, str) or len(path) > 400 or not path.startswith("outputs/")
+            for path in paths):
+        raise workspace.WorkspaceError(400, "请提供项目空间存储中已保存的文件路径。")
+    if not paths:
+        return []
+    files = {relative: {"id": identity, "name": path.name, "path": relative}
+             for identity, relative, path in _generated_files(folder(project_id)) if relative in paths}
+    if any(path not in files for path in paths):
+        raise workspace.WorkspaceError(404, "部分文件尚未保存到当前项目的空间存储。")
+    return [files[path] for path in dict.fromkeys(paths)]
+
+
 def _stored_file(project_id, file_id):
     entries = _stored_file_entries(project_id)
     root = folder(project_id)
@@ -572,9 +767,14 @@ def _stored_file(project_id, file_id):
     return name, path
 
 
-def read_stored_reference(project_id, file_id, page=1):
+def read_stored_reference(project_id, file_id, page=1, *, artifact_preview=False):
     name, path = _stored_file(project_id, file_id)
+    suffix = path.suffix.lower()
     with path.open("rb") as file:
+        mime = IMAGE_MIME_BY_EXT.get(suffix)
+        if artifact_preview and mime:
+            data = file.read(MAX_ENTRY_IMAGE_BYTES + 1)
+            return {"name": name, "image": _encode_image_bytes(data, expected_mime=mime)}
         if path.suffix.lower() == ".pdf":
             from pypdf import PdfReader
             from pypdf.errors import PdfReadError
@@ -594,9 +794,19 @@ def read_stored_reference(project_id, file_id, page=1):
             raise UnicodeError
         truncated = len(data) > 12000
         decoder = codecs.getincrementaldecoder("utf-8-sig")()
-        return {"name": name, "text": decoder.decode(data[:12000], final=not truncated), "truncated": truncated}
+        text = decoder.decode(data[:12000], final=not truncated)
+        result = {"name": name, "text": text, "truncated": truncated}
+        if suffix in (".csv", ".tsv"):
+            result["visualizations"] = (visualizations.recent_table_charts(path) if artifact_preview
+                                        else visualizations.table_charts(text, suffix, truncated))
+        return result
     except UnicodeError:
         return {"name": name, "note": "此格式只提供文件引用，可在空间存储中打开。"}
+
+
+def stored_table_charts(project_id, file_id):
+    _, path = _stored_file(project_id, file_id)
+    return visualizations.recent_table_charts(path)
 
 
 def download_stored_file(project_id, file_id):
@@ -772,7 +982,7 @@ def call(name, args, project_id):
     import memory_store
     if name in ("global_memory_search", "global_memory_write", "global_memory_pin"):
         if project_id != "global":
-            raise workspace.WorkspaceError(403, "项目会话不能读取或修改全局记忆。")
+            raise workspace.WorkspaceError(403, "项目对话不能读取或修改全局记忆。")
         if args.get("projectId") not in (None, "global"):
             raise workspace.WorkspaceError(400, "全局记忆工具不接受 projectId，请改用 memory_write 或 memory_search。")
         if name == "global_memory_search":
@@ -867,9 +1077,31 @@ def call(name, args, project_id):
         query = str(args.get("query", "")).casefold()
         return [entry for entry in entries if query in entry["text"].casefold()]
     if name in ("resource_read", "paper_read"):
-        return read_resource(project_id, args.get("id"), args.get("page", 1))
-    if name == "paper_search":
-        return list(workspace.recent_papers(workspace.text(args.get("query"), 150)))
+        identity = args.get("id")
+        page = args.get("page", 1)
+        if type(page) is not int or page < 1:
+            raise workspace.WorkspaceError(400, "页码必须是正整数。")
+        if name == "paper_read" and args.get("arxivId") is not None:
+            if identity is not None:
+                raise workspace.WorkspaceError(400, "请选择一种论文来源。")
+            from paper_discovery import read_arxiv
+            return read_arxiv(args["arxivId"], page)
+        read = read_resource(project_id, identity, page)
+        if name == "paper_read":
+            if not read.get("pages"):
+                raise workspace.WorkspaceError(400, "请选择已登记的 PDF 论文。")
+            resource = next((entry for entry in project(workspace.snapshot(), project_id)["rails"]["library"]
+                             if entry["id"] == identity), None)
+            if not resource:
+                raise workspace.WorkspaceError(404, "资源不存在。")
+            read["source"] = {"resourceId": identity, "title": resource["text"], "location": f"PDF p. {read['page']}",
+                              **({"path": resource["path"]} if resource.get("path") else {})}
+            read["evidenceLevel"] = "full_text" if read.get("text", "").strip() else "no_extractable_text"
+        return read
+    if name in ("paper_search", "paper_lookup", "paper_neighbors"):
+        import paper_discovery
+        return {"paper_search": paper_discovery.search, "paper_lookup": paper_discovery.lookup,
+                "paper_neighbors": paper_discovery.neighbors}[name](args)
     if name == "memory_search":
         return memory_store.search_memories(
             project_id,
@@ -892,6 +1124,9 @@ def call(name, args, project_id):
         )
     if name in ("idea_create", "goal_create"):
         return create_entry(project_id, "ideas" if name.startswith("idea") else "goals", args)
+    if name == "feature_layout":
+        import features
+        return features.set_layout(project_id, args.get("featureId"), args.get("layout"))
     if name == "feature_entries":
         import features
         fid = args.get("featureId")
@@ -922,5 +1157,6 @@ def call(name, args, project_id):
         return update_entry(project_id, "ideas" if name.startswith("idea") else "goals", args)
     if name == "task_create":
         import tasks
-        return tasks.create({"projectId": project_id, "prompt": args.get("text"), "goalId": args.get("goalId")})
+        return tasks.create({"projectId": project_id, "prompt": args.get("text"), "goalId": args.get("goalId"),
+                             "featureId": args.get("featureId")})
     raise workspace.WorkspaceError(404, "未知业务工具。")

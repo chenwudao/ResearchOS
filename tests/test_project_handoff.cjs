@@ -19,18 +19,24 @@ test('global handoffs obey the assistant preset and can only be sent once to a p
     ownerRoute: (_name, _methods, handler) => { route = handler },
     call: async () => ({ preset }),
   })
-  assert.match(guard({ agent, name: 'bash' }), /转交项目会话/)
+  assert.match(guard({ agent, name: 'bash' }), /转交项目对话/)
   assert.equal(guard({ agent, name: 'labweave_project_handoff' }), undefined)
   const pending = await request(agent, { projectId: project.scope, task: '运行对照实验', botId: 'engineer', key: 'one' })
   const operate = (item, action, extra = {}) => route({ id: item.id, sessionId: 'global-chat', action, ...extra })
   assert.equal(pending.status, 'pending')
   await assert.rejects(operate(pending, 'claim', { targetSessionId: 'main' }))
   for (const targetSessionId of ['bot', 'other']) {
-    await assert.rejects(operate(pending, 'claim', { targetSessionId, confirm: true }), /项目的主会话/)
+    await assert.rejects(operate(pending, 'claim', { targetSessionId, confirm: true }), /项目的主对话/)
   }
   const claimed = await operate(pending, 'claim', { targetSessionId: 'main', confirm: true })
   assert.match(claimed.task, /工程台.*engineer/)
+  const nativeMessage = { id: 'project-message', content: [{ type: 'text', text: claimed.task }] }
+  assert.equal(request.match('other', nativeMessage), undefined)
   await operate(pending, 'sent', { claim: claimed.claim })
+  assert.deepEqual(request.match('main', nativeMessage), {
+    task: '运行对照实验', botId: 'engineer', handoffId: pending.id, sourceSessionId: 'global-chat',
+  })
+  assert.equal(request.match('main', { ...nativeMessage, id: 'replayed-message' }), undefined)
   await assert.rejects(operate(pending, 'claim', { targetSessionId: 'main', confirm: true }))
   preset = 'danger-full-access'
   const ready = await request(agent, { projectId: project.scope, task: '整理实验', key: 'two' })

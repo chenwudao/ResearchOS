@@ -17,7 +17,7 @@ import workspace
 class FeatureBotsTests(unittest.TestCase):
     def setUp(self):
         self.tmp = TemporaryDirectory(prefix="labweave-feature-bots-")
-        self.root = Path(self.tmp.name)
+        self.root = Path(self.tmp.name).resolve()
         self.old = workspace.DATA
         workspace.DATA = self.root / "data"
         self.projects = [

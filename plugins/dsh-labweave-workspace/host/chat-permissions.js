@@ -40,7 +40,8 @@ export function isBotReminder(row, messages) {
       const owner = JSON.stringify({ projectId: row.scope, featureId: bot.id })
       return (block.text.includes(`[Weave ${row.scope}/${bot.id}]\n`) ||
         block.text.includes(`[LabWeave ${row.scope}/${bot.id}]\n`)) &&
-        block.text.includes('\n任务归属：' + owner + '。先读取此 Bot 的分配任务')
+        (block.text.includes('\n任务归属：' + owner + '。先读取此 Bot 的分派任务') ||
+        block.text.includes('\n任务归属：' + owner + '。先读取此 Bot 的分配任务'))
     })
   }))
 }

@@ -152,7 +152,7 @@ def main():
             assert "Current DSH file policy: read-only." in after_restart
             assert "Current DSH file policy: workspace-write." in prompts["REWIND_BOT_1_ASK"]
             assert "Current DSH file policy: read-only." in prompts["REWIND_BOT_5_ASK"]
-            assert "请在有执行权限的项目会话记录实验" in prompts["REWIND_BOT_5_ASK"]
+            assert "请在有执行权限的项目对话记录实验" in prompts["REWIND_BOT_5_ASK"]
     finally:
         launcher.workspace.DATA = previous_data
         server.shutdown()

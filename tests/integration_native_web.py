@@ -32,8 +32,8 @@ def main():
     args = parser.parse_args()
     previous = launcher.workspace.DATA
     try:
-        with TemporaryDirectory(prefix="labweave-native-e2e-") as tmp:
-            root = Path(tmp)
+        with TemporaryDirectory(prefix="labweave-native-e2e-", ignore_cleanup_errors=sys.platform == "win32") as tmp:
+            root = Path(tmp).resolve()
             launcher.workspace.DATA = root / "data"
             pdf = PdfWriter()
             for _ in range(2):

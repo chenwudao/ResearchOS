@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict')
 const { test } = require('node:test')
 
-async function fixture() {
+async function fixture(decision = { mode: 'EXECUTE', missing: [] }) {
   const { registerComposer } = await import('../plugins/dsh-labweave-workspace/host/composer.js')
   const rows = [
     { workspaceId: 'one', scope: 'p1', name: '项目 甲', features: [
@@ -24,6 +24,7 @@ async function fixture() {
     on: (name, fn) => { hooks[name] = fn },
   }
   registerComposer(ctx, {
+    intake: { prepare: async () => decision },
     refs: {
       memberScope: session => session?.row && { row: session.row, workspace: workspaces.get(session.row.workspaceId) },
       allowedTargets: async () => new Set(),
@@ -34,7 +35,13 @@ async function fixture() {
       if (action === 'files/list') return [{ id: 'file-1', name: '依据.pdf' }]
       if (action === 'sources/list') return []
       if (action === 'view') return { rails: { notes: [] } }
-      if (action === 'bot_dispatches') return { tasks: [] }
+      if (action === 'composer/tasks') return []
+      if (action === 'composer/references') return args.kind === 'library' && args.query === '核验'
+        ? [{ id: 'paper-1', kind: 'library', name: '核验文献', description: '文献与资料' }] : []
+      if (action === 'composer/reference') {
+        assert.deepEqual([workspace.id, args], ['one', { id: 'paper-1', kind: 'library' }])
+        return { title: '核验文献', text: '原文摘要' }
+      }
       if (action === 'files/reference') {
         reads.push([workspace.id, args])
         return { text: '原始依据' }
@@ -77,6 +84,29 @@ test('slash commands and explicit global invitation scopes differ by session', a
   assert.deepEqual(workers, [])
   assert.deepEqual(transfers.map(({ session, projectId, botId }) => [session, projectId, botId]), [['assistant', 'p1', 'notes']])
   assert.equal(result.messages.at(-1).source.label, '项目转交')
+})
+
+test('a named Bot does not start work while its scope is unresolved', async () => {
+  const { suggest, send, workers } = await fixture({ mode: 'CLARIFY', missing: ['data'] })
+  const bot = (await suggest('project', '@')).find(item => item.name === '核对员')
+  const result = await send('project', bot.text + ' 分析一下数据')
+  assert.equal(result.messages.some(message => message.source.kind === 'labweave-speaker'), false)
+  assert.deepEqual(workers, [])
+})
+
+test('research menus offer project commands and resolve a selected paper by project', async () => {
+  const { suggest, send } = await fixture()
+  assert.ok((await suggest('assistant', '/')).some(item => item.name === '转交项目'))
+  assert.ok(!(await suggest('assistant', '/')).some(item => item.name === '分析数据'))
+  assert.ok((await suggest('project', '/')).some(item => item.name === '生成图表'))
+  assert.ok(!(await suggest('bot', '/')).some(item => item.name === '生成图表'))
+  assert.ok((await suggest('bot', '/')).some(item => item.name === '查文献'))
+  const category = (await suggest('project', '@')).find(item => item.drill === '文献/')
+  const [paper] = await suggest('project', '@', category.drill + '核验')
+  assert.equal(paper.name, '核验文献')
+  const result = await send('project', '/核验证据 ' + paper.text + ' 检查原文结论')
+  assert.match(result.messages.at(-1).content[0].text, /原文摘要/)
+  await assert.rejects(send('assistant', paper.text), /只能引用当前项目/)
 })
 
 test('project @ is revalidated and file content follows the named invitation', async () => {

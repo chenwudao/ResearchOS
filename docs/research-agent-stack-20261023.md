@@ -1,5 +1,7 @@
 # 科研 Agent 项目堆叠（按 ResearchOS 思路整理）
 
+> 2026-10-23 的科研应用调研归档。Weave 当前的产品定位与功能见 [README](../README.md)。
+
 - Date: 2026-10-23
 - 思路锚点：**人定大方向 → agent 拆小问题 → 每个问题强制「基础 + 前沿」文献 → claim 进 evidence-ledger**
 - 对齐 P0 skills：`direction-framing` / `rq-decomposition` / `seed-paper-neighborhood` / `foundational-frontier-split` → `evidence-ledger`

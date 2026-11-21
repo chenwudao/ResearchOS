@@ -34,6 +34,7 @@ class StubOpenAIServer(http.server.BaseHTTPRequestHandler):
             "auth": self.headers.get("Authorization", ""),
             "model": body.get("model"),
             "messages": body.get("messages"),
+            "tools": [tool.get("function", {}).get("name", "") for tool in body.get("tools", [])],
         })
         chunks = (
             json.dumps({
@@ -255,12 +256,16 @@ class ModelConfigTests(unittest.TestCase):
                                  "resources": [], "goals": [], "ideas": [],
                              }), \
                              mock.patch.object(tasks.project_service, "collect_outputs", return_value=[]), \
+                             mock.patch.object(tasks, "task_bot", return_value={
+                                 "id": "feat_abcdef12", "label": "Literature", "hint": "Read primary sources", "paradigm": "notes",
+                             }), \
                              mock.patch.object(tasks.project_service, "remember"):
                             with mock.patch.dict(os.environ, {"LABWEAVE_DSH_WEB_HOME": str(web_home)}, clear=False):
                                 tasks.store({
                                     "id": "task-custom-1",
                                     "projectId": "p1",
                                     "sessionId": "sess-custom-1",
+                                    "featureId": "feat_abcdef12",
                                     "prompt": "Say CUSTOM_PROVIDER_OK cleanly",
                                     "goalId": None,
                                     "resume": False,
@@ -278,6 +283,9 @@ class ModelConfigTests(unittest.TestCase):
                 self.assertGreaterEqual(len(StubOpenAIServer.requests), 1)
                 self.assertEqual(StubOpenAIServer.requests[-1]["auth"], "Bearer sk-stub-secret-7777")
                 self.assertEqual(StubOpenAIServer.requests[-1]["model"], "custom-model")
+                self.assertIn("weave-research-notes", json.dumps(StubOpenAIServer.requests[-1]["messages"]))
+                self.assertIn("seed-paper-neighborhood", json.dumps(StubOpenAIServer.requests[-1]["messages"]))
+                self.assertIn("mcp__researchos__paper_neighbors", StubOpenAIServer.requests[-1]["tools"])
         finally:
             server.shutdown()
             server.server_close()

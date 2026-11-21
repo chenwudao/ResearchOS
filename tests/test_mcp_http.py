@@ -11,11 +11,12 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
+from urllib.parse import parse_qs, urlsplit
 from urllib.request import ProxyHandler, Request, build_opener
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "demo/api"))
-import dsh_worker, mcp_http, project_service, workspace
+import bot_activity, dsh_worker, features, mcp_http, project_service, research_skills, tasks, workspace
 
 
 class PrivateMcpTests(unittest.TestCase):
@@ -104,11 +105,91 @@ class PrivateMcpTests(unittest.TestCase):
         self.assertNotIn(self.token, error)
         self.assertIn("[redacted]", output.getvalue())
 
+    def test_paper_search_shares_deduplication_and_source_status_with_sdk(self):
+        def fetched(url, **kwargs):
+            if "api.openalex.org" in url:
+                return json.dumps({"results": [
+                    {"id": "https://openalex.org/W1", "doi": "https://doi.org/10.1/example", "title": "Shared paper"},
+                    {"id": "https://openalex.org/W2", "title": "Second result"},
+                ]})
+            return json.dumps({"message": {"items": [
+                {"DOI": "10.1/EXAMPLE", "title": ["Shared paper"], "URL": "https://doi.org/10.1/example"},
+            ]}})
+
+        args = {"query": "research query", "includeStatus": True}
+        headers = {"Authorization": "Bearer " + self.token}
+        request = {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {
+            "name": "paper_search", "arguments": args}}
+        with patch.object(workspace, "fetch_source", side_effect=fetched):
+            direct = project_service.call("paper_search", args, self.a)
+            with mcp_http.private_bridge(workspace.DATA, self.a, self.token) as url:
+                status, raw, _ = self.request(url, request, headers)
+            self.assertEqual(status, 200)
+            result = json.loads(json.loads(raw)["result"]["content"][0]["text"])
+            self.assertEqual(result, direct)
+            self.assertEqual([paper["text"] for paper in result["papers"]], ["Shared paper", "Second result"])
+            self.assertEqual(result["papers"][0]["sources"], ["Crossref", "OpenAlex"])
+            self.assertEqual(result["papers"][0]["openAlexId"], "https://openalex.org/W1")
+            self.assertEqual(result["papers"][0]["evidenceLevel"], "metadata")
+            self.assertIsInstance(project_service.call("paper_search", {"query": "legacy caller"}, self.a), list)
+
+        def busy(url, **kwargs):
+            if "api.openalex.org" in url:
+                raise HTTPError(url, 429, "rate limited", {}, None)
+            return fetched(url)
+
+        with patch.object(workspace, "fetch_source", side_effect=busy):
+            fallback = project_service.call("paper_search", args, self.a)
+        self.assertEqual([item["status"] for item in fallback["providers"]], ["ok", "rate_limited"])
+        self.assertEqual(len(fallback["papers"]), 1)
+
     def test_non_windows_keeps_original_stdio_config(self):
         config = {"patches": ["existing-stdio-patch.json"], "env": {"EXISTING": "1"}}
         with patch.object(mcp_http.os, "name", "posix"):
             with mcp_http.prepare_windows_config(config, set()) as actual:
                 self.assertIs(actual, config)
+
+    def test_citation_directions_and_bound_sdk_results(self):
+        def source(url, **_):
+            params = parse_qs(urlsplit(url).query)
+            direction = params.get("filter", [""])[0]
+            if direction == "openalex:W2":
+                return json.dumps({"results": [{"id": "https://openalex.org/W2", "title": "Reference"}]})
+            if direction == "cites:W1":
+                return json.dumps({"results": [{"id": "https://openalex.org/W3", "title": "Later citation"}]})
+            if urlsplit(url).path == "/works/W1":
+                return json.dumps({"id": "https://openalex.org/W1", "title": "Seed",
+                                   "referenced_works": ["https://openalex.org/W2"], "cited_by_count": 18})
+            raise AssertionError(url)
+
+        bot = features.create_feature(self.a, "Runs", paradigm="engineering")["feature"]
+        other = features.create_feature(self.b, "Other", paradigm="engineering")["feature"]
+        task = tasks.create({"projectId": self.a, "featureId": bot["id"], "prompt": "Verify an experiment"})
+        self.assertIn("weave-research-engineering", research_skills.core(tasks.task_bot(self.a, task["featureId"])))
+        with self.assertRaises(workspace.WorkspaceError):
+            tasks.create({"projectId": self.a, "featureId": other["id"], "prompt": "invalid access"})
+
+        headers = {"Authorization": "Bearer " + self.token}
+        with patch.object(workspace, "fetch_source", side_effect=source), mcp_http.private_bridge(
+            workspace.DATA, self.a, self.token, bot_binding=(bot["id"], task["sessionId"]),
+        ) as url:
+            def tool(name, args):
+                status, raw, _ = self.request(url, {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                                                     "params": {"name": name, "arguments": args}}, headers)
+                self.assertEqual(status, 200)
+                result = json.loads(raw)["result"]
+                return result if result.get("isError") else json.loads(result["content"][0]["text"])
+
+            relation = tool("paper_neighbors", {"id": "W1"})
+            self.assertEqual(relation["references"]["papers"][0]["text"], "Reference")
+            self.assertEqual(relation["citedBy"]["papers"][0]["text"], "Later citation")
+            self.assertEqual(relation["citedBy"]["indexed"], 18)
+            self.assertTrue(tool("paper_read", {"arxivId": "https://example.org/file.pdf"})["isError"])
+            self.assertTrue(tool("feature_push", {"featureId": other["id"], "text": "unrelated"})["isError"])
+            self.assertEqual(tool("feature_push", {"text": "Verified notes"})["text"], "Verified notes")
+            run = tool("experiment_record", {"name": "Recorded run", "status": "completed"})
+            self.assertEqual(run["sourceSession"], task["sessionId"])
+            self.assertEqual([item["id"] for item in bot_activity.scoped_records(self.a, bot["id"])], [run["id"]])
 
     @unittest.skipUnless(os.name == "nt", "Windows transport only")
     def test_windows_missing_or_unsafe_mcp_configuration_fails_closed(self):
