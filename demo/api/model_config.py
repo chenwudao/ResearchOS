@@ -95,6 +95,20 @@ def profile_home(data_dir=None):
     return base / "LabWeave" / "web" / identifier
 
 
+def runtime_working_directory(cwd):
+    directory = Path(cwd)
+    if os.name != "nt" or os.environ.get("DSH_RUNTIME_MODE", "exe") != "exe":
+        return directory
+
+    # The 0.2.2rc2 Windows EXE only extracts native modules from C:\snapshot or V:\snapshot.
+    if directory.drive.upper() in ("C:", "V:"):
+        return Path(directory.anchor.upper(), *directory.parts[1:])
+    for root in (Path("C:/"), Path("V:/")):
+        if root.is_dir():
+            return root
+    return directory
+
+
 def active_web_home(web_home=None):
     if web_home is not None:
         return Path(web_home)
